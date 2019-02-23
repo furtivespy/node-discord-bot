@@ -187,7 +187,7 @@ const init = async () => {
   
     // Also good practice to ignore any message that does not start with our prefix,
     // which is set in the configuration file.
-    //if (message.content.indexOf(settings.prefix) !== 0) return;
+    if (message.content.indexOf(settings.prefix) !== 0) return;
 
     const args = message.content.slice(settings.prefix.length).trim().split(/ +/g);
     const command = args.shift().toLowerCase();

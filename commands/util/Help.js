@@ -24,8 +24,8 @@ class Help extends Command {
           
           // Filter all commands by which are available for the user's level, using the <Collection>.filter() method.
           const myCommands = message.guild ? 
-            this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && !cmd.conf.allMessages && cmd.conf.showHelp) : 
-            this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && !cmd.conf.allMessages && cmd.conf.showHelp && !cmd.conf.guildOnly);
+            this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.showHelp) : 
+            this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.showHelp && !cmd.conf.guildOnly);
           
           // Here we have to get the command names only, and we use that array to get the longest name.
           // This make the help commands "aligned" in the output.
