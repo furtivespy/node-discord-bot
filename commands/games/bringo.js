@@ -27,7 +27,7 @@ class Bringo extends Command {
             description: "Start a Bringo Game!",
             category: "Games",
             usage: `"bringo start" to start game, "bringo" to get current board`,
-            enabled: true,
+            enabled: false,
             guildOnly: true,
             allMessages: true,
             showHelp: true,
