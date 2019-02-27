@@ -1,3 +1,5 @@
+const qs = require( 'querystring' )
+const fetch = require('node-fetch')
 class Command {
     constructor(client, {
       name = null,
@@ -14,6 +16,21 @@ class Command {
       this.client = client;
       this.conf = { enabled, guildOnly, aliases, permLevel, allMessages, showHelp };
       this.help = { name, description, category, usage };
+    }
+
+    async getGoogleImg(searchTerm, isGif){
+      var params = {
+        q:  searchTerm,
+        safe: 'high',
+        cx: this.client.config.google_cxid,
+        key: this.client.config.google_key,
+        searchType: 'image'
+      }
+      if (isGif) params.fileType = 'gif';
+      var url = 'https://www.googleapis.com/customsearch/v1/?' + qs.stringify( params );
+      return await fetch(url).then(res => res.json()).then(json => {
+        return json.items
+      })
     }
   }
   module.exports = Command;

@@ -253,6 +253,31 @@ const init = async () => {
   console.log("Logging in...");
   client.login(client.config.token);
 };
+
+//run every message commands
+client.on("message", async message => {
+  if (message.author.bot) return;
+  if (!message.guild) {
+    return;
+  }
+  if (!message.channel.permissionsFor(message.guild.me).missing("SEND_MESSAGES")) return;
+  const settings = client.getSettings(message.guild);
+  message.settings = settings;
+  //Ignore actual commands or command attempts
+  if (message.content.indexOf(settings.prefix) === 0) return;
+  //args is each word now
+  const args = message.content.trim().split(/ +/g);
+  // If the member on a guild is invisible or not cached, fetch them.
+  if (message.guild && !message.member) await message.guild.fetchMember(message.author);
+  // Get the user or member's permission level from the elevation
+  const level = client.permlevel(message);
+  const exclusions = client.getExclusions(message.guild)
+  const commandsToRun = 
+    client.commands.filter(cmd => client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.enabled && cmd.conf.allMessages && !exclusions.includes(cmd.help.name));
+  commandsToRun.forEach(cmd => {
+    cmd.run(message, args, level);
+  });
+});
   
 init();
 
