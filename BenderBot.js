@@ -9,6 +9,8 @@ class BenderBot extends Client {
       this.config = require("./config.js");
       this.permLevels = require("./config.permissionLevels.js")
       this.settings = new Enmap({ name: "settings", cloneLevel: "deep", fetchAll: false, autoFetch: true });
+      this.exclusions = new Enmap({ name: "exclusions", cloneLevel: "deep", fetchAll: false, autoFetch: true });
+      this.gamedata = new Enmap({ name: "gamedata", cloneLevel: "deep", fetchAll: false, autoFetch: true });
 
       this.commands = new Collection();
       this.aliases = new Collection();
@@ -105,6 +107,13 @@ class BenderBot extends Client {
       this.settings.set(id, settings);
     }
   
+    getExclusions (guild) {
+      const guildData = this.exclusions.get(guild.id) || [];
+      return guildData;
+    }
+    setExclusions (guild, exclusionList){
+      this.exclusions.set(guild.id, exclusionList)
+    }
     /*
     SINGLE-LINE AWAITMESSAGE
     A simple way to grab a single reply, from the user that initiated
@@ -172,7 +181,7 @@ const init = async () => {
   client.on("message", async message => {
     if (message.author.bot) return;
     if (!message.guild) {
-      client.logger.log(`No DM's Yet!`, 'log')
+      message.reply("Sorry, I don't do DM's yet")
       return;
     }
     if (!message.channel.permissionsFor(message.guild.me).missing("SEND_MESSAGES")) return;
@@ -209,7 +218,12 @@ const init = async () => {
     // and return a friendly error message.
     if (cmd && !message.guild && cmd.conf.guildOnly)
       return message.channel.send("This command is unavailable via private message. Please run this command in a guild.");
-
+    //don't run a disabled command
+    if (!cmd.conf.enabled) return
+    //dont run an exluced command
+    const exclusions = client.getExclusions(message.guild)
+    if(exclusions.includes(cmd.help.name)) return
+    //check permission level
     if (level < client.levelCache[cmd.conf.permLevel]) {
       if (settings.systemNotice === "true") {
         return message.channel.send(`You do not have permission to use this command.

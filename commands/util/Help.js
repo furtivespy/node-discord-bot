@@ -21,10 +21,11 @@ class Help extends Command {
         if (!args[0]) {
           // Load guild settings (for prefixes and eventually per-guild tweaks)
           const settings = message.settings;
+          const exclusions = this.client.getExclusions(message.guild)
           
           // Filter all commands by which are available for the user's level, using the <Collection>.filter() method.
           const myCommands = message.guild ? 
-            this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.enabled && cmd.conf.showHelp) : 
+            this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.enabled && cmd.conf.showHelp && !exclusions.includes(cmd.help.name)) : 
             this.client.commands.filter(cmd => this.client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.enabled && cmd.conf.showHelp && !cmd.conf.guildOnly);
           
           // Here we have to get the command names only, and we use that array to get the longest name.
