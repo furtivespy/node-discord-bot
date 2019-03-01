@@ -114,6 +114,14 @@ class BenderBot extends Client {
     setExclusions (guild, exclusionList){
       this.exclusions.set(guild.id, exclusionList)
     }
+    getGameData (guild, gameName) {
+      const guildData = this.gamedata.get(guild.id) || {};
+      return guildData[gameName] || {}
+    }
+    setGameData (guild, gameName, updatedData){
+      const guildData = this.gamedata.get(guild.id) || {};
+      this.gamedata.set(guild.id, Object.assign(guildData, {[gameName]: updatedData}))
+    }
     /*
     SINGLE-LINE AWAITMESSAGE
     A simple way to grab a single reply, from the user that initiated
