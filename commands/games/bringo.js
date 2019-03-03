@@ -48,7 +48,18 @@ class Bringo extends Command {
             name: "bringo",
             description: "Start a Bringo Game!",
             category: "Games",
-            usage: `"bringo start" to start game, "bringo" to get current board, admin can also add/remove`,
+            usage: `Here are some Bringo Commands:
+= All Users =
+    !Bringo        :: Just shows the current game's board
+    !Bringo start  :: starts a new game of bringo (if there isn't already one)
+    !bring score   :: gets the scoreboard (this command doesn't work yet)
+= Admin Only commands =
+    !Bringo add word                  :: Adds a word to the list of possibilies
+    !Bringo add word|another thing    :: Use pipe to add multiple
+    !Bringo remove word               :: removes a word from the list of possibilites
+    !Bringo remove word|another thing :: Use pipe to remove multiple
+= Server Owner only Commands =
+    !Bringo clearallwords :: deletes the whole word list`,
             enabled: true,
             guildOnly: true,
             allMessages: true,

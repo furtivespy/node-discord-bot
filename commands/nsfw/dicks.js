@@ -8,7 +8,7 @@ class Dick extends Command {
             name: "dick",
             description: "Show me pen15!!!",
             category: "NSFW",
-            usage: "dick",
+            usage: "This command finds a dick pic",
             enabled: true,
             guildOnly: false,
             allMessages: false,

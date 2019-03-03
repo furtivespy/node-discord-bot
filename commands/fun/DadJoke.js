@@ -7,7 +7,7 @@ class DadJoke extends Command {
             name: "dadjoke",
             description: "Tells a dad joke.",
             category: "Fun",
-            usage: "!dadjoke",
+            usage: "Type command, get a dad joke",
             enabled: true,
             guildOnly: false,
             allMessages: false,

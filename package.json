@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/furtivespy/node-discord-bot#readme",
   "dependencies": {
-    "ascii-table": "0.0.9",
+    "ascii-table": "git+https://github.com/belph/ascii-table.git",
     "better-sqlite-pool": "^0.2.0",
     "chalk": "^2.4.2",
     "cheerio": "^1.0.0-rc.2",
@@ -36,6 +36,7 @@
     "random-puppy": "^1.1.0",
     "roll": "^1.2.0",
     "uws": "^99.0.0",
+    "word-wrap": "^1.2.3",
     "wtf_wikipedia": "^7.2.10"
   }
 }

@@ -8,7 +8,7 @@ class Chuck extends Command {
             name: "chuck",
             description: "Shows the power of Chuck Norris",
             category: "Fun",
-            usage: "!chuck <a name>",
+            usage: "\n- Command by itself, get's fact about Chuck Norris\n- Command followed by a name will put that name into the fact",
             enabled: true,
             guildOnly: false,
             allMessages: false,

@@ -7,7 +7,7 @@ class Dog extends Command {
             name: "dog",
             description: "woof",
             category: "Animals",
-            usage: "dog",
+            usage: "Type command, get dog fact",
             enabled: true,
             guildOnly: false,
             allMessages: false,

@@ -10,7 +10,7 @@ class Roll extends Command {
             name: "roll",
             description: "Roll Some Dice",
             category: "Games",
-            usage: "roll <dice to roll including modifiers, >",
+            usage: "use commnad roll followed by dice to roll including modifiers, e.g. '!roll 1d20+5' ",
             enabled: true,
             guildOnly: false,
             allMessages: false,

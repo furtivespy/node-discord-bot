@@ -7,7 +7,7 @@ class xkcd extends Command {
             name: "xkcd",
             description: "xkcd comic",
             category: "Fun",
-            usage: "xkcd [optional comic #]",
+            usage: "Use this command to get a xkcd comic\n- just command will give the current day's comic\n- command followed by a number will get that specific comic",
             enabled: true,
             guildOnly: false,
             allMessages: false,

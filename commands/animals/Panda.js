@@ -7,7 +7,7 @@ class Panda extends Command {
             name: "panda",
             description: "Panda Bears",
             category: "Animals",
-            usage: "panda",
+            usage: "Type command, get panda fact",
             enabled: true,
             guildOnly: false,
             allMessages: false,

@@ -6,7 +6,7 @@ class Ping extends Command {
             name: "ping",
             description: "Get's Bender's Ping.",
             category: "Utility",
-            usage: "!ping",
+            usage: "Use this command to make sure the bot is still there and responding",
             enabled: true,
             guildOnly: false,
             allMessages: false,

@@ -6,7 +6,7 @@ class Help extends Command {
             name: "help",
             description: "Displays all the available commands for you.",
             category: "Utility",
-            usage: "No usage provided.",
+            usage: "If you can see this, you know how to use the help command",
             enabled: true,
             guildOnly: true,
             allMessages: false,

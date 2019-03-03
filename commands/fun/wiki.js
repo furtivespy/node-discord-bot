@@ -11,7 +11,7 @@ class Wiki extends Command {
             name: "wiki",
             description: "Searches Wikipedia",
             category: "Fun",
-            usage: "wiki <search term>",
+            usage: "Command followed by what you'd like to searh for, e.g. '!wiki Albert Einstein' ",
             enabled: true,
             guildOnly: false,
             allMessages: false,

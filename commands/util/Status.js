@@ -6,7 +6,7 @@ class Status extends Command {
             name: "status",
             description: "Update Bot's Status - across all servers",
             category: "Utility",
-            usage: "status <bender's new status>",
+            usage: "Use this command followed by whatever it should say after 'Playing' for the bot",
             enabled: true,
             guildOnly: false,
             allMessages: false,

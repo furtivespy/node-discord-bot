@@ -6,7 +6,10 @@ class SetCMD extends Command {
             name: "set",
             description: "View or change settings for your server.",
             category: "Utility",
-            usage: "set <view/get/edit> <key> <value>",
+            usage: "Here are some examples of what you can do (using default prefix):\n"+
+              "- to get a list of all settings and their values: `!set`\n" +
+              "- to change a value of a setting: `!set edit adminRole CoolGuys`\n" +
+              "- to reset back to default: `!set reset prefix` ",
             enabled: true,
             guildOnly: true,
             allMessages: false,

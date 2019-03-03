@@ -6,9 +6,9 @@ class Cat extends Command {
     constructor(client){
         super(client, {
             name: "cat",
-            description: "meow",
+            description: "meow (cat fact)",
             category: "Animals",
-            usage: "cat",
+            usage: "Type command, get cat fact",
             enabled: true,
             guildOnly: false,
             allMessages: false,

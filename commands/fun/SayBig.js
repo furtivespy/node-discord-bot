@@ -57,7 +57,7 @@ class SayBig extends Command {
             name: "saybig",
             description: "Make Bender Yell.",
             category: "Fun",
-            usage: "!saybig bender is great.",
+            usage: "Use command followed by anything you want the bot to say - Bot will delete your message and say it himself and big (emoji letters)",
             enabled: true,
             guildOnly: false,
             allMessages: false,

@@ -102,9 +102,9 @@ class Ferengi extends Command {
     constructor(client){
         super(client, {
             name: "ferengi",
-            description: "Respond with a rrule of acquisition when someone talks of business",
+            description: "Bot responds W/ Rule of Acquisition when there is money talk",
             category: "Fun",
-            usage: "talk about money or latinum",
+            usage: "If certain words are used in chat, the bot will give a Rule of Acquision to keep the business talk going",
             enabled: true,
             guildOnly: true,
             allMessages: true,

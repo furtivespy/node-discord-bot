@@ -7,7 +7,7 @@ class Boobs extends Command {
             name: "boobs",
             description: "Show me boobies!!!",
             category: "NSFW",
-            usage: "boobs",
+            usage: "This command finds a picture of boobs",
             enabled: true,
             guildOnly: false,
             allMessages: false,

@@ -7,7 +7,7 @@ class Butts extends Command {
             name: "butts",
             description: "baby got back",
             category: "NSFW",
-            usage: "butts",
+            usage: "This command finds a picture of an ass",
             enabled: true,
             guildOnly: false,
             allMessages: false,

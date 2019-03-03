@@ -8,7 +8,7 @@ class Slogan extends Command {
             name: "slogan",
             description: "Come up with a cool slogan",
             category: "Fun",
-            usage: "slogan <Thing to be sloganized>",
+            usage: "Command followed by what you'd like a slogan for, e.g., '!slogan Mountain Dew' ",
             enabled: true,
             guildOnly: false,
             allMessages: false,
@@ -22,7 +22,7 @@ class Slogan extends Command {
         try {
             var query;
             if (!args || args.length == 0) {
-                query = "slogan=Robots";
+                query = "slogan=Bender";
             } else {
                 query = qs.stringify( {slogan: args.join(" ")});
             }

@@ -1,6 +1,7 @@
 const Command = require('../../base/Command.js')
 const Pull = require('lodash/pull')
 var AsciiTable = require('ascii-table')
+var wrap = require('word-wrap')
 
 class Oversee extends Command {
     constructor(client){
@@ -43,25 +44,25 @@ class Oversee extends Command {
             message.reply(`successfully unexcluded ${cmd.help.name}`);
         } else {
             //if not add/remove then list all commands and status
-            var table = new AsciiTable('All Commands')
-            table.setHeading('Category', 'Command', 'Permission', 'Excluded', 'Description')
+            var table = new AsciiTable('[All Commands]')
+            table.setHeading('{Category:}', '{Command:}', '{Permission:}', '{Active:}', '{Description:}')
             const myCommands = this.client.commands.filter(cmd => cmd.conf.enabled) 
             const sorted = myCommands.array().sort((p, c) => p.help.category > c.help.category ? 1 :  p.help.name > c.help.name && p.help.category === c.help.category ? 1 : -1 );
 
             sorted.forEach(acommand => {
                 if(table.toString().length > 1600){
-                    message.channel.send("```" + table.toString() + "```")
-                    table.clear()        
+                    message.channel.send(table.toString(), {code:"css"})
+                    table.clear()   
                 }
                 table.addRow(
                     acommand.help.category,
                     acommand.help.name,
                     acommand.conf.permLevel,
-                    (exclusions.includes(acommand.help.name)) ? 'Excluded!' : '',
-                    acommand.help.description
+                    (exclusions.includes(acommand.help.name)) ? '[NO]' : '.Yes',
+                    wrap(acommand.help.description, {width: 25})
                 )
             })
-            message.channel.send("```" + table.toString() + "```")
+            message.channel.send(table.toString(), {code:"css"})
         }
       }
     }

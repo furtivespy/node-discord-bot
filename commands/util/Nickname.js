@@ -6,7 +6,7 @@ class Nickname extends Command {
             name: "nickname",
             description: "Update Bot's nickname",
             category: "Utility",
-            usage: "nick <bender's new name>",
+            usage: "This command will give the bot a new nickname on your server",
             enabled: true,
             guildOnly: true,
             allMessages: false,
