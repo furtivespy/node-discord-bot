@@ -50,9 +50,9 @@ class Bringo extends Command {
             category: "Games",
             usage: `Here are some Bringo Commands:
 = All Users =
-    !Bringo        :: Just shows the current game's board
-    !Bringo start  :: starts a new game of bringo (if there isn't already one)
-    !bring score   :: gets the scoreboard (this command doesn't work yet)
+    !Bringo         :: Just shows the current game's board
+    !Bringo start   :: starts a new game of bringo (if there isn't already one)
+    !Bringo score   :: gets the scoreboard
 = Admin Only commands =
     !Bringo add word                  :: Adds a word to the list of possibilies
     !Bringo add word|another thing    :: Use pipe to add multiple
@@ -102,6 +102,17 @@ class Bringo extends Command {
                         } else
                             return message.reply("tell the admin to add some words!")
                     }
+                } else if (args[0] && args[0].toLowerCase() === "score"){
+                    var sorted = Object.keys(BringoData.scoreboard).map(c => ({key: c, value: BringoData.scoreboard[c]})).sort((a,b) => a.value < b.value)
+                    var scoreMessage = ""
+                    for(let i=0;i<sorted.length;i++){
+                        var icon = (i===0) ? ":first_place:" : (i===1) ? ":second_place:" : (i===2) ? ":third_place:" : ":medal:"
+                        scoreMessage += `${icon} ${sorted[i].value} :: ${message.guild.members.get(sorted[i].key).displayName}\n`
+                    }
+                    await message.channel.send({embed: { color: 13207824, 
+                        title: "Bringo Scoreboard",
+                        description: scoreMessage 
+                    }})
                 } else if (args[0] && args[0].toLowerCase() === 'add' && level >= 3) {
                     if (args.length === 1) {
                         await message.channel.send("use the add command to add words to the possible boards");
