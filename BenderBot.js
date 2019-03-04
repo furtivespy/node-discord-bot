@@ -173,7 +173,7 @@ const init = async () => {
     //nice to wait a sec before really being ready
     await client.wait(1000);
     
-    client.user.setActivity(client.config.activity);
+    client.user.setActivity(client.config.activity, {type: client.config.activityType});
     client.appInfo = await client.fetchApplication();
     setInterval( async () => {
       client.appInfo = await client.fetchApplication();
