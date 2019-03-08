@@ -10,7 +10,7 @@ class Wiki extends Command {
         super(client, {
             name: "wiki",
             description: "Searches Wikipedia",
-            category: "Fun",
+            category: "Info",
             usage: "Command followed by what you'd like to searh for, e.g. '!wiki Albert Einstein' ",
             enabled: true,
             guildOnly: false,
