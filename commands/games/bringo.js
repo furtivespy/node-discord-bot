@@ -213,14 +213,16 @@ class Bringo extends Command {
                                         if(winner[4]!=12) BringoData.scoreboard[BringoData.currentGame[winner[4]].FoundBy] = (BringoData.scoreboard[BringoData.currentGame[winner[4]].FoundBy]) ? BringoData.scoreboard[BringoData.currentGame[winner[4]].FoundBy] + 1 : 1
                                         //GAME OVER MAN!
                                         BringoData.isGameActive = false;
-                                        await message.channel.send("```" + showboard(BringoData) + "```")
-                                        await message.channel.send({embed: { "image": {
-                                            "url": "https://media.giphy.com/media/xLsaBMK6Mg8DK/giphy.gif"
-                                          } }})
-                                        this.client.setGameData(message.guild, 'BRINGO', BringoData)
+                                        
                                     }
                             })
-                            
+                            if(!BringoData.isGameActive) {
+                                await message.channel.send("```" + showboard(BringoData) + "```")
+                                await message.channel.send({embed: { "image": {
+                                    "url": "https://media.giphy.com/media/xLsaBMK6Mg8DK/giphy.gif"
+                                    } }})
+                                this.client.setGameData(message.guild, 'BRINGO', BringoData)
+                            }
                         }
                     }
                 }
