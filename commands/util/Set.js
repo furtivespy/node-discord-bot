@@ -13,7 +13,7 @@ class SetCMD extends Command {
             enabled: true,
             guildOnly: true,
             allMessages: false,
-            showHelp: false,
+            showHelp: true,
             aliases: ["setting", "settings"],
             permLevel: "Administrator"
           })
