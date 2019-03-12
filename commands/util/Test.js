@@ -32,29 +32,8 @@ class Test extends Command {
     async run (message, args, level) {
         try {
             message.react('⚡')
-            var settings = this.client.getSettings(message.guild)
-            var wordHistogram = {}
-            const responseMsg = await message.channel.send("searching things...")
-            message.guild.channels.forEach(async channel => {
-                if(channel.type != 'text') return
-                await responseMsg.edit(`searching ${channel.name}...`)
-                var msgs = await channel.fetchMessages({limit: 100})
-                msgs.forEach(msg => {
-                    if (msg.author.bot) return
-                    if (msg.content.indexOf(settings.prefix) === 0) return;
-                    msg.content.toLowerCase().split(/ +/g).forEach(word => {
-                        if (mostCommonWords.includes(word)) return
-                        if (!isNaN(word)) return
-                        
-                        wordHistogram[word] = (wordHistogram[word]) ? wordHistogram[word] + 1 : 1
-                    })
-                })
-            });
-            await responseMsg.edit(`calculating...`)
-            var sorted = Object.keys(wordHistogram).map(c => ({key: c, value: wordHistogram[c]})).sort((a,b) => a.value < b.value)
-            var newlist = _.slice(sorted, 0, 200).map(c => c.key).join(" | ")
             
-            await responseMsg.edit(`Recent Most Used Words: ${newlist}`)
+            message.channel.send(Math.ceil(Math.random() * 5))
             
         } catch (e) {
             this.client.logger.log(e,'error')
