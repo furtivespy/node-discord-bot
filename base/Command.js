@@ -18,13 +18,14 @@ class Command {
       this.help = { name, description, category, usage };
     }
 
-    async getGoogleImg(searchTerm, isGif){
+    async getGoogleImg(searchTerm, isGif, start=0){
       var params = {
         q:  searchTerm,
         safe: 'high',
         cx: this.client.config.google_cxid,
         key: this.client.config.google_key,
-        searchType: 'image'
+        searchType: 'image',
+        start: start
       }
       if (isGif) params.fileType = 'gif';
       var url = 'https://www.googleapis.com/customsearch/v1/?' + qs.stringify( params );
