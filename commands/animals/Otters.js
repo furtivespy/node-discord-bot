@@ -48,9 +48,9 @@ class Otter extends Command {
     constructor(client){
         super(client, {
             name: "otter",
-            description: "meow (cat fact)",
+            description: "This is where the Otters are",
             category: "Animals",
-            usage: "Type command, get cat fact",
+            usage: "Type command, get an otter fact and an otter picture",
             enabled: true,
             guildOnly: false,
             allMessages: false,
