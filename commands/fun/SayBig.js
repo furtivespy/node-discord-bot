@@ -9,7 +9,7 @@ const numberToString = (number) => {
 
     switch (number) {
       case "0":
-        value = ":zero :";
+        value = ":zero: ";
         break;
 
       case "1":
@@ -49,7 +49,28 @@ const numberToString = (number) => {
         break;
     }
     return value;
-  };
+  }
+
+  const specialCheck = (character) => {
+    switch (character) {
+      case "#":
+        return ":hash:"
+      case "*":
+        return ":asterisk:"
+      case "!":
+        return ":exclamation:"
+      case "?":
+        return ":question:"
+      case "-":
+        return ":heavy_minus_sign:"
+      case "+":
+        return ":heavy_plus_sign:"
+      case "$":
+        return ":heavy_dollar_sign:"
+      default:
+        return character
+    }
+  }
 
 class SayBig extends Command {
     constructor(client){
@@ -76,8 +97,8 @@ class SayBig extends Command {
                 const char = sayMessage.charAt(i)
                 if (char === " ") output += "   "
                 else if (numbers.includes(char)) output += numberToString(char)
-                else if (isAlpha(char))output += `:regional_indicator_${char}: `
-                else output += `${char} `
+                else if (isAlpha(char)) output += `:regional_indicator_${char}: `
+                else output += `${specialCheck(char)} `
             }
             message.delete().catch(O_o=>{})
             message.channel.send(output)
