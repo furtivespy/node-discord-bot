@@ -1,3 +1,10 @@
+
+////////////////////////////////////////////////////////
+// THIS FILE IS NO LONGER USED - IT WAS HOW I STARTED //
+// NOW BenderBot.js IS THE MAIN FILE                  //
+////////////////////////////////////////////////////////
+
+
 // Load up the discord.js library
 const Discord = require("discord.js");
 const fetch = require('node-fetch');

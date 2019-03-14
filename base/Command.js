@@ -18,10 +18,10 @@ class Command {
       this.help = { name, description, category, usage };
     }
 
-    async getGoogleImg(searchTerm, isGif, start=0){
+    async getGoogleImg(searchTerm, isGif, start=1, safeSearch = true){
       var params = {
         q:  searchTerm,
-        safe: 'high',
+        safe: (safeSearch) ? 'high' : 'off',
         cx: this.client.config.google_cxid,
         key: this.client.config.google_key,
         searchType: 'image',
