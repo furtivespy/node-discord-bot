@@ -6,7 +6,9 @@ const EmptyBringoData = {
     wordlist: [],
     isGameActive: false,
     currentGame: [],
-    scoreboard: {}
+    scoreboard: {},
+    cooldown: 0,
+    cooldownUsers: {}
 }
 
 const WinningPositions = [
@@ -70,9 +72,11 @@ class Bringo extends Command {
     !Bringo add word|another thing    :: Use pipe to add multiple
     !Bringo remove word               :: removes a word from the list of possibilites
     !Bringo remove word|another thing :: Use pipe to remove multiple
+    !Bringo cooldown 60000            :: use to set a cooldown after finding a word per user (60000ms)
 = Server Owner only Commands =
     !Bringo allwords      :: Sends you the full list of possible terms
-    !Bringo clearallwords :: deletes the whole word list`,
+    !Bringo clearallwords :: deletes the whole word list
+    !Bringo resetscore    :: resets the scoreboard`,
             enabled: true,
             guildOnly: true,
             allMessages: true,
@@ -147,17 +151,36 @@ class Bringo extends Command {
                         this.client.setGameData(message.guild, 'BRINGO', BringoData)
                         return message.reply(`I removed ${additives.length} word${(additives.length ===  1)? '' : 's'}`)
                     }
+                } else if (args[0] && args[0].toLowerCase() === 'cooldown' && level >= 3) {
+                    if (args.length === 1) {
+                        await message.channel.send("how cool do you want it!?")
+                    } else {
+                        if (String(Math.abs(~~Number(args[1]))) === args[1]) {
+                            BringoData.cooldown = parseInt(args[1])
+                            this.client.setGameData(message.guild, 'BRINGO', BringoData)
+                            return message.reply(`new cooldown set to ${args[1]}ms`)
+                        } else {
+                            return message.reply(`Just a number (of ms) please`)
+                        }                        
+                    }
                 } else if (args[0] && args[0].toLowerCase() === 'allwords' && level >= 4) {
                     if(BringoData.wordlist.length === 0) return
+                    message.delete().catch(O_o=>{});
                     var dmMsg = ""
-                    for(let i=0;i<BringoData.wordlist.length;i++){
-                        if (dmMsg.length + BringoData.wordlist[i].length > 1000) {
+                    var sortlist = BringoData.wordlist.sort()
+                    for(let i=0;i<sortlist.length;i++){
+                        if (dmMsg.length + sortlist[i].length > 1000) {
                             await message.author.send(dmMsg)
                             dmMsg = ""
                         }
-                        dmMsg += `${BringoData.wordlist[i]}, `
+                        dmMsg += `${sortlist[i]}, `
                     }
                     await message.author.send(dmMsg.slice(0,-2))
+                } else if (args[0] && args[0].toLowerCase() === 'cheats' && level >= 7) {
+                    message.delete().catch(O_o=>{});
+                    for(let i=0;i<25;i++){
+                        await message.author.send(JSON.stringify(BringoData.currentGame[i]))
+                    }
                 } else if (args[0] && args[0].toLowerCase() === 'suggestions' && level >= 4) {
                     var wordHistogram = {}
                     const responseMsg = await message.channel.send("searching things...")
@@ -183,10 +206,14 @@ class Bringo extends Command {
                     
                     await responseMsg.edit(`Sliding into your DMs`)
                     await message.author.send(`Recent Most Used Words: ${newlist.substring(0,2000)}`)
-                }else if (args[0] && args[0].toLowerCase() === 'clearallwords' && level >= 4) {
+                } else if (args[0] && args[0].toLowerCase() === 'clearallwords' && level >= 4) {
                     BringoData.wordlist = []
                     this.client.setGameData(message.guild, 'BRINGO', BringoData)
                     return message.reply(`I removed every word :(`)
+                } else if (args[0] && args[0].toLowerCase() === 'resetscore' && level >= 4) {
+                    BringoData.scoreboard = {}
+                    this.client.setGameData(message.guild, 'BRINGO', BringoData)
+                    return message.reply(`Everyone is back on an even playing field`)
                 } else {
                     if (BringoData.isGameActive) {
                     //Display Board
@@ -203,8 +230,14 @@ class Bringo extends Command {
                     var messageText = message.content.trim().toLowerCase()
                     for(let i=0;i<25;i++){
                         if(BringoData.isGameActive && !BringoData.currentGame[i].isFound && _.includes(messageText, BringoData.currentGame[i].word)){
+                            //cooldown short circuit
+                            var now = new Date()
+                            var UserBase = BringoData.cooldownUsers[message.author.id] || new Date(now - (BringoData.cooldown + 1000))
+                            if (now - UserBase < BringoData.cooldown) return;
+                            //good to go
                             BringoData.currentGame[i].isFound = true
                             BringoData.currentGame[i].FoundBy = message.author.id
+                            BringoData.cooldownUsers[message.author.id] = now
                             this.client.setGameData(message.guild, 'BRINGO', BringoData)
                             await message.reply(`you found ${BringoData.currentGame[i].word}`)
                             _.forEach(WinningPositions, async winner => {
