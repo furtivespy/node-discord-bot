@@ -18,6 +18,10 @@ class Command {
       this.help = { name, description, category, usage };
     }
 
+    pause(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     async getGoogleImg(searchTerm, isGif, start=1, safeSearch = true){
       var params = {
         q:  searchTerm,
