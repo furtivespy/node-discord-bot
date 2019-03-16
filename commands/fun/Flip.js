@@ -24,7 +24,7 @@ class Flip extends Command {
             await super.pause(750)
             msg.edit(`(╯°□°)╯    ]`)
             await super.pause(750)
-            msg.edit(`(╯°□°)╯ ︵ ${flip(toFlip)}`)
+            msg.edit(`(╯°□°)╯ ︵ ${(!args || args.length == 0) ? "┻━┻" : flip(toFlip)}`)
         } catch (e) {
             this.client.logger.log(e,'error')
         }
