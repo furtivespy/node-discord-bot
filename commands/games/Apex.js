@@ -46,7 +46,7 @@ class Apex extends Command {
                     embed.fields.push({
                         name: child.metadata.legend_name,
                         inline: true,
-                        value: child.stats.map(stat => `**${stat.metadata.name}:** ${stat.value}`).join("\n") || " "
+                        value: child.stats.map(stat => `**${stat.metadata.name}:** ${stat.value}`).join("\n") || " - "
                     })
                 })
                 return msg.edit({embed: embed} )
