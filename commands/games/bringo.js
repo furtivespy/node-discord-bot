@@ -202,11 +202,11 @@ class Bringo extends Command {
                         })
                     });
                     await responseMsg.edit(`calculating...`)
-                    var sorted = Object.keys(wordHistogram).map(c => ({key: c, value: wordHistogram[c]})).sort((a,b) => a.value < b.value)
+                    var sorted = Object.keys(wordHistogram).map(c => ({key: c, value: wordHistogram[c]})).sort((a,b) => b.value - a.value)
                     var newlist = _.slice(sorted, 0, 200).map(c => c.key).join(" | ")
                     
                     await responseMsg.edit(`Sliding into your DMs`)
-                    await message.author.send(`Recent Most Used Words: ${newlist.substring(0,2000)}`)
+                    await message.author.send(`Recent Most Used Words: ${newlist.substring(0,1970)}`)
                 } else if (args[0] && args[0].toLowerCase() === 'clearallwords' && level >= 4) {
                     BringoData.wordlist = []
                     this.client.setGameData(message.guild, 'BRINGO', BringoData)
