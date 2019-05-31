@@ -20,6 +20,12 @@ class Database {
         backward.run()
         wordcount.run()
         sentcount.run()
+        const ngramIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS ngram-words ON ngrams(word1, word2, word3, word4)")
+        const foreIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS forwards-ngram on forwards(ngram)")
+        const backIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS backwards-ngram on backwards(ngram)")
+        ngramIndex.run()
+        foreIndex.run()
+        backIndex.run()
 
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
@@ -46,6 +52,7 @@ class Database {
         this.insertBackward = this.db.prepare('INSERT INTO backwards VALUES (:id, :ngram, :word, 1)')
 
         this.selectngram = this.db.prepare('SELECT * FROM ngrams WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4')
+        this.getngram = this.db.prepare('SELECT * FROM ngrams WHERE id = :id')
         this.select3gram = this.db.prepare('SELECT * FROM ngrams WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 IS NULL')
         this.selectnforward = this.db.prepare('SELECT * FROM forwards where ngram = :ngram and word = :word')
         this.selectnbackward = this.db.prepare('SELECT * FROM backwards where ngram = :ngram and word = :word')
@@ -57,7 +64,7 @@ class Database {
 
         this.randomStart = this.db.prepare('SELECT * FROM ngrams ORDER BY RANDOM() LIMIT 1')
         this.randomBack = this.db.prepare('SELECT * FROM backwards WHERE ngram = :ngram ORDER BY RANDOM() LIMIT 1')
-        this.randomfore = this.db.prepare('SELECT * FROM forwards WHERE ngram = :ngram ORDER BY RANDOM() LIMIT 1')
+        this.randomFore = this.db.prepare('SELECT * FROM forwards WHERE ngram = :ngram ORDER BY RANDOM() LIMIT 1')
     }
 
     makeSentence(){
@@ -68,8 +75,9 @@ class Database {
         if (starting.Word3 !== endWord) { buildResult.push(starting.Word3) } else return buildResult.join(' ')
         if (starting.Word4 !== endWord) { buildResult.push(starting.Word4) } else return buildResult.join(' ')
         var chain = starting.id
+        backThatAssUp(starting, buildResult)
         while (1==1) {
-            var next = this.randomfore.get({ngram: chain})
+            var next = this.randomFore.get({ngram: chain})
             if (next === undefined) return buildResult.join(' ')
             if (next.Word !== endWord) { buildResult.push(next.Word) } else return buildResult.join(' ')
             var lastFour = buildResult.slice(-4)
@@ -77,6 +85,16 @@ class Database {
             if (newGram === undefined) return buildResult.join(' ')
             chain = newGram.id
         }
+    }
+
+    backThatAssUp(startingNGram, currentSentence){
+        var next = this.randomBack.get({ngram: startingNGram.id})
+        if (next === undefined) return 
+        if (next.Word !== startWord) { currentSentence.splice(0,0,next.Word) } else return 
+        var firstFour = buildResult.slice(4)
+        var newGram = this.selectngram.get({word1: firstFour[0], word2: firstFour[1], word3: firstFour[2], word4: firstFour[3]})
+        if (newGram === undefined) return 
+        backThatAssUp(newGram, currentSentence)        
     }
 
     markovInput(allText){
