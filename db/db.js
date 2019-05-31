@@ -75,7 +75,7 @@ class Database {
         if (starting.Word3 !== endWord) { buildResult.push(starting.Word3) } else return buildResult.join(' ')
         if (starting.Word4 !== endWord) { buildResult.push(starting.Word4) } else return buildResult.join(' ')
         var chain = starting.id
-        backThatAssUp(starting, buildResult)
+        this.backThatAssUp(starting, buildResult)
         while (1==1) {
             var next = this.randomFore.get({ngram: chain})
             if (next === undefined) return buildResult.join(' ')
@@ -94,7 +94,7 @@ class Database {
         var firstFour = currentSentence.slice(4)
         var newGram = this.selectngram.get({word1: firstFour[0], word2: firstFour[1], word3: firstFour[2], word4: firstFour[3]})
         if (newGram === undefined) return 
-        backThatAssUp(newGram, currentSentence)        
+        this.backThatAssUp(newGram, currentSentence)        
     }
 
     markovInput(allText){
