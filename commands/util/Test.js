@@ -5,6 +5,13 @@ const _ = require('lodash')
 const database =  require('../../db/db.js')
 const natural = require('natural');
 
+const clean = text => {
+    if (typeof(text) === "string")
+      return text.replace(/`/g, "`" + String.fromCharCode(8203)).replace(/@/g, "@" + String.fromCharCode(8203)).substring(0,1998);
+    else
+        return text;
+  }
+
 const mostCommonWords = ["the","of","to","and","a","in","is","it","you","that","he","was","for","on","are","with","as","i","his","they","not","yes",
 "be","at","one","have","this","from","or","had","by","hot","word","but","what","some","we","can","out","other","were","all","there","when","oh",
 "up","use","your","how","said","an","each","she","which","do","their","time","if","will","way","about","many","then","them","write","would","like",
@@ -42,7 +49,7 @@ class Test extends Command {
             message.channel.send(words)
         } catch (e) {
            this.client.logger.log(e,'error')
-           message.channel.send(e)
+           message.channel.send(clean(e))
         }
     }
 }
