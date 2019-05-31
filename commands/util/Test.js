@@ -1,5 +1,9 @@
 const Command = require('../../base/Command.js')
+const fetch = require('node-fetch')
+const he = require('he')
 const _ = require('lodash')
+const database =  require('../../db/db.js')
+const natural = require('natural');
 
 const mostCommonWords = ["the","of","to","and","a","in","is","it","you","that","he","was","for","on","are","with","as","i","his","they","not","yes",
 "be","at","one","have","this","from","or","had","by","hot","word","but","what","some","we","can","out","other","were","all","there","when","oh",
@@ -30,14 +34,15 @@ class Test extends Command {
     }
 
     async run (message, args, level) {
-        try {
-            message.react('⚡')
+        //try {
             
-            message.channel.send(Math.ceil(Math.random() * 5))
-            
-        } catch (e) {
-            this.client.logger.log(e,'error')
-        }
+            var db = new database(message.guild.id)
+            var words = db.makeSentence()
+            console.log(words)
+            message.channel.send(words)
+        //} catch (e) {
+        //    this.client.logger.log(e,'error')
+        //}
     }
 }
 
