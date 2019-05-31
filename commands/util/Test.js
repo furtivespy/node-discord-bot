@@ -35,6 +35,7 @@ class Test extends Command {
 
     async run (message, args, level) {
         try {
+            message.channel.send('Testing...')
             var db = new database(message.guild.id)
             var words = db.makeSentence()
             console.log(words)
