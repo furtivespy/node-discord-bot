@@ -34,15 +34,15 @@ class Test extends Command {
     }
 
     async run (message, args, level) {
-        //try {
-            
+        try {
             var db = new database(message.guild.id)
             var words = db.makeSentence()
             console.log(words)
             message.channel.send(words)
-        //} catch (e) {
-        //    this.client.logger.log(e,'error')
-        //}
+        } catch (e) {
+           this.client.logger.log(e,'error')
+           message.channel.send(e)
+        }
     }
 }
 
