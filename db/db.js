@@ -20,9 +20,9 @@ class Database {
         backward.run()
         wordcount.run()
         sentcount.run()
-        const ngramIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS ngram-words ON ngrams (word1, word2, word3, word4)")
-        const foreIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS forwards-ngram ON forwards (ngram)")
-        const backIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS backwards-ngram ON backwards (ngram)")
+        const ngramIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS ngram_words ON ngrams (word1, word2, word3, word4)")
+        const foreIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS forwards_ngram ON forwards (ngram)")
+        const backIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS backwards_ngram ON backwards (ngram)")
         ngramIndex.run()
         foreIndex.run()
         backIndex.run()
@@ -91,7 +91,7 @@ class Database {
         var next = this.randomBack.get({ngram: startingNGram.id})
         if (next === undefined) return 
         if (next.Word !== startWord) { currentSentence.splice(0,0,next.Word) } else return 
-        var firstFour = currentSentence.slice(4)
+        var firstFour = currentSentence.slice(0,4)
         var newGram = this.selectngram.get({word1: firstFour[0], word2: firstFour[1], word3: firstFour[2], word4: firstFour[3]})
         if (newGram === undefined) return 
         this.backThatAssUp(newGram, currentSentence)        

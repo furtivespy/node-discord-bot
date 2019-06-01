@@ -1,4 +1,5 @@
 const Command = require('../../base/Command.js')
+const database =  require('../../db/db.js')
 
 class Say extends Command {
     constructor(client){
@@ -20,7 +21,13 @@ class Say extends Command {
         try {
             const sayMessage = args.join(" ");
             message.delete().catch(O_o=>{}); 
-            message.channel.send(sayMessage);
+            if (sayMessage.length == 0) {
+                var db = new database(message.guild.id)
+                var words = db.makeSentence()
+                message.channel.send(words)
+            } else {
+                message.channel.send(sayMessage);
+            }
         } catch (e) {
             this.client.logger.log(e,'error')
         }

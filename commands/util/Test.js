@@ -3,7 +3,6 @@ const fetch = require('node-fetch')
 const he = require('he')
 const _ = require('lodash')
 const database =  require('../../db/db.js')
-const natural = require('natural');
 
 const clean = text => {
     if (typeof(text) === "string")
@@ -42,10 +41,10 @@ class Test extends Command {
 
     async run (message, args, level) {
         try {
-            message.channel.send('Testing...')
+            //message.channel.send('Testing...')
             var db = new database(message.guild.id)
             var words = db.makeSentence()
-            console.log(words)
+           
             message.channel.send(words)
         } catch (e) {
            this.client.logger.log(e,'error')
