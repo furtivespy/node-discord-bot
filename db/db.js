@@ -81,29 +81,66 @@ class Database {
 
     }
 
-    makeSentence(){
-        var starting = this.randomquingram.get()
-        var buildResult = [starting.word1, starting.word2, starting.word3, starting.word4, starting.word5]
-        this.backThatAssUp(buildResult)
-        this.goForthAndMultipy(buildResult)
-        this.filter(buildResult)
-        return buildResult.join(' ')
+    makeSentence(ngramLength){
+        switch(ngramLength){
+            case 2:
+                return this.makeSentence3()
+            case 3:
+                return this.makeSentence3()
+            case 5:
+                return this.makeSentence5()
+            case 4:
+            default:
+                return this.makeSentence4()
+        }
     }
 
-    backThatAssUp(currentSentence){
+    makeSentence5(){
+        var starting = this.randomquingram.get()
+        var buildResult = [starting.word1, starting.word2, starting.word3, starting.word4, starting.word5]
+        this.backThatAssUp5(buildResult)
+        this.goForthAndMultipy5(buildResult)
+        return this.filter(buildResult)
+    }
+
+    backThatAssUp5(currentSentence){
         if (currentSentence[0] === startWord) return
         var next = this.backwardquingramwords.get({word2: currentSentence[0], word3: currentSentence[1], word4: currentSentence[2], word5: currentSentence[3]})
         if (next === undefined) return 
         currentSentence.splice(0,0,next.word1)
-        this.backThatAssUp(currentSentence)      
+        this.backThatAssUp5(currentSentence)      
     }
-    goForthAndMultipy(currentSentence){
+    goForthAndMultipy5(currentSentence){
         if (currentSentence[currentSentence.length-1] === endWord) return
         var lastFour = currentSentence.slice(-4)
         var next = this.forwardquingramwords.get({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
         if (next === undefined) return 
         currentSentence.push(next.word5)
-        this.goForthAndMultipy(currentSentence)      
+        this.goForthAndMultipy5(currentSentence)      
+    }
+
+    makeSentence4(){
+        var starting = this.randomquadgram.get()
+        var buildResult = [starting.word1, starting.word2, starting.word3, starting.word4]
+        this.backThatAssUp4(buildResult)
+        this.goForthAndMultipy4(buildResult)
+        return this.filter(buildResult)
+    }
+
+    backThatAssUp4(currentSentence){
+        if (currentSentence[0] === startWord) return
+        var next = this.backwardquadgramwords.get({word2: currentSentence[0], word3: currentSentence[1], word4: currentSentence[2]})
+        if (next === undefined) return 
+        currentSentence.splice(0,0,next.word1)
+        this.backThatAssUp4(currentSentence)      
+    }
+    goForthAndMultipy4(currentSentence){
+        if (currentSentence[currentSentence.length-1] === endWord) return
+        var lastThree = currentSentence.slice(-3)
+        var next = this.forwardquadgramwords.get({word1: lastThree[0], word2: lastThree[1], word3: lastThree[2]})
+        if (next === undefined) return 
+        currentSentence.push(next.word4)
+        this.goForthAndMultipy4(currentSentence)      
     }
 
     makeSentence3(){
@@ -111,8 +148,7 @@ class Database {
         var buildResult = [starting.word1, starting.word2, starting.word3]
         this.backThatAssUp3(buildResult)
         this.goForthAndMultipy3(buildResult)
-        this.filter(buildResult)
-        return buildResult.join(' ')
+        return this.filter(buildResult)
     }
     backThatAssUp3(currentSentence){
         if (currentSentence[0] === startWord) return
@@ -133,6 +169,9 @@ class Database {
     filter(currentSentence) {
         while(currentSentence[0] === startWord) { currentSentence.shift() }
         while(currentSentence[currentSentence.length-1] === endWord) { currentSentence.pop() }
+        var sentence = currentSentence.join(' ')
+        var cleaned = sentence.replace(/\s([!.?:;,])/g, '$1').replace(/\s(['])\s/g, '$1')
+        return cleaned
     }
 
     markovInput(allText){
