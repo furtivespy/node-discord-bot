@@ -26,6 +26,7 @@
     "cheerio": "^1.0.0-rc.2",
     "discord.js": "^11.4.2",
     "enmap": "^4.8.1",
+    "fast-xml-parser": "^3.12.16",
     "flip": "^1.0.0",
     "he": "^1.2.0",
     "jsonfile": "^5.0.0",
