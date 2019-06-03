@@ -10,23 +10,26 @@ class Database {
     constructor(guildid){
         this.db = new sqlite(`./data/${guildid}.sqlite`)
 
-        const ngram = this.db.prepare("CREATE TABLE IF NOT EXISTS ngrams (id TEXT PRIMARY KEY NOT NULL, Word1 TEXT, Word2 TEXT, Word3 TEXT, Word4 TEXT)")
-        const forward = this.db.prepare("CREATE TABLE IF NOT EXISTS forwards (id TEXT PRIMARY KEY NOT NULL, Ngram TEXT, Word TEXT, Count Int)")
-        const backward = this.db.prepare("CREATE TABLE IF NOT EXISTS backwards (id TEXT PRIMARY KEY NOT NULL, Ngram TEXT, Word TEXT, Count Int)")
-        const wordcount = this.db.prepare("CREATE TABLE IF NOT EXISTS wordcount (id int PRIMARY KEY NOT NULL, Count Int)")
-        const sentcount = this.db.prepare("CREATE TABLE IF NOT EXISTS sentcount (id int PRIMARY KEY NOT NULL, Count Int)")
-        ngram.run()
-        forward.run()
-        backward.run()
-        wordcount.run()
-        sentcount.run()
-        const ngramIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS ngram_words ON ngrams (word1, word2, word3, word4)")
-        const foreIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS forwards_ngram ON forwards (ngram)")
-        const backIndex = this.db.prepare("CREATE INDEX IF NOT EXISTS backwards_ngram ON backwards (ngram)")
-        ngramIndex.run()
-        foreIndex.run()
-        backIndex.run()
-
+        //DB INIT SECTION
+        this.db.prepare("CREATE TABLE IF NOT EXISTS bigram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, count INT)").run()
+        this.db.prepare("CREATE TABLE IF NOT EXISTS trigram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, word3 TEXT, count INT)").run()
+        this.db.prepare("CREATE TABLE IF NOT EXISTS quadgram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, word3 TEXT, word4 TEXT, count INT)").run()
+        this.db.prepare("CREATE TABLE IF NOT EXISTS quingram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, word3 TEXT, word4 TEXT, word5 TEXT, count INT)").run()
+        this.db.prepare("CREATE TABLE IF NOT EXISTS wordcount (id int PRIMARY KEY NOT NULL, Count Int)").run()
+        this.db.prepare("CREATE TABLE IF NOT EXISTS sentcount (id int PRIMARY KEY NOT NULL, Count Int)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS quingram_words ON quingram (word1, word2, word3, word4, word5)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS quingram_forward ON quingram (word1, word2, word3, word4)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS quingram_backward ON quingram (word2, word3, word4, word5)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS quadgram_words ON quadgram (word1, word2, word3, word4)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS quadgram_forward ON quadgram (word1, word2, word3)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS quadgram_backward ON quadgram (word2, word3, word4)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS trigram_words ON trigram (word1, word2, word3)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS trigram_forward ON trigram (word1, word2)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS trigram_backward ON trigram (word2, word3)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS bigram_words ON bigram (word1, word2)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS bigram_forward ON bigram (word1)").run()
+        this.db.prepare("CREATE INDEX IF NOT EXISTS bigram_backward ON bigram (word2)").run()
+        
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
             this.db.prepare('INSERT INTO wordcount VALUES (2,0)').run()
@@ -45,72 +48,130 @@ class Database {
             this.db.prepare('INSERT INTO sentcount VALUES (7,0)').run()
             this.db.prepare('INSERT INTO sentcount VALUES (8,0)').run()
         } catch {}
+        //END DB INIT SECION
 
-        this.insert4gram = this.db.prepare('INSERT INTO ngrams VALUES (:id, :word1, :word2, :word3, :word4)')
-        this.insert3gram = this.db.prepare('INSERT INTO ngrams VALUES (:id, :word1, :word2, :word3, NULL)')
-        this.insertForward = this.db.prepare('INSERT INTO forwards VALUES (:id, :ngram, :word, 1)')
-        this.insertBackward = this.db.prepare('INSERT INTO backwards VALUES (:id, :ngram, :word, 1)')
+        //Commands
+        this.insertquingram = this.db.prepare('INSERT INTO quingram VALUES (:id, :word1, :word2, :word3, :word4, :word5, 1)')
+        this.insertquadgram = this.db.prepare('INSERT INTO quadgram VALUES (:id, :word1, :word2, :word3, :word4, 1)')
+        this.inserttrigram = this.db.prepare('INSERT INTO trigram VALUES (:id, :word1, :word2, :word3, 1)')
+        this.insertbigram = this.db.prepare('INSERT INTO bigram VALUES (:id, :word1, :word2, 1)')
+        this.addquingram = this.db.prepare('UPDATE quingram SET count = count + 1 WHERE id = :id')
+        this.addquadgram = this.db.prepare('UPDATE quadgram SET count = count + 1 WHERE id = :id')
+        this.addtrigram = this.db.prepare('UPDATE trigram SET count = count + 1 WHERE id = :id')
+        this.addbigram = this.db.prepare('UPDATE bigram SET count = count + 1 WHERE id = :id')
+        this.selectquingramwords = this.db.prepare('SELECT * FROM quingram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4 AND word5 = :word5')
+        this.selectquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4')
+        this.selecttrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3')
+        this.selectbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word1 = :word1 AND word2 = :word2')
+        this.forwardquingramwords = this.db.prepare('SELECT * FROM quingram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
+        this.forwardquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
+        this.forwardtrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
+        this.forwardbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word1 = :word1 ORDER BY RANDOM() LIMIT 1')
+        this.backwardquingramwords = this.db.prepare('SELECT * FROM quingram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 AND word5 = :word5 ORDER BY RANDOM() LIMIT 1')
+        this.backwardquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
+        this.backwardtrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
+        this.backwardbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word2 = :word2 ORDER BY RANDOM() LIMIT 1')
+        this.randomquingram = this.db.prepare('SELECT * FROM quingram ORDER BY RANDOM() LIMIT 1')
+        this.randomquadgram = this.db.prepare('SELECT * FROM quadgram ORDER BY RANDOM() LIMIT 1')
+        this.randomtrigram = this.db.prepare('SELECT * FROM trigram ORDER BY RANDOM() LIMIT 1')
+        this.randombigram = this.db.prepare('SELECT * FROM bigram ORDER BY RANDOM() LIMIT 1')
 
-        this.selectngram = this.db.prepare('SELECT * FROM ngrams WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4')
-        this.getngram = this.db.prepare('SELECT * FROM ngrams WHERE id = :id')
-        this.select3gram = this.db.prepare('SELECT * FROM ngrams WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 IS NULL')
-        this.selectnforward = this.db.prepare('SELECT * FROM forwards where ngram = :ngram and word = :word')
-        this.selectnbackward = this.db.prepare('SELECT * FROM backwards where ngram = :ngram and word = :word')
-
-        this.addForward = this.db.prepare('UPDATE forwards SET count = count + 1 WHERE id = :id')
-        this.addBackward = this.db.prepare('UPDATE backwards SET count = count + 1 WHERE id = :id')
         this.addWCount = this.db.prepare('UPDATE wordcount SET count = count + 1 WHERE id = :id')
         this.addSCount = this.db.prepare('UPDATE sentcount SET count = count + 1 WHERE id = :id')
 
-        this.randomStart = this.db.prepare('SELECT * FROM ngrams ORDER BY RANDOM() LIMIT 1')
-        this.randomBack = this.db.prepare('SELECT * FROM backwards WHERE ngram = :ngram ORDER BY RANDOM() LIMIT 1')
-        this.randomFore = this.db.prepare('SELECT * FROM forwards WHERE ngram = :ngram ORDER BY RANDOM() LIMIT 1')
     }
 
     makeSentence(){
-        var starting = this.randomStart.get()
-        var buildResult = []
-        if (starting.Word1 !== startWord) buildResult.push(starting.Word1)
-        buildResult.push(starting.Word2)
-        if (starting.Word3 !== endWord) { buildResult.push(starting.Word3) } else return buildResult.join(' ')
-        if (starting.Word4 !== endWord) { buildResult.push(starting.Word4) } else return buildResult.join(' ')
-        var chain = starting.id
-        this.backThatAssUp(starting, buildResult)
-        while (1==1) {
-            var next = this.randomFore.get({ngram: chain})
-            if (next === undefined) return buildResult.join(' ')
-            if (next.Word !== endWord) { buildResult.push(next.Word) } else return buildResult.join(' ')
-            var lastFour = buildResult.slice(-4)
-            var newGram = this.selectngram.get({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
-            if (newGram === undefined) return buildResult.join(' ')
-            chain = newGram.id
-        }
+        var starting = this.randomquingram.get()
+        var buildResult = [starting.word1, starting.word2, starting.word3, starting.word4, starting.word5]
+        this.backThatAssUp(buildResult)
+        this.goForthAndMultipy(buildResult)
+        this.filter(buildResult)
+        return buildResult.join(' ')
     }
 
-    backThatAssUp(startingNGram, currentSentence){
-        var next = this.randomBack.get({ngram: startingNGram.id})
+    backThatAssUp(currentSentence){
+        if (currentSentence[0] === startWord) return
+        var next = this.backwardquingramwords.get({word2: currentSentence[0], word3: currentSentence[1], word4: currentSentence[2], word5: currentSentence[3]})
         if (next === undefined) return 
-        if (next.Word !== startWord) { currentSentence.splice(0,0,next.Word) } else return 
-        var firstFour = currentSentence.slice(0,4)
-        var newGram = this.selectngram.get({word1: firstFour[0], word2: firstFour[1], word3: firstFour[2], word4: firstFour[3]})
-        if (newGram === undefined) return 
-        this.backThatAssUp(newGram, currentSentence)        
+        currentSentence.splice(0,0,next.word1)
+        this.backThatAssUp(currentSentence)      
+    }
+    goForthAndMultipy(currentSentence){
+        if (currentSentence[currentSentence.length-1] === endWord) return
+        var lastFour = currentSentence.slice(-4)
+        var next = this.forwardquingramwords.get({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
+        if (next === undefined) return 
+        currentSentence.push(next.word5)
+        this.goForthAndMultipy(currentSentence)      
+    }
+
+    makeSentence3(){
+        var starting = this.randomtrigram.get()
+        var buildResult = [starting.word1, starting.word2, starting.word3]
+        this.backThatAssUp3(buildResult)
+        this.goForthAndMultipy3(buildResult)
+        this.filter(buildResult)
+        return buildResult.join(' ')
+    }
+    backThatAssUp3(currentSentence){
+        if (currentSentence[0] === startWord) return
+        var next = this.backwardtrigramwords.get({word2: currentSentence[0], word3: currentSentence[1]})
+        if (next === undefined) return 
+        currentSentence.splice(0,0,next.word1)
+        this.backThatAssUp3(currentSentence)      
+    }
+    goForthAndMultipy3(currentSentence){
+        if (currentSentence[currentSentence.length-1] === endWord) return
+        var lastTwo = currentSentence.slice(-2)
+        var next = this.forwardtrigramwords.get({word1: lastTwo[0], word2: lastTwo[1]})
+        if (next === undefined) return 
+        currentSentence.push(next.word3)
+        this.goForthAndMultipy3(currentSentence)      
+    }
+
+    filter(currentSentence) {
+        while(currentSentence[0] === startWord) { currentSentence.shift() }
+        while(currentSentence[currentSentence.length-1] === endWord) { currentSentence.pop() }
     }
 
     markovInput(allText){
         var sentenceTokenizer = new natural.SentenceTokenizer() 
         var sentences = sentenceTokenizer.tokenize(allText)
         this.updateSCount(sentences.length)
-        var tokenizer = new natural.WordPunctTokenizer()
-        _.forEach(sentences, sentence => {
-            this.markovInsert(tokenizer.tokenize(sentence))
-        })
+        _.forEach(sentences, sentence => this.markovInsert(sentence))
     }
 
     markovInsert(words) {
-        var FullWordList = [startWord, ...words, endWord]
         this.updateWCount(words.length)
-        this.markovRecord(undefined, FullWordList)
+        var tokenizer = new natural.WordPunctTokenizer()
+        var NGrams = natural.NGrams
+        NGrams.setTokenizer(tokenizer)
+        _.forEach(NGrams.ngrams(words,5,startWord,endWord), gram => this.quingramAddOrInsert([...gram, endWord, endWord, endWord]))
+        _.forEach(NGrams.ngrams(words,4,startWord,endWord), gram => this.quadgramAddOrInsert([...gram, endWord, endWord]))
+        _.forEach(NGrams.ngrams(words,3,startWord,endWord), gram => this.trigramAddOrInsert([...gram, endWord]))
+        //_.forEach(NGrams.ngrams(words,2,startWord,endWord), gram => this.bigramAddOrInsert(gram))
+    }
+
+    quingramAddOrInsert(quin){
+        var exists = this.selectquingramwords.get({word1: quin[0], word2: quin[1], word3: quin[2], word4: quin[3], word5: quin[4]})
+        if (exists === undefined) this.insertquingram.run({id: uuid(), word1: quin[0], word2: quin[1], word3: quin[2], word4: quin[3], word5: quin[4]})
+        else this.addquingram.run({id: exists.id})
+    }
+    quadgramAddOrInsert(quad){
+        var exists = this.selectquadgramwords.get({word1: quad[0], word2: quad[1], word3: quad[2], word4: quad[3]})
+        if (exists === undefined) this.insertquadgram.run({id: uuid(), word1: quad[0], word2: quad[1], word3: quad[2], word4: quad[3]})
+        else this.addquadgram.run({id: exists.id})
+    }
+    trigramAddOrInsert(tri){
+        var exists = this.selecttrigramwords.get({word1: tri[0], word2: tri[1], word3: tri[2]})
+        if (exists === undefined) this.inserttrigram.run({id: uuid(), word1: tri[0], word2: tri[1], word3: tri[2]})
+        else this.addtrigram.run({id: exists.id})
+    }
+    bigramAddOrInsert(bi){
+        var exists = this.selectbigramwords.get({word1: bi[0], word2: bi[1]})
+        if (exists === undefined) this.insertbigram.run({id: uuid(), word1: bi[0], word2: bi[1]})
+        else this.addbigram.run({id: exists.id})
     }
 
     updateWCount(len) {
@@ -123,31 +184,6 @@ class Database {
         else this.addSCount.run({id: len})
     }
 
-    markovRecord(previous, rest) {
-        if (rest.length == 3) {
-            var exists = this.select3gram.get({word1: rest[0], word2: rest[1], word3: rest[2]})
-            if (exists === undefined) this.insert3gram.run({id: uuid(), word1: rest[0], word2: rest[1], word3: rest[2]})
-            return
-        } 
-        var currentngram
-        var existing = this.selectngram.get({word1: rest[0], word2: rest[1], word3: rest[2], word4: rest[3]})
-        if (existing === undefined) {
-            currentngram = uuid()
-            this.insert4gram.run({id: currentngram, word1: rest[0], word2: rest[1], word3: rest[2], word4: rest[3]})
-        } else {
-            currentngram = existing.id
-        }
-        if (previous !== undefined) {
-            var backExists = this.selectnbackward.get({ngram: currentngram, word: previous})
-            if (backExists === undefined) this.insertBackward.run({id: uuid(), ngram: currentngram, word: previous})
-            else this.addBackward.run({id:backExists.id})
-        } 
-        if (rest.length == 4) return
-        var forwardExists = this.selectnforward.get({ngram: currentngram, word: rest[4]})
-        if (forwardExists === undefined) this.insertForward.run({id: uuid(), ngram: currentngram, word: rest[4]})
-        else this.addForward.run({id:forwardExists.id})
-        this.markovRecord(rest[0], rest.slice(1))
-    }
 }
 
 module.exports = Database;
