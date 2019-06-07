@@ -43,9 +43,12 @@ class Test extends Command {
         try {
             //message.channel.send('Testing...')
             var db = new database(message.guild.id)
-            var words = db.makeSentence()
+            var count3 = db.db.prepare("select count(*) as rows from trigram")
+            var count4 = db.db.prepare("select count(*) as rows from quadgram")
+            var count5 = db.db.prepare("select count(*) as rows from quingram")
+
            
-            message.channel.send(words)
+            message.channel.send(`DB STATS: trigrams - ${count3.get().rows} | quadgrams - ${count4.get().rows} | quingrams - ${count5.get().rows}`)
         } catch (e) {
            this.client.logger.log(e,'error')
            message.channel.send(clean(e))
