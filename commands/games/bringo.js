@@ -118,7 +118,6 @@ class Bringo extends Command {
                     }
                 } else if (args[0] && ( args[0].toLowerCase() === "score" || args[0].toLowerCase() === "scores")){
                     var sorted = Object.keys(BringoData.scoreboard).map(c => ({key: c, value: BringoData.scoreboard[c]})).sort((a,b) => b.value - a.value)
-                    console.log(sorted)
                     var scoreMessage = ""
                     for(let i=0;i<sorted.length;i++){
                         var icon = (i===0) ? ":first_place:" : (i===1) ? ":second_place:" : (i===2) ? ":third_place:" : ":medal:"

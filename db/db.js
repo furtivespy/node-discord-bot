@@ -152,9 +152,7 @@ class Database {
         while(currentSentence[0] === startWord) { currentSentence.shift() }
         while(currentSentence[currentSentence.length-1] === endWord) { currentSentence.pop() }
         var sentence = currentSentence.join(' ')
-        console.log(sentence)
         var cleaned = sentence.replace(/\s([!.?:;,”’])/g, '$1').replace(/\s(['"“])\s/g, '$1')
-        console.log(cleaned)
         return cleaned
     }
 
