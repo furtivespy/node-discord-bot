@@ -23,7 +23,7 @@ class Say extends Command {
             message.delete().catch(O_o=>{}); 
             if (sayMessage.length == 0) {
                 var db = new database(message.guild.id)
-                var words = db.makeSentence3()
+                var words = db.makeSentence("3")
                 message.channel.send(words)
             } else {
                 message.channel.send(sayMessage);

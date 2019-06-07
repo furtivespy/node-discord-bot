@@ -51,6 +51,8 @@ class Database {
         //END DB INIT SECION
 
         //Commands
+        this.addWCount = this.db.prepare('UPDATE wordcount SET count = count + 1 WHERE id = :id')
+        this.addSCount = this.db.prepare('UPDATE sentcount SET count = count + 1 WHERE id = :id')
         this.insertquingram = this.db.prepare('INSERT INTO quingram VALUES (:id, :word1, :word2, :word3, :word4, :word5, 1)')
         this.insertquadgram = this.db.prepare('INSERT INTO quadgram VALUES (:id, :word1, :word2, :word3, :word4, 1)')
         this.inserttrigram = this.db.prepare('INSERT INTO trigram VALUES (:id, :word1, :word2, :word3, 1)')
@@ -63,10 +65,10 @@ class Database {
         this.selectquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4')
         this.selecttrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3')
         this.selectbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word1 = :word1 AND word2 = :word2')
-        this.forwardquingramwords = this.db.prepare('SELECT * FROM quingram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
-        this.forwardquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
-        this.forwardtrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
-        this.forwardbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word1 = :word1 ORDER BY RANDOM() LIMIT 1')
+        this.forwardquingramwords = this.db.prepare('SELECT word5 as nextword, count FROM quingram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
+        this.forwardquadgramwords = this.db.prepare('SELECT word4 as nextword, count FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
+        this.forwardtrigramwords = this.db.prepare('SELECT word3 as nextword, count FROM trigram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
+        this.forwardbigramwords = this.db.prepare('SELECT word2 as nextword, count FROM bigram WHERE word1 = :word1 ORDER BY RANDOM() LIMIT 1')
         this.backwardquingramwords = this.db.prepare('SELECT * FROM quingram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 AND word5 = :word5 ORDER BY RANDOM() LIMIT 1')
         this.backwardquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
         this.backwardtrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
@@ -76,101 +78,67 @@ class Database {
         this.randomtrigram = this.db.prepare('SELECT * FROM trigram ORDER BY RANDOM() LIMIT 1')
         this.randombigram = this.db.prepare('SELECT * FROM bigram ORDER BY RANDOM() LIMIT 1')
 
-        this.addWCount = this.db.prepare('UPDATE wordcount SET count = count + 1 WHERE id = :id')
-        this.addSCount = this.db.prepare('UPDATE sentcount SET count = count + 1 WHERE id = :id')
+        
 
     }
 
     makeSentence(ngramLength){
         switch(ngramLength){
-            case 2:
-                return this.makeSentence3()
-            case 3:
-                return this.makeSentence3()
-            case 5:
-                return this.makeSentence5()
-            case 4:
+            case "2": //not doing bigrams
+            case "3":
+            console.log(3)
+                this.RandoSelect = this.randomtrigram
+                this.goForth = this.forwardtrigramwords
+                this.goBack = this.backwardtrigramwords
+                break
+            case "5":
+            console.log(5)
+                this.RandoSelect = this.randomquingram
+                this.goForth = this.forwardquingramwords
+                this.goBack = this.backwardquingramwords
+                break
+            case "4":
             default:
-                return this.makeSentence4()
+            console.log(4)
+                this.RandoSelect = this.randomquadgram
+                this.goForth = this.forwardquadgramwords
+                this.goBack = this.backwardquadgramwords
+                break;
         }
+        return this.SayThings()
     }
 
-    makeSentence5(){
-        var starting = this.randomquingram.get()
-        var buildResult = [starting.word1, starting.word2, starting.word3, starting.word4, starting.word5]
-        this.backThatAssUp5(buildResult)
-        this.goForthAndMultipy5(buildResult)
-        return this.filter(buildResult)
+    SayThings(){
+        var randomStart = this.RandoSelect.get()
+        var newSentence = [randomStart.word1, randomStart.word2, randomStart.word3]
+        if (randomStart.word4) newSentence.push(randomStart.word4)
+        if (randomStart.word5) newSentence.push(randomStart.word5)
+        this.backThatAssUp(newSentence)
+        this.goForthAndMultipy(newSentence)
+        return this.filter(newSentence)
     }
 
-    backThatAssUp5(currentSentence){
-        if (currentSentence[0] === startWord) return
-        var next = this.backwardquingramwords.get({word2: currentSentence[0], word3: currentSentence[1], word4: currentSentence[2], word5: currentSentence[3]})
+    backThatAssUp(sentence){
+        if (sentence[0] === startWord) return
+        var next = this.goBack.get({word2: sentence[0], word3: sentence[1], word4: sentence[2], word5: sentence[3]})
         if (next === undefined) return 
-        currentSentence.splice(0,0,next.word1)
-        this.backThatAssUp5(currentSentence)      
+        sentence.splice(0,0,next.word1)
+        this.backThatAssUp(sentence)   
     }
-    goForthAndMultipy5(currentSentence){
-        if (currentSentence[currentSentence.length-1] === endWord) return
-        var lastFour = currentSentence.slice(-4)
+    goForthAndMultipy(sentence){
+        if (sentence[sentence.length-1] === endWord) return
+        var lastFour = sentence.slice(-4)
         var next = this.forwardquingramwords.get({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
         if (next === undefined) return 
-        currentSentence.push(next.word5)
-        this.goForthAndMultipy5(currentSentence)      
-    }
-
-    makeSentence4(){
-        var starting = this.randomquadgram.get()
-        var buildResult = [starting.word1, starting.word2, starting.word3, starting.word4]
-        this.backThatAssUp4(buildResult)
-        this.goForthAndMultipy4(buildResult)
-        return this.filter(buildResult)
-    }
-
-    backThatAssUp4(currentSentence){
-        if (currentSentence[0] === startWord) return
-        var next = this.backwardquadgramwords.get({word2: currentSentence[0], word3: currentSentence[1], word4: currentSentence[2]})
-        if (next === undefined) return 
-        currentSentence.splice(0,0,next.word1)
-        this.backThatAssUp4(currentSentence)      
-    }
-    goForthAndMultipy4(currentSentence){
-        if (currentSentence[currentSentence.length-1] === endWord) return
-        var lastThree = currentSentence.slice(-3)
-        var next = this.forwardquadgramwords.get({word1: lastThree[0], word2: lastThree[1], word3: lastThree[2]})
-        if (next === undefined) return 
-        currentSentence.push(next.word4)
-        this.goForthAndMultipy4(currentSentence)      
-    }
-
-    makeSentence3(){
-        var starting = this.randomtrigram.get()
-        var buildResult = [starting.word1, starting.word2, starting.word3]
-        this.backThatAssUp3(buildResult)
-        this.goForthAndMultipy3(buildResult)
-        return this.filter(buildResult)
-    }
-    backThatAssUp3(currentSentence){
-        if (currentSentence[0] === startWord) return
-        var next = this.backwardtrigramwords.get({word2: currentSentence[0], word3: currentSentence[1]})
-        if (next === undefined) return 
-        currentSentence.splice(0,0,next.word1)
-        this.backThatAssUp3(currentSentence)      
-    }
-    goForthAndMultipy3(currentSentence){
-        if (currentSentence[currentSentence.length-1] === endWord) return
-        var lastTwo = currentSentence.slice(-2)
-        var next = this.forwardtrigramwords.get({word1: lastTwo[0], word2: lastTwo[1]})
-        if (next === undefined) return 
-        currentSentence.push(next.word3)
-        this.goForthAndMultipy3(currentSentence)      
+        sentence.push(next.nextword)
+        this.goForthAndMultipy(sentence)    
     }
 
     filter(currentSentence) {
         while(currentSentence[0] === startWord) { currentSentence.shift() }
         while(currentSentence[currentSentence.length-1] === endWord) { currentSentence.pop() }
         var sentence = currentSentence.join(' ')
-        var cleaned = sentence.replace(/\s([!.?:;,])/g, '$1').replace(/\s(['])\s/g, '$1')
+        var cleaned = sentence.replace(/\s([!.?:;,])/g, '$1').replace(/\s(['"])\s/g, '$1')
         return cleaned
     }
 
