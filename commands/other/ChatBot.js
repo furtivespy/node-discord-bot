@@ -23,10 +23,16 @@ class Chatbot extends Command {
 
             } else {
                 var fullText = message.content.trim().toLowerCase()
+                var db = new database(message.guild.id)
                 if (fullText.length > 0) {
-                    var db = new database(message.guild.id)
                     db.markovInput(fullText)
                     this.client.logger.log(`recording text starting with ${fullText.substring(0,20)}`,'log')
+                }
+                var responseChance = parseInt(message.settings.randRspPct)
+                var respond = Math.floor(Math.random() * 100)
+                if(respond < responseChance){                
+                    var words = db.makeSentence("3")
+                    message.channel.send(words)
                 }
             }
         } catch (e) {

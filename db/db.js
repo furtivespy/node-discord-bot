@@ -2,6 +2,7 @@ const sqlite = require('better-sqlite3')
 const uuid = require('uuid/v1')
 const natural = require('natural')
 const _ = require('lodash')
+var weighted = require('weighted')
 
 const startWord = String.fromCharCode(0x0002)
 const endWord = String.fromCharCode(0x0003)
@@ -51,6 +52,8 @@ class Database {
         //END DB INIT SECION
 
         //Commands
+        this.selectWCount = this.db.prepare('SELECT * FROM wordcount')
+        this.selectSCount = this.db.prepare('SELECT * FROM sentcount')
         this.addWCount = this.db.prepare('UPDATE wordcount SET count = count + 1 WHERE id = :id')
         this.addSCount = this.db.prepare('UPDATE sentcount SET count = count + 1 WHERE id = :id')
         this.insertquingram = this.db.prepare('INSERT INTO quingram VALUES (:id, :word1, :word2, :word3, :word4, :word5, 1)')
@@ -77,29 +80,23 @@ class Database {
         this.randomquadgram = this.db.prepare('SELECT * FROM quadgram ORDER BY RANDOM() LIMIT 1')
         this.randomtrigram = this.db.prepare('SELECT * FROM trigram ORDER BY RANDOM() LIMIT 1')
         this.randombigram = this.db.prepare('SELECT * FROM bigram ORDER BY RANDOM() LIMIT 1')
-
-        
-
     }
 
     makeSentence(ngramLength){
         switch(ngramLength){
             case "2": //not doing bigrams
             case "3":
-            console.log(3)
                 this.RandoSelect = this.randomtrigram
                 this.goForth = this.forwardtrigramwords
                 this.goBack = this.backwardtrigramwords
                 break
             case "5":
-            console.log(5)
                 this.RandoSelect = this.randomquingram
                 this.goForth = this.forwardquingramwords
                 this.goBack = this.backwardquingramwords
                 break
             case "4":
             default:
-            console.log(4)
                 this.RandoSelect = this.randomquadgram
                 this.goForth = this.forwardquadgramwords
                 this.goBack = this.backwardquadgramwords
@@ -109,6 +106,23 @@ class Database {
     }
 
     SayThings(){
+        var sentences = this.selectSCount.all()
+        var words = this.selectWCount.all()
+        var sayThisManyS = weighted.select(sentences.map(s => s.id), sentences.map(s => s.Count))
+        var sayThisManyW = weighted.select(words.map(s => s.id), words.map(s => s.Count))
+        var wholeResponse = ""
+        for(var i=0;i<sayThisManyS;i++){
+            if (i > 0) wholeResponse += '\n'
+            wholeResponse += this.BuildSentence()
+        }
+        if (wholeResponse.split(' ').length < sayThisManyW){
+            wholeResponse += '\n'
+            wholeResponse += this.BuildSentence()
+        } 
+        return wholeResponse
+    }
+
+    BuildSentence(){
         var randomStart = this.RandoSelect.get()
         var newSentence = [randomStart.word1, randomStart.word2, randomStart.word3]
         if (randomStart.word4) newSentence.push(randomStart.word4)
@@ -138,7 +152,9 @@ class Database {
         while(currentSentence[0] === startWord) { currentSentence.shift() }
         while(currentSentence[currentSentence.length-1] === endWord) { currentSentence.pop() }
         var sentence = currentSentence.join(' ')
-        var cleaned = sentence.replace(/\s([!.?:;,])/g, '$1').replace(/\s(['"])\s/g, '$1')
+        console.log(sentence)
+        var cleaned = sentence.replace(/\s([!.?:;,”’])/g, '$1').replace(/\s(['"“])\s/g, '$1')
+        console.log(cleaned)
         return cleaned
     }
 
