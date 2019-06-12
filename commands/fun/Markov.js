@@ -19,10 +19,26 @@ class Markov extends Command {
 
     async run (message, args, level) {
         try {
-            message.delete().catch(O_o=>{}); 
             var db = new database(message.guild.id)
-            var words = db.makeSentence(args[0])
-            message.channel.send(words)
+            if (args[0] == "train") {
+                var snowflake = args[1]
+                for(var i=0;i<100;i++){
+                    var msgs = await message.channel.fetchMessages({limit: 50, before: snowflake})
+                    console.log(`${i}) training ${msgs.size} phrases`)
+                    if (msgs.size < 49) i = 101
+                    msgs.forEach(msg => {
+                        if (msg.author.bot) return
+                        if (msg.content.indexOf(message.settings.prefix) === 0) return;
+                        db.markovInput(msg.content.trim().toLowerCase())
+                        snowflake = msg.id
+                    })
+                }
+                console.log(`done training at ${snowflake}`)
+            } else {
+                message.delete().catch(O_o=>{}); 
+                var words = db.makeSentence(args[0])
+                message.channel.send(words)
+            }
         } catch (e) {
             this.client.logger.log(e,'error')
         }
