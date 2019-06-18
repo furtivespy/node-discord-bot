@@ -68,14 +68,14 @@ class Database {
         this.selectquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4')
         this.selecttrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3')
         this.selectbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word1 = :word1 AND word2 = :word2')
-        this.forwardquingramwords = this.db.prepare('SELECT word5 as nextword, count FROM quingram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
-        this.forwardquadgramwords = this.db.prepare('SELECT word4 as nextword, count FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
-        this.forwardtrigramwords = this.db.prepare('SELECT word3 as nextword, count FROM trigram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
-        this.forwardbigramwords = this.db.prepare('SELECT word2 as nextword, count FROM bigram WHERE word1 = :word1 ORDER BY RANDOM() LIMIT 1')
-        this.backwardquingramwords = this.db.prepare('SELECT * FROM quingram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 AND word5 = :word5 ORDER BY RANDOM() LIMIT 1')
-        this.backwardquadgramwords = this.db.prepare('SELECT * FROM quadgram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 ORDER BY RANDOM() LIMIT 1')
-        this.backwardtrigramwords = this.db.prepare('SELECT * FROM trigram WHERE word2 = :word2 AND word3 = :word3 ORDER BY RANDOM() LIMIT 1')
-        this.backwardbigramwords = this.db.prepare('SELECT * FROM bigram WHERE word2 = :word2 ORDER BY RANDOM() LIMIT 1')
+        this.forwardquingramwords = this.db.prepare('SELECT word5 as nextword, count FROM quingram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 AND word4 = :word4 ')
+        this.forwardquadgramwords = this.db.prepare('SELECT word4 as nextword, count FROM quadgram WHERE word1 = :word1 AND word2 = :word2 AND word3 = :word3 ')
+        this.forwardtrigramwords = this.db.prepare('SELECT word3 as nextword, count FROM trigram WHERE word1 = :word1 AND word2 = :word2 ')
+        this.forwardbigramwords = this.db.prepare('SELECT word2 as nextword, count FROM bigram WHERE word1 = :word1 ')
+        this.backwardquingramwords = this.db.prepare('SELECT word1, count FROM quingram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4 AND word5 = :word5')
+        this.backwardquadgramwords = this.db.prepare('SELECT word1, count FROM quadgram WHERE word2 = :word2 AND word3 = :word3 AND word4 = :word4')
+        this.backwardtrigramwords = this.db.prepare('SELECT word1, count FROM trigram WHERE word2 = :word2 AND word3 = :word3')
+        this.backwardbigramwords = this.db.prepare('SELECT word1, count FROM bigram WHERE word2 = :word2')
         this.randomquingram = this.db.prepare('SELECT * FROM quingram ORDER BY RANDOM() LIMIT 1')
         this.randomquadgram = this.db.prepare('SELECT * FROM quadgram ORDER BY RANDOM() LIMIT 1')
         this.randomtrigram = this.db.prepare('SELECT * FROM trigram ORDER BY RANDOM() LIMIT 1')
@@ -89,17 +89,20 @@ class Database {
                 this.RandoSelect = this.randomtrigram
                 this.goForth = this.forwardtrigramwords
                 this.goBack = this.backwardtrigramwords
+                this.backCount = 2
                 break
             case "5":
                 this.RandoSelect = this.randomquingram
                 this.goForth = this.forwardquingramwords
                 this.goBack = this.backwardquingramwords
+                this.backCount = 4
                 break
             case "4":
             default:
                 this.RandoSelect = this.randomquadgram
                 this.goForth = this.forwardquadgramwords
                 this.goBack = this.backwardquadgramwords
+                this.backCount = 3
                 break;
         }
         return this.SayThings()
@@ -134,17 +137,19 @@ class Database {
 
     backThatAssUp(sentence){
         if (sentence[0] === startWord) return
-        var next = this.goBack.get({word2: sentence[0], word3: sentence[1], word4: sentence[2], word5: sentence[3]})
+        var next = this.goBack.all({word2: sentence[0], word3: sentence[1], word4: sentence[2], word5: sentence[3]})
         if (next === undefined) return 
-        sentence.splice(0,0,next.word1)
+        var nextw = weighted.select(next.map(s => s.word1), next.map(s => s.count))
+        sentence.splice(0,0,nextw)
         this.backThatAssUp(sentence)   
     }
     goForthAndMultipy(sentence){
         if (sentence[sentence.length-1] === endWord) return
-        var lastFour = sentence.slice(-4)
-        var next = this.forwardquingramwords.get({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
+        var lastFour = sentence.slice((-1 * this.backCount))
+        var next = this.goForth.all({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
         if (next === undefined) return 
-        sentence.push(next.nextword)
+        var nextw = weighted.select(next.map(s => s.nextword), next.map(s => s.count))
+        sentence.push(nextw)
         this.goForthAndMultipy(sentence)    
     }
 
@@ -152,7 +157,7 @@ class Database {
         while(currentSentence[0] === startWord) { currentSentence.shift() }
         while(currentSentence[currentSentence.length-1] === endWord) { currentSentence.pop() }
         var sentence = currentSentence.join(' ')
-        var cleaned = sentence.replace(/\s([!.?:;,”’])/g, '$1').replace(/\s(['"“])\s/g, '$1')
+        var cleaned = sentence.replace(/```/g,'').replace(/\s([!.?:;,”’])/g, '$1').replace(/\s(['"“])\s/g, '$1')
         return cleaned
     }
 

@@ -20,9 +20,10 @@ class Markov extends Command {
     async run (message, args, level) {
         try {
             var db = new database(message.guild.id)
-            if (args[0] == "train") {
+            if (args[0] == "train" && level >= 7) {
+                message.delete().catch(O_o=>{}); 
                 var snowflake = args[1]
-                for(var i=0;i<100;i++){
+                for(var i=0;i<50;i++){
                     var msgs = await message.channel.fetchMessages({limit: 50, before: snowflake})
                     console.log(`${i}) training ${msgs.size} phrases`)
                     if (msgs.size < 49) i = 101
