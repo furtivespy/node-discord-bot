@@ -31,7 +31,7 @@ class Chatbot extends Command {
                 var responseChance = parseInt(message.settings.randRspPct)
                 var respond = Math.floor(Math.random() * 100)
                 if(respond < responseChance || message.isMentioned(this.client.user)){                
-                    var words = db.makeSentence("3")
+                    var words = db.makeSentence(message.settings.markovLevel)
                     message.channel.send(words)
                 }
             }

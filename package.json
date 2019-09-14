@@ -32,7 +32,7 @@
     "jsonfile": "^5.0.0",
     "klaw": "^3.0.0",
     "leet": "^1.3.0",
-    "lodash": "^4.17.11",
+    "lodash": "^4.17.15",
     "moment": "^2.24.0",
     "natural": "NaturalNode/natural#master",
     "node-fetch": "^2.3.0",
