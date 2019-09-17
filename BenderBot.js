@@ -286,6 +286,46 @@ client.on("message", async message => {
     cmd.run(message, args, level);
   });
 });
+
+const events = {
+	MESSAGE_REACTION_ADD: 'messageReactionAdd',
+//	MESSAGE_REACTION_REMOVE: 'messageReactionRemove',
+};
+
+client.on('raw', async event => {
+	if (!events.hasOwnProperty(event.t)) return;
+
+	const { d: data } = event;
+	const user = client.users.get(data.user_id);
+	const channel = client.channels.get(data.channel_id) || await user.createDM();
+
+	if (channel.messages.has(data.message_id)) return;
+
+  const message = await channel.fetchMessage(data.message_id);
+  
+  const emoji = data.emoji.id ? `${data.emoji.name}:${data.emoji.id}` : data.emoji.name;
+  // This gives us the reaction we need to emit the event properly, in top of the message object
+  const reaction = message.reactions.get(emoji);
+  // Adds the currently reacting user to the reaction's users collection.
+  if (reaction) reaction.users.set(data.user_id, client.users.get(data.user_id));
+
+	client.emit(events[event.t], reaction, user);
+	if (message.reactions.size === 1) message.reactions.delete(emojiKey);
+});
+
+client.on('messageReactionAdd', (reaction, user) => {
+  if (reaction.message.author.id == client.user.id && reaction.emoji.name == '❌' ){
+    if (reaction.users.some(user => user.id === client.config.botOwnerId))
+    {
+      reaction.message.delete().catch(O_o=>{}); 
+    }
+  }
+});
+
+client.on('messageReactionRemove', (reaction, user) => {
+//	console.log(`${user.username} removed their "${reaction.emoji.name}" reaction.`);
+});
+
   
 init();
 
