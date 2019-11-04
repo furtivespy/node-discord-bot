@@ -310,7 +310,7 @@ client.on('raw', async event => {
   if (reaction) reaction.users.set(data.user_id, client.users.get(data.user_id));
 
 	client.emit(events[event.t], reaction, user);
-	if (message.reactions.size === 1) message.reactions.delete(emojiKey);
+	//if (message.reactions.size === 1) message.reactions.delete(emojiKey);
 });
 
 client.on('messageReactionAdd', (reaction, user) => {

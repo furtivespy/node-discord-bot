@@ -22,7 +22,7 @@ class Goss extends Command {
         try {
             let input = args.join(" ");
             if (input.length === 0) { input = this.client.emojis.get("543465138997690368") }
-            message.channel.send(`Listen up, Mooks!
+            message.channel.send(`@here Listen up, Mooks!
 ${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}
 ${this.client.emojis.get("543465138997690368")}${this.client.emojis.get("543465138997690368")}   GOSS ALERT   ${this.client.emojis.get("543465138997690368")}${this.client.emojis.get("543465138997690368")}
 ${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}${input}${this.client.emojis.get("543465138997690368")}`)
