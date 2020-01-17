@@ -24,10 +24,7 @@ class Frozen extends Command {
              || (_.includes(messageText, "frozen") || _.includes(messageText, "freeze") || _.includes(messageText, "froze"))) {
                  await message.react("⛄")
                  await message.react("🍦") 
-                 message.react("👸") 
-                 
-                 //message.react(message.guild.emojis.find('name', "icecream"))
-                 //message.react(message.guild.emojis.find('name', "princess"))
+                 message.react("👸")                  
              }
         } catch (e) {
             this.client.logger.log(e,'error')
