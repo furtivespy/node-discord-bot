@@ -259,6 +259,7 @@ const init = async () => {
   });
 
   console.log("Logging in...");
+  client.login(client.config.token);
 };
 
 //run every message commands
