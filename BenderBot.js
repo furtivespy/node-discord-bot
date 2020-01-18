@@ -17,7 +17,7 @@ class BenderBot extends Client {
       this.messageEvents = new Collection();
   
       //requiring the Logger class for easy console logging
-      this.logger = require("./modules/Logger");
+      this.logger = require("./modules/Logger.js");
   
       // Basically just an async shortcut to using a setTimeout. Nothing fancy!
       this.wait = require("util").promisify(setTimeout);
