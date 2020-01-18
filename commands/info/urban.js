@@ -1,5 +1,5 @@
 const Command = require('../../base/Command.js')
-const urban = require('../../Modules/UrbanDictionary.js')
+const urban = require('../../modules/UrbanDictionary.js')
 
 class Urban extends Command {
     constructor(client){
