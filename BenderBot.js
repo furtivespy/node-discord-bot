@@ -56,6 +56,21 @@ class BenderBot extends Client {
         return `Unable to load command ${commandName}: ${e}`;
       }
     }
+
+    loadEvent (commandPath, commandName) {
+      try {
+        const props = new (require(`${commandPath}${path.sep}${commandName}`))(this);
+        this.logger.log(`Loading Event: ${props.help.name}. 👌`, "log");
+        props.conf.location = commandPath;
+        if (props.init) {
+          props.init(this);
+        }
+        this.messageEvents.set(props.help.name, props);
+        return false;
+      } catch (e) {
+        return `Unable to load event ${commandName}: ${e}`;
+      }
+    }
   
     async unloadCommand (commandPath, commandName) {
       let command;
@@ -150,6 +165,13 @@ const init = async () => {
       const response = client.loadCommand(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
       if (response) client.logger.error(response);
   });
+
+  klaw("./events").on("data", (item) => {
+    const cmdFile = path.parse(item.path);
+    if (!cmdFile.ext || cmdFile.ext !== ".js") return;
+    const response = client.loadEvent(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
+    if (response) client.logger.error(response);
+});
   
   // Then we load events, which will include our message and ready event.
   // const evtFiles = await readdir("./events/");
@@ -289,7 +311,7 @@ client.on("message", async message => {
 
 const events = {
 	MESSAGE_REACTION_ADD: 'messageReactionAdd',
-//	MESSAGE_REACTION_REMOVE: 'messageReactionRemove',
+	MESSAGE_REACTION_REMOVE: 'messageReactionRemove',
 };
 
 client.on('raw', async event => {
@@ -313,17 +335,38 @@ client.on('raw', async event => {
 	//if (message.reactions.size === 1) message.reactions.delete(emojiKey);
 });
 
-client.on('messageReactionAdd', (reaction, user) => {
-  if (reaction.message.author.id == client.user.id && reaction.emoji.name == '❌' ){
-    if (reaction.users.some(user => user.id === client.config.botOwnerId))
-    {
-      reaction.message.delete().catch(O_o=>{}); 
-    }
+client.on('messageReactionAdd', async (reaction, user) => {
+  
+  if (!reaction.message.guild) {
+    return;
   }
+  const settings = client.getSettings(reaction.message.guild);
+  reaction.settings = settings;
+  //const level = client.permlevel(message);
+  const exclusions = client.getExclusions(reaction.message.guild)
+  const commandsToRun = 
+    client.messageEvents.filter(cmd => cmd.help.eventType == 'messageReactionAdd' && !exclusions.includes(cmd.help.name) && cmd.conf.enabled);
+  commandsToRun.forEach(cmd => {
+    client.logger.log(`ran Event ${cmd.help.name}`, "cmd");
+    cmd.run(reaction, user);
+  });
+
 });
 
 client.on('messageReactionRemove', (reaction, user) => {
-//	console.log(`${user.username} removed their "${reaction.emoji.name}" reaction.`);
+  if (!reaction.message.guild) {
+    return;
+  }
+  const settings = client.getSettings(reaction.message.guild);
+  reaction.settings = settings;
+  //const level = client.permlevel(message);
+  const exclusions = client.getExclusions(reaction.message.guild)
+  const commandsToRun = 
+    client.messageEvents.filter(cmd => cmd.help.eventType == 'messageReactionRemove' && !exclusions.includes(cmd.help.name) && cmd.conf.enabled);
+  commandsToRun.forEach(cmd => {
+    client.logger.log(`ran Event ${cmd.help.name}`, "cmd");
+    cmd.run(reaction, user);
+  })
 });
 
   

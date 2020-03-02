@@ -12,6 +12,7 @@ class Database {
         this.db = new sqlite(`./data/${guildid}.sqlite`)
 
         //DB INIT SECTION
+        //Markov Chains
         this.db.prepare("CREATE TABLE IF NOT EXISTS bigram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, count INT)").run()
         this.db.prepare("CREATE TABLE IF NOT EXISTS trigram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, word3 TEXT, count INT)").run()
         this.db.prepare("CREATE TABLE IF NOT EXISTS quadgram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, word3 TEXT, word4 TEXT, count INT)").run()
@@ -30,7 +31,11 @@ class Database {
         this.db.prepare("CREATE INDEX IF NOT EXISTS bigram_words ON bigram (word1, word2)").run()
         this.db.prepare("CREATE INDEX IF NOT EXISTS bigram_forward ON bigram (word1)").run()
         this.db.prepare("CREATE INDEX IF NOT EXISTS bigram_backward ON bigram (word2)").run()
-        
+        //Starboard
+        this.db.prepare("CREATE TABLE IF NOT EXISTS starboard (_id INTEGER PRIMARY KEY AUTOINCREMENT, message VARCHAR(500) NOT NULL, starMessage VARCHAR(500) NOT NULL, startype VARCHAR(500))").run()
+        this.db.prepare('CREATE INDEX IF NOT EXISTS idx_starboard_message on starboard(message, startype)').run()
+        this.db.prepare('CREATE INDEX IF NOT EXISTS idx_starboard_starmessage on starboard(starmessage)').run()
+
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
             this.db.prepare('INSERT INTO wordcount VALUES (2,0)').run()
@@ -52,6 +57,7 @@ class Database {
         //END DB INIT SECION
 
         //Commands
+        //Markov
         this.selectWCount = this.db.prepare('SELECT * FROM wordcount')
         this.selectSCount = this.db.prepare('SELECT * FROM sentcount')
         this.addWCount = this.db.prepare('UPDATE wordcount SET count = count + 1 WHERE id = :id')
@@ -80,6 +86,13 @@ class Database {
         this.randomquadgram = this.db.prepare('SELECT * FROM quadgram ORDER BY RANDOM() LIMIT 1')
         this.randomtrigram = this.db.prepare('SELECT * FROM trigram ORDER BY RANDOM() LIMIT 1')
         this.randombigram = this.db.prepare('SELECT * FROM bigram ORDER BY RANDOM() LIMIT 1')
+        //starboard
+        this.starFind = this.db.prepare('SELECT * FROM starboard WHERE message = ? AND startype = ?')
+        
+        this.starAdd = this.db.prepare(
+            'INSERT INTO starboard (message, starMessage, startype) VALUES (@message, @starMessage, @startype)'
+          )
+        this.starDelete = this.db.prepare('DELETE FROM starboard WHERE starMessage = ?')
     }
 
     makeSentence(ngramLength){
@@ -207,6 +220,19 @@ class Database {
     updateSCount(len) {
         if (len > 8) this.addSCount.run({id: 8})
         else this.addSCount.run({id: len})
+    }
+
+    starboardFind(messageId, emoji) {
+        const msg = this.starFind.get(messageId, emoji);
+        return msg;
+    }
+
+    starboardAdd(values){
+        this.starAdd.run(values)
+    }
+
+    starboardDelete(starMessageId) {
+        this.starDelete.run(starMessageId)
     }
 
 }
