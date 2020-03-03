@@ -60,8 +60,9 @@ class StarBoardAdd extends Event {
                 }
                 theEmbed.timestamp = msg.createdAt
                 theEmbed.color = 15133822
+                const name = msg.member.displayName ? msg.member.displayName : msg.author.username
                 theEmbed.author = {
-                    "name": msg.member.displayName,
+                    "name": name,
                     "icon_url": msg.author.displayAvatarURL,
                     "url": msg.url,
                 }
