@@ -11,6 +11,8 @@ const EmptyStarboardData = {
     minimumStarCount: 3
 }
 
+const IgnoredReactions = ["🅰️","🅱️"]
+
 function resolveAttachment(msg) {
     if (msg.attachments.length > 0 && msg.attachments[0].width) {
       return msg.attachments[0];
@@ -39,6 +41,7 @@ class StarBoardAdd extends Event {
   
     async run(reaction, user, level) { // eslint-disable-line no-unused-vars
         try {
+            if (IgnoredReactions.includes(reaction._emoji.name)) { return }
             var starboardData = Object.assign(EmptyStarboardData, this.client.getGameData(reaction.message.guild, 'STARBOARD'))
             if (!starboardData.starboardChannel) { return }
             if ((reaction._emoji == starboardData.starEmoji || starboardData.useAllEmoji) && reaction.count >= starboardData.minimumStarCount) {

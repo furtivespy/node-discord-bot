@@ -10,6 +10,7 @@ const EmptyStarboardData = {
     useAllEmoji: true,
     minimumStarCount: 3
 }
+const IgnoredReactions = ["🅰️","🅱️"]
 
 function resolveAttachment(msg) {
     if (msg.attachments.length > 0 && msg.attachments[0].width) {
@@ -39,6 +40,7 @@ class StarBoardRemove extends Event {
   
     async run(reaction, user, level) { // eslint-disable-line no-unused-vars
         try {
+            if (IgnoredReactions.includes(reaction._emoji.name)) { return }
             var starboardData = Object.assign(EmptyStarboardData, this.client.getGameData(reaction.message.guild, 'STARBOARD'))
             if (!starboardData.starboardChannel) { return }
             var db = new database(reaction.message.guild.id)
