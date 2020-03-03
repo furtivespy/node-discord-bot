@@ -1,6 +1,7 @@
 const Event = require('../base/Event.js')
 const EventTypes = require('../base/EventTypes.js')
 const database = require('../db/db.js')
+const { RichEmbed } = require("discord.js")
 
 const EmptyStarboardData = {
     starboardChannel: undefined,
@@ -47,7 +48,6 @@ class StarBoardRemove extends Event {
             var starMsg = db.starboardFind(reaction.message.id, reaction._emoji.name)
             if (!starMsg) { return }
             
-                
             const msg = reaction.message;
             if (reaction.message.channel.nsfw) {
                 msg.attachments = undefined
@@ -56,14 +56,17 @@ class StarBoardRemove extends Event {
             }
             const attachments = msg.attachments && msg.attachments.first() ? msg.attachments.first() : undefined;
 
-            var theEmbed = msg.embeds[0] ? msg.embeds[0] : {
-                "color": 15133822,
-                "description": msg.content,
+            var theEmbed = new RichEmbed()
+            if (msg.embeds[0]) {
+                theEmbed = new RichEmbed(msg.embeds[0])
+            } else {
+                theEmbed.color = 15133822
+                theEmbed.description = msg.content
             }
             theEmbed.timestamp = msg.createdAt
             theEmbed.color = 15133822
             theEmbed.author = {
-                "name": msg.author.username,
+                "name": msg.member.displayName,
                 "icon_url": msg.author.displayAvatarURL,
                 "url": msg.url,
             }

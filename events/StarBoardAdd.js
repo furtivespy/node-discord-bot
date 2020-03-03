@@ -1,6 +1,7 @@
 const Event = require('../base/Event.js')
 const EventTypes = require('../base/EventTypes.js')
 const database = require('../db/db.js')
+const { RichEmbed } = require("discord.js")
 
 const EmptyStarboardData = {
     starboardChannel: undefined,
@@ -46,6 +47,7 @@ class StarBoardAdd extends Event {
                 if (!starChan || !starChan.permissionsFor(this.client.user).has("SEND_MESSAGES")) { return }
 
                 var starMsg = db.starboardFind(reaction.message.id, reaction._emoji.name)
+                
                 const msg = reaction.message;
                 if (reaction.message.channel.nsfw) {
                     msg.attachments = undefined
@@ -53,15 +55,17 @@ class StarBoardAdd extends Event {
                     msg.content = `[NSFW Post](${msg.url})`
                 }
                 const attachments = msg.attachments && msg.attachments.first() ? msg.attachments.first() : undefined;
-
-                var theEmbed = msg.embeds[0] ? msg.embeds[0] : {
-                    "color": 15133822,
-                    "description": msg.content,
+                var theEmbed = new RichEmbed()
+                if (msg.embeds[0]) {
+                    theEmbed = new RichEmbed(msg.embeds[0])
+                } else {
+                    theEmbed.color = 15133822
+                    theEmbed.description = msg.content
                 }
                 theEmbed.timestamp = msg.createdAt
                 theEmbed.color = 15133822
                 theEmbed.author = {
-                    "name": msg.author.username,
+                    "name": msg.member.displayName,
                     "icon_url": msg.author.displayAvatarURL,
                     "url": msg.url,
                 }
@@ -69,15 +73,12 @@ class StarBoardAdd extends Event {
                 if (attachments) { theEmbed.image = attachments}
 
                 if (!starMsg) {
-                    var newStarMsg = await starChan.send(
-                        `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, {
-                        embed: theEmbed
-                    })
+                    var newStarMsg = await starChan.send(`${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, theEmbed)
 
                     db.starboardAdd({message: msg.id, starMessage: newStarMsg.id, startype: reaction._emoji.name })
                 } else {
                     var starPost = await starChan.fetchMessage(starMsg.starMessage)
-
+                    
                     await starPost.edit(
                         `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, {
                         embed: theEmbed
