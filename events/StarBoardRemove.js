@@ -63,7 +63,7 @@ class StarBoardRemove extends Event {
             theEmbed.timestamp = msg.createdAt
             theEmbed.color = 15133822
             theEmbed.author = {
-                "name": msg.author.username,
+                "name": msg.member.displayName,
                 "icon_url": msg.author.displayAvatarURL,
                 "url": msg.url,
             }
