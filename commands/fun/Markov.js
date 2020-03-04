@@ -1,5 +1,4 @@
 const Command = require('../../base/Command.js')
-const database =  require('../../db/db.js')
 
 class Markov extends Command {
     constructor(client){
@@ -19,7 +18,7 @@ class Markov extends Command {
 
     async run (message, args, level) {
         try {
-            var db = new database(message.guild.id)
+            var db = this.client.getDatabase(message.guild.id)
             if (args[0] == "train" && level >= 7) {
                 message.delete().catch(O_o=>{}); 
                 var snowflake = args[1]

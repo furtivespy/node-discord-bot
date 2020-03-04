@@ -2,6 +2,7 @@ const { Client, Collection } = require("discord.js");
 const Enmap = require("enmap");
 const klaw = require("klaw");
 const path = require("path");
+const database = require('./db/db.js')
 
 class BenderBot extends Client {
     constructor (options) {
@@ -15,6 +16,7 @@ class BenderBot extends Client {
       this.commands = new Collection();
       this.aliases = new Collection();
       this.messageEvents = new Collection();
+      this.guildDBs = {};
   
       //requiring the Logger class for easy console logging
       this.logger = require("./modules/Logger.js");
@@ -88,6 +90,11 @@ class BenderBot extends Client {
       return false;
     }
   
+    getDatabase(guildId) {
+      if (this.guildDBs[guildId]) { return this.guildDBs[guildId] }
+      this.guildDBs[guildId] = new database(guildId)
+      return this.guildDBs[guildId]
+    }
     /* SETTINGS FUNCTIONS
     These functions are used by any and all location in the bot that wants to either
     read the current *complete* guild settings (default + overrides, merged) or that

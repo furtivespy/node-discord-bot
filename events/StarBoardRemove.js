@@ -1,6 +1,5 @@
 const Event = require('../base/Event.js')
 const EventTypes = require('../base/EventTypes.js')
-const database = require('../db/db.js')
 const { RichEmbed } = require("discord.js")
 
 const EmptyStarboardData = {
@@ -43,7 +42,7 @@ class StarBoardRemove extends Event {
             if (IgnoredReactions.includes(reaction._emoji.name)) { return }
             var starboardData = Object.assign(EmptyStarboardData, this.client.getGameData(reaction.message.guild, 'STARBOARD'))
             if (!starboardData.starboardChannel) { return }
-            var db = new database(reaction.message.guild.id)
+            var db = this.client.getDatabase(reaction.message.guild.id)
             const starChan = reaction.message.guild.channels.find(c => c.id == starboardData.starboardChannelId)
             if (!starChan || !starChan.permissionsFor(this.client.user).has("SEND_MESSAGES")) { return }
 

@@ -1,5 +1,4 @@
 const Command = require('../../base/Command.js')
-const database =  require('../../db/db.js')
 
 class Say extends Command {
     constructor(client){
@@ -22,7 +21,7 @@ class Say extends Command {
             const sayMessage = args.join(" ");
             message.delete().catch(O_o=>{}); 
             if (sayMessage.length == 0) {
-                var db = new database(message.guild.id)
+                var db = this.client.getDatabase(message.guild.id)
                 var words = db.makeSentence(message.settings.markovLevel)
                 message.channel.send(words)
             } else {

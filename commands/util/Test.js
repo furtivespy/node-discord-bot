@@ -2,7 +2,6 @@ const Command = require('../../base/Command.js')
 const fetch = require('node-fetch')
 const he = require('he')
 const _ = require('lodash')
-const database =  require('../../db/db.js')
 
 const clean = text => {
     if (typeof(text) === "string")
@@ -42,7 +41,7 @@ class Test extends Command {
     async run (message, args, level) {
         try {
             //message.channel.send('Testing...')
-            var db = new database(message.guild.id)
+            var db = this.client.getDatabase(message.guild.id)
             var count3 = db.db.prepare("select count(*) as rows from trigram")
             var count4 = db.db.prepare("select count(*) as rows from quadgram")
             var count5 = db.db.prepare("select count(*) as rows from quingram")

@@ -1,5 +1,4 @@
 const Command = require('../../base/Command.js')
-const database = require('../../db/db.js')
 
 class Chatbot extends Command {
     constructor(client){
@@ -23,7 +22,7 @@ class Chatbot extends Command {
 
             } else {
                 var fullText = message.content.trim().toLowerCase()
-                var db = new database(message.guild.id)
+                var db = this.client.getDatabase(message.guild.id)
                 if (fullText.length > 0 && !message.channel.nsfw) {
                     db.markovInput(fullText)
                     this.client.logger.log(`recording text starting with ${fullText.substring(0,20)}`,'log')
