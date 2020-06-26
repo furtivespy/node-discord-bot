@@ -72,6 +72,7 @@ class StarBoardRemove extends Event {
                 "url": msg.url,
             }
             theEmbed.footer = {text: `in #${msg.channel.name}`}
+            theEmbed.addField("Source", `[link](${msg.url})`)
             if (attachments) { theEmbed.image = attachments}
 
             var starPost = await starChan.fetchMessage(starMsg.starMessage)
