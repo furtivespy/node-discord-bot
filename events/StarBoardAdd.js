@@ -71,7 +71,8 @@ class StarBoardAdd extends Event {
                     "icon_url": msg.author.displayAvatarURL,
                     "url": msg.url,
                 }
-                theEmbed.footer = {text: `in #${msg.channel.name} [link](${msg.url})`}
+                theEmbed.footer = {text: `in #${msg.channel.name}`}
+                theEmbed.addField("Source", `[link](${msg.url})`)
                 if (attachments) { theEmbed.image = attachments}
 
                 if (!starMsg) {
