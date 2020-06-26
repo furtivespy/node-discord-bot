@@ -72,6 +72,7 @@ class StarBoardAdd extends Event {
                     "url": msg.url,
                 }
                 theEmbed.footer = {text: `in #${msg.channel.name}`}
+                theEmbed.title = `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`
                 theEmbed.setURL(msg.url)
                 if (attachments) { theEmbed.image = attachments}
 
