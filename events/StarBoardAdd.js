@@ -72,6 +72,7 @@ class StarBoardAdd extends Event {
                     "url": msg.url,
                 }
                 theEmbed.footer = {text: `in #${msg.channel.name}`}
+                theEmbed.setURL(msg.url)
                 if (attachments) { theEmbed.image = attachments}
 
                 if (!starMsg) {
