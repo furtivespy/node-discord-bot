@@ -83,8 +83,11 @@ class Database {
         this.backwardtrigramwords = this.db.prepare('SELECT word1, count FROM trigram WHERE word2 = :word2 AND word3 = :word3')
         this.backwardbigramwords = this.db.prepare('SELECT word1, count FROM bigram WHERE word2 = :word2')
         this.randomquingram = this.db.prepare('SELECT * FROM quingram ORDER BY RANDOM() LIMIT 1')
+        this.randomquingramstart = this.db.prepare('SELECT * FROM quingram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
         this.randomquadgram = this.db.prepare('SELECT * FROM quadgram ORDER BY RANDOM() LIMIT 1')
+        this.randomquadgramstart = this.db.prepare('SELECT * FROM quadgram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
         this.randomtrigram = this.db.prepare('SELECT * FROM trigram ORDER BY RANDOM() LIMIT 1')
+        this.randomtrigramstart = this.db.prepare('SELECT * FROM trigram WHERE word1 = :word1 AND word2 = :word2 ORDER BY RANDOM() LIMIT 1')
         this.randombigram = this.db.prepare('SELECT * FROM bigram ORDER BY RANDOM() LIMIT 1')
         //starboard
         this.starFind = this.db.prepare('SELECT * FROM starboard WHERE message = ? AND startype = ?')
@@ -95,17 +98,19 @@ class Database {
         this.starDelete = this.db.prepare('DELETE FROM starboard WHERE starMessage = ?')
     }
 
-    makeSentence(ngramLength){
+    makeSentence(ngramLength, startWithWord){
         switch(ngramLength){
             case "2": //not doing bigrams
             case "3":
                 this.RandoSelect = this.randomtrigram
+                this.RandoSelectStart = this.randomtrigramstart
                 this.goForth = this.forwardtrigramwords
                 this.goBack = this.backwardtrigramwords
                 this.backCount = 2
                 break
             case "5":
                 this.RandoSelect = this.randomquingram
+                this.RandoSelectStart = this.randomquingramstart
                 this.goForth = this.forwardquingramwords
                 this.goBack = this.backwardquingramwords
                 this.backCount = 4
@@ -113,23 +118,28 @@ class Database {
             case "4":
             default:
                 this.RandoSelect = this.randomquadgram
+                this.RandoSelectStart = this.randomquadgramstart
                 this.goForth = this.forwardquadgramwords
                 this.goBack = this.backwardquadgramwords
                 this.backCount = 3
                 break;
         }
-        return this.SayThings()
+        return this.SayThings(startWithWord)
     }
 
-    SayThings(){
+    SayThings(startWithWord){
         var sentences = this.selectSCount.all()
         var words = this.selectWCount.all()
         var sayThisManyS = weighted.select(sentences.map(s => s.id), sentences.map(s => s.Count))
         var sayThisManyW = weighted.select(words.map(s => s.id), words.map(s => s.Count))
         var wholeResponse = ""
         for(var i=0;i<sayThisManyS;i++){
-            if (i > 0) wholeResponse += '\n'
-            wholeResponse += this.BuildSentence()
+            if (i > 0) { 
+                wholeResponse += '\n'
+                wholeResponse += this.BuildSentence()
+            } else {
+                wholeResponse += this.BuildSentence(startWithWord)
+            }
         }
         if (wholeResponse.split(' ').length < sayThisManyW){
             wholeResponse += '\n'
@@ -138,8 +148,14 @@ class Database {
         return wholeResponse
     }
 
-    BuildSentence(){
-        var randomStart = this.RandoSelect.get()
+    BuildSentence(startWithWord){
+        var randomStart
+        if (startWord) {
+            randomStart = this.RandoSelectStart.get({word1: startWord, word2: startWithWord})
+            if (randomStart === undefined) randomStart = this.RandoSelect.get()
+        } else {
+            randomStart = this.RandoSelect.get()
+        }
         var newSentence = [randomStart.word1, randomStart.word2, randomStart.word3]
         if (randomStart.word4) newSentence.push(randomStart.word4)
         if (randomStart.word5) newSentence.push(randomStart.word5)

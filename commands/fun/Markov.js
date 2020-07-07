@@ -36,7 +36,7 @@ class Markov extends Command {
                 console.log(`done training at ${snowflake}`)
             } else {
                 message.delete().catch(O_o=>{}); 
-                var words = db.makeSentence(args[0])
+                var words = db.makeSentence(message.settings.markovLevel, args[0])
                 message.channel.send(words)
             }
         } catch (e) {
