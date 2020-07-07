@@ -6,7 +6,7 @@ class Markov extends Command {
             name: "markov",
             description: "Make Bender speak.",
             category: "Fun",
-            usage: "Use command followed by 3, 4, or 5 to build a markov chain with that size ngram",
+            usage: "Use command followed by a single word, then bender starts a chain with that word",
             enabled: true,
             guildOnly: false,
             allMessages: false,
