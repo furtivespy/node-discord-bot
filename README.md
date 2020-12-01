@@ -4,7 +4,7 @@ This discord.js bot has some heavy influence from [An Idiots Guide bot](https://
 
 ## Introduction
 
-This project is a bot I created for a discord chart with friends and to better learn node
+This project is a bot I created for a discord chat with friends and to better learn node
 
 # What this bot does? 
 
