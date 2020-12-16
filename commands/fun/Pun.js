@@ -9,7 +9,7 @@ class Pun extends Command {
             description: "Gets a dumb pun.",
             category: "Fun",
             usage: "Type command, get a pun",
-            enabled: true,
+            enabled: false,
             guildOnly: false,
             allMessages: false,
             showHelp: true,
