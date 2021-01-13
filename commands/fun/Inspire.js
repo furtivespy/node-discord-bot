@@ -13,7 +13,7 @@ class Inspire extends Command {
             guildOnly: false,
             allMessages: false,
             showHelp: true,
-            aliases: ["inspiration", "cycology", "cy", "wakeman", "cywakeman"],
+            aliases: ["inspiration", "cycology", "cychology", "cy", "wakeman", "cywakeman"],
             permLevel: "User"
           })
     }
