@@ -53,7 +53,7 @@ class Rule34 extends Command {
                 url: `${post.file_url}`
               },
               footer: {
-                icon_url: message.author.displayAvatarURL,
+                icon_url: message.author.displayAvatarURL(),
                 text: `Requested by ${
                   message.author.tag
                 } | Powered by rule34.xxx`

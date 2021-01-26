@@ -37,7 +37,7 @@ module.exports = [
       name: "Server Owner", 
       // Simple check, if the guild owner id matches the message author's ID, then it will return true.
       // Otherwise it will return false.
-      check: (message) => message.channel.type === "text" ? (message.guild.owner.user.id === message.author.id ? true : false) : false
+      check: (message) => message.channel.type === "text" ? (message.guild.ownerId === message.author.id ? true : false) : false
     },
 
     // Bot Support is a special inbetween level that has the equivalent of server owner access

@@ -23,7 +23,7 @@ class Markov extends Command {
                 message.delete().catch(O_o=>{}); 
                 var snowflake = args[1]
                 for(var i=0;i<50;i++){
-                    var msgs = await message.channel.fetchMessages({limit: 50, before: snowflake})
+                    var msgs = await message.channel.messages.fetch({limit: 50, before: snowflake})
                     console.log(`${i}) training ${msgs.size} phrases`)
                     if (msgs.size < 49) i = 101
                     msgs.forEach(msg => {

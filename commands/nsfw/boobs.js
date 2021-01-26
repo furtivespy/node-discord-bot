@@ -30,7 +30,7 @@ class Boobs extends Command {
                 "url": `http://media.oboobs.ru/${body[0].preview}`
             },
             "footer": {
-                "icon_url": message.author.displayAvatarURL,
+                "icon_url": message.author.displayAvatarURL(),
                 "text": `Requested by ${message.author.tag} | Powered by oboobs.ru`
             }
             }

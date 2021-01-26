@@ -1,5 +1,5 @@
 const sqlite = require('better-sqlite3')
-const uuid = require('uuid/v1')
+const {v1: uuid} = require('uuid')
 const natural = require('natural')
 const _ = require('lodash')
 var weighted = require('weighted')

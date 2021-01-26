@@ -21,7 +21,7 @@ class DadJoke extends Command {
         try {
             fetch("https://icanhazdadjoke.com/", { headers: {"Accept": "text/plain"}}).then(res => res.text()).then(text => {
                 const embed = {
-                    author: {name: `${message.guild.members.get(this.client.user.id).displayName}'s Dad Says:`, icon_url: "https://i.imgur.com/W3WseeN.png"},
+                    author: {name: `${message.guild.members.cache.get(this.client.user.id).displayName}'s Dad Says:`, icon_url: "https://i.imgur.com/W3WseeN.png"},
                     description: `_${text}_`,
                     color: 6192321
                 };

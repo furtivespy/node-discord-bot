@@ -20,7 +20,7 @@ class Nickname extends Command {
         try {
             var newName = args.join(" ")
             message.react('⚡')
-            message.guild.members.get(this.client.user.id).setNickname(newName)
+            message.guild.members.cache.get(this.client.user.id).setNickname(newName)
         } catch (e) {
             this.client.logger.log(e,'error')
         }

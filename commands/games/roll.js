@@ -32,7 +32,7 @@ class Roll extends Command {
                         "description": `You rolled: **${rolling.result}**`,
                         "color": 4130114,
                         "footer": {
-                            "icon_url": message.author.displayAvatarURL,
+                            "icon_url": message.author.displayAvatarURL(),
                             "text": `${message.author.tag} Rolled ${rolling.rolled}`
                         },
                     }

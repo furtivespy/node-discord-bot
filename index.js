@@ -20,7 +20,7 @@ console.log(config);
 
 client.on("ready", () => {
   // This event will run if the bot starts, and logs in, successfully.
-  console.log(`Bot has started, with ${client.users.size} users, in ${client.channels.size} channels of ${client.guilds.size} guilds.`); 
+  client.logger.log(`Bot has started, in ${client.guilds.cache.size} guilds.`, 'ready'); 
   // Example of changing the bot's playing game to something useful. `client.user` is what the
   // docs refer to as the "ClientUser".
   //client.user.setAvatar("https://cdn.discordapp.com/avatars/545110142245666817/8e5b9bccf615773361b95e07f39339b2.png");

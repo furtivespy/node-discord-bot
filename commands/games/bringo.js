@@ -121,7 +121,7 @@ class Bringo extends Command {
                     var scoreMessage = ""
                     for(let i=0;i<sorted.length;i++){
                         var icon = (i===0) ? ":first_place:" : (i===1) ? ":second_place:" : (i===2) ? ":third_place:" : ":medal:"
-                        scoreMessage += `${icon} ${sorted[i].value} :: ${message.guild.members.get(sorted[i].key).displayName}\n`
+                        scoreMessage += `${icon} ${sorted[i].value} :: ${message.guild.members.cache.get(sorted[i].key).displayName}\n`
                     }
                     await message.channel.send({embed: { color: 13207824, 
                         title: "Bringo Scoreboard",
@@ -187,7 +187,7 @@ class Bringo extends Command {
                     message.guild.channels.forEach(async channel => {
                         if(channel.type != 'text') return
                         await responseMsg.edit(`searching ${channel.name}...`)
-                        var msgs = await channel.fetchMessages({limit: 100})
+                        var msgs = await channel.messages.fetch({limit: 100})
                         msgs.forEach(msg => {
                             if (msg.author.bot) return
                             if (msg.content.indexOf(message.settings.prefix) === 0) return;

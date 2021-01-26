@@ -1,6 +1,6 @@
 const Event = require('../base/Event.js')
 const EventTypes = require('../base/EventTypes.js')
-const { RichEmbed } = require("discord.js")
+const { MessageEmbed } = require("discord.js")
 
 const EmptyStarboardData = {
     starboardChannel: undefined,
@@ -43,7 +43,7 @@ class StarBoardRemove extends Event {
             var starboardData = Object.assign(EmptyStarboardData, this.client.getGameData(reaction.message.guild, 'STARBOARD'))
             if (!starboardData.starboardChannel) { return }
             var db = this.client.getDatabase(reaction.message.guild.id)
-            const starChan = reaction.message.guild.channels.find(c => c.id == starboardData.starboardChannelId)
+            const starChan = reaction.message.guild.channels.cache.find(c => c.id == starboardData.starboardChannelId)
             if (!starChan || !starChan.permissionsFor(this.client.user).has("SEND_MESSAGES")) { return }
 
             var starMsg = db.starboardFind(reaction.message.id, reaction._emoji.name)
@@ -57,9 +57,9 @@ class StarBoardRemove extends Event {
             }
             const attachments = msg.attachments && msg.attachments.first() ? msg.attachments.first() : undefined;
 
-            var theEmbed = new RichEmbed()
+            var theEmbed = new MessageEmbed()
             if (msg.embeds[0]) {
-                theEmbed = new RichEmbed(msg.embeds[0])
+                theEmbed = new MessageEmbed(msg.embeds[0])
             } else {
                 theEmbed.color = 15133822
                 theEmbed.description = msg.content
@@ -68,14 +68,14 @@ class StarBoardRemove extends Event {
             theEmbed.color = 15133822
             theEmbed.author = {
                 "name": msg.member.displayName,
-                "icon_url": msg.author.displayAvatarURL,
+                "icon_url": msg.author.displayAvatarURL(),
                 "url": msg.url,
             }
             theEmbed.footer = {text: `in #${msg.channel.name}`}
             theEmbed.addField("Source", `[link](${msg.url})`)
             if (attachments) { theEmbed.image = attachments}
 
-            var starPost = await starChan.fetchMessage(starMsg.starMessage)
+            var starPost = await starChan.messages.fetch(starMsg.starMessage)
             if (reaction.count < starboardData.minimumStarCount) {
                 db.starboardDelete(starMsg.starMessage)
                 starPost.delete().catch(O_o=>{})

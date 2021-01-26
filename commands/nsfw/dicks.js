@@ -39,7 +39,7 @@ class Dick extends Command {
                 "url": url
             },
             "footer": {
-                "icon_url": message.author.displayAvatarURL,
+                "icon_url": message.author.displayAvatarURL(),
                 "text": `Requested by ${message.author.tag} | Powered by ${sub} subreddit`
             }
             }

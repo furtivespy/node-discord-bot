@@ -26,6 +26,7 @@ class Wiki extends Command {
             var query = qs.stringify( {action: "opensearch", format: "json", limit: 1, search: args.join(" ")});
             fetch("https://en.wikipedia.org/w/api.php?" + query).then(res => res.json()).then(searchResults => {
                 if (searchResults[1].length > 0) {
+                    wtf.extend(require('wtf-plugin-markdown'))
                     wtf.fetch(searchResults[1][0]).then(doc => {
                         if (doc.isDisambiguation()){
                             var somelinks = SampleSize(doc.links(), 5)

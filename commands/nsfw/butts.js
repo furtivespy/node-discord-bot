@@ -30,7 +30,7 @@ class Butts extends Command {
                 "url": `http://media.obutts.ru/${body[0].preview}`
             },
             "footer": {
-                "icon_url": message.author.displayAvatarURL,
+                "icon_url": message.author.displayAvatarURL(),
                 "text": `Requested by ${message.author.tag} | Powered by obutts.ru`
             }
             }

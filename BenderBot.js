@@ -104,13 +104,10 @@ class BenderBot extends Client {
     // getSettings merges the client defaults with the guild settings. guild settings in
     // enmap should only have *unique* overrides that are different from defaults.
     getSettings (guild) {
-      const defaults = this.config.defaultSettings || {};
-      const guildData = this.settings.get(guild.id) || {};
-      const returnObject = {};
-      Object.keys(defaults).forEach((key) => {
-        returnObject[key] = guildData[key] ? guildData[key] : defaults[key];
-      });
-      return returnObject;
+      this.settings.ensure("default", this.config.defaultSettings);
+      if(!guild) return this.settings.get("default");
+      const guildConf = this.settings.get(guild.id) || {};
+      return ({...this.settings.get("default"), ...guildConf});
     }
   
     // writeSettings overrides, or adds, any configuration item that is different
@@ -130,6 +127,7 @@ class BenderBot extends Client {
     }
   
     getExclusions (guild) {
+      if (!guild) return []
       const guildData = this.exclusions.get(guild.id) || [];
       return guildData;
     }
@@ -164,7 +162,7 @@ class BenderBot extends Client {
     }
 }
 
-const client = new BenderBot();
+const client = new BenderBot({ partials: ['MESSAGE', 'CHANNEL', 'REACTION'] });
 const init = async () => {
   klaw("./commands").on("data", (item) => {
       const cmdFile = path.parse(item.path);
@@ -212,16 +210,17 @@ const init = async () => {
       client.settings.set("default", client.config.defaultSettings);
     }
 
-    client.logger.log(`Bot has started, with ${client.users.size} users, in ${client.channels.size} channels of ${client.guilds.size} guilds.`, 'ready');
+    client.logger.log(`Bot has started, in ${client.guilds.cache.size} guilds.`, 'ready');
   })
 
   client.on("message", async message => {
     if (message.author.bot) return;
-    if (!message.guild) {
-      message.reply("Sorry, I don't do DM's yet")
-      return;
+
+    // If message in in a server, see if bot can send to that channel, otherwise bot will ignore the messages
+    if (message.guild) {
+      if (!message.channel.permissionsFor(message.guild.me).missing("SEND_MESSAGES")) return;
     }
-    if (!message.channel.permissionsFor(message.guild.me).missing("SEND_MESSAGES")) return;
+    
     const settings = client.getSettings(message.guild);
     message.settings = settings;
 
@@ -235,11 +234,16 @@ const init = async () => {
     // which is set in the configuration file.
     if (message.content.indexOf(settings.prefix) !== 0) return;
 
-    const args = message.content.slice(settings.prefix.length).trim().split(/ +/g);
+    var args = []
+    if (!message.guild) {
+      args = message.content.trim().split(/ +/g);
+    } else { 
+      args = message.content.slice(settings.prefix.length).trim().split(/ +/g);
+    }
     const command = args.shift().toLowerCase();
 
     // If the member on a guild is invisible or not cached, fetch them.
-    if (message.guild && !message.member) await message.guild.fetchMember(message.author);
+    if (message.guild && !message.member) await message.guild.members.fetch(message.author);
 
     // Get the user or member's permission level from the elevation
     const level = client.permlevel(message);
@@ -254,7 +258,7 @@ const init = async () => {
     // Some commands may not be useable in DMs. This check prevents those commands from running
     // and return a friendly error message.
     if (cmd && !message.guild && cmd.conf.guildOnly)
-      return message.channel.send("This command is unavailable via private message. Please run this command in a guild.");
+      return message.channel.send("This command is unavailable via private message. Please run this command in a server.");
     //don't run a disabled command
     if (!cmd.conf.enabled) return
     //dont run an exluced command
@@ -305,7 +309,7 @@ client.on("message", async message => {
   //args is each word now
   const args = message.content.trim().split(/ +/g);
   // If the member on a guild is invisible or not cached, fetch them.
-  if (message.guild && !message.member) await message.guild.fetchMember(message.author);
+  if (message.guild && !message.member) await message.guild.members.fetch(message.author);
   // Get the user or member's permission level from the elevation
   const level = client.permlevel(message);
   const exclusions = client.getExclusions(message.guild)
@@ -320,7 +324,7 @@ const events = {
 	MESSAGE_REACTION_ADD: 'messageReactionAdd',
 	MESSAGE_REACTION_REMOVE: 'messageReactionRemove',
 };
-
+/*
 client.on('raw', async event => {
 	if (!events.hasOwnProperty(event.t)) return;
 
@@ -341,9 +345,11 @@ client.on('raw', async event => {
 	client.emit(events[event.t], reaction, user);
 	//if (message.reactions.size === 1) message.reactions.delete(emojiKey);
 });
-
+*/
 client.on('messageReactionAdd', async (reaction, user) => {
-  
+  if (reaction.partial){
+    await reaction.fetch()
+  }
   if (!reaction.message.guild) {
     return;
   }
@@ -360,7 +366,10 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
 });
 
-client.on('messageReactionRemove', (reaction, user) => {
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (reaction.partial){
+    await reaction.fetch()
+  }
   if (!reaction.message.guild) {
     return;
   }
