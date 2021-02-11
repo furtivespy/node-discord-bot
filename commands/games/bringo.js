@@ -121,7 +121,11 @@ class Bringo extends Command {
                     var scoreMessage = ""
                     for(let i=0;i<sorted.length;i++){
                         var icon = (i===0) ? ":first_place:" : (i===1) ? ":second_place:" : (i===2) ? ":third_place:" : ":medal:"
-                        scoreMessage += `${icon} ${sorted[i].value} :: ${message.guild.members.cache.get(sorted[i].key).displayName}\n`
+                        if (message.guild.members.cache.get(sorted[i].key) != undefined) {
+                            scoreMessage += `${icon} ${sorted[i].value} :: ${message.guild.members.cache.get(sorted[i].key).displayName}\n`
+                        } else {
+                            scoreMessage += `${icon} ${sorted[i].value} :: Unknown User ${sorted[i].key}\n`
+                        }
                     }
                     await message.channel.send({embed: { color: 13207824, 
                         title: "Bringo Scoreboard",
