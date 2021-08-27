@@ -2,6 +2,7 @@ const Command = require('../../base/Command.js')
 const fetch = require('node-fetch')
 const he = require('he')
 const _ = require('lodash')
+const ws = require('word-salience')
 
 const clean = text => {
     if (typeof(text) === "string")
@@ -45,12 +46,33 @@ class Test extends Command {
             var count3 = db.db.prepare("select count(*) as rows from trigram")
             var count4 = db.db.prepare("select count(*) as rows from quadgram")
             var count5 = db.db.prepare("select count(*) as rows from quingram")
-
-           
             message.channel.send(`DB STATS: trigrams - ${count3.get().rows} | quadgrams - ${count4.get().rows} | quingrams - ${count5.get().rows}`)
+
+            let allText = ""
+            let lastId = ""
+            let msgs = await message.channel.messages.fetch({limit:100}) 
+            msgs.forEach(m => {
+                if (m.content) allText += `${m.content}\n`
+                lastId = m.id
+            });
+            for (let i = 0; i < 200; i++) {
+                msgs = await message.channel.messages.fetch({limit:100, before: lastId}) 
+                msgs.forEach(m => {
+                    lastId = m.id
+                    if (m.author.bot) return
+                    if (m.content.indexOf(message.settings.prefix) == 0) return
+                    if (m.content) allText += `${m.content}\n`
+                });
+            }
+            console.log("read messages!")
+            const results = ws.getSalientWords(allText)
+            await message.author.send(results.slice(0,25).join(", "))
+            await message.author.send(results.slice(25,50).join(", "))
+            await message.author.send(results.slice(50,75).join(", "))
+            console.log("sent messages!")
         } catch (e) {
            this.client.logger.log(e,'error')
-           message.channel.send(clean(e))
+           //message.channel.send(clean(e))
         }
     }
 }
