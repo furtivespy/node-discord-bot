@@ -247,10 +247,11 @@ const init = async () => {
       .catch(error => client.logger.error(error));
     } else {
       //Prod Server
-      await rest.put(
+      rest.put(
         Routes.applicationCommands(client.config.clientId),
         { body: cmds },
-      );
+      ).then(() => client.logger.log('Successfully registered application commands.'))
+      .catch(error => client.logger.error(error));
     }
   })
 

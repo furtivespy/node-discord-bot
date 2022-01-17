@@ -1,4 +1,3 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
 
 
 class SlashCommand {
@@ -12,7 +11,6 @@ class SlashCommand {
       this.client = client;
       this.conf = { enabled, permLevel };
       this.help = { name, description, usage };
-      this.data = new SlashCommandBuilder().setName(name).setDescription(description)
     }
 
 

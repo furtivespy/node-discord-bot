@@ -1,4 +1,5 @@
 const SlashCommand = require('../../base/SlashCommand.js')
+const { SlashCommandBuilder } = require('@discordjs/builders');
 
 class Ping extends SlashCommand {
     constructor(client){
@@ -9,6 +10,7 @@ class Ping extends SlashCommand {
             enabled: true,
             permLevel: "User"
           })
+		  this.data = new SlashCommandBuilder().setName(this.help.name).setDescription(this.help.description)
     }
 
     async execute(interaction) {
