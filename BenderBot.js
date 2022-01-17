@@ -239,9 +239,19 @@ const init = async () => {
     const cmds = client.slashcommands.map(sc => sc.data.toJSON())
     const rest = new REST({ version: '9' }).setToken(client.config.token);
 
-    rest.put(Routes.applicationGuildCommands('548570412959662080', '545109131330191371'), { body: cmds })
+    
+    if (client.config.clientId == '548570412959662080') {
+      //Test Server
+      rest.put(Routes.applicationGuildCommands(client.config.clientId, '545109131330191371'), { body: cmds })
       .then(() => client.logger.log('Successfully registered application commands.'))
       .catch(error => client.logger.error(error));
+    } else {
+      //Prod Server
+      await rest.put(
+        Routes.applicationCommands(client.config.clientId),
+        { body: cmds },
+      );
+    }
   })
 
   client.on("messageCreate", async message => {
