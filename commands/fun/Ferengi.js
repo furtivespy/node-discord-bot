@@ -122,12 +122,12 @@ class Ferengi extends Command {
             }
             var randoRule = _.sample(rules)
             var ferengiImage = _.sample(await super.getGoogleImg("ferengi"))
-            message.channel.send({embed: {
+            message.channel.send({embeds: [{
                 title: `Ferengi Rule of Acquisition #${randoRule.Num}`,
                 description: randoRule.Rule,
                 color: 2903556,
                 thumbnail: { url: (ferengiImage) ? ferengiImage.link : "" }
-            }} )
+            }]} )
         } catch (e) {
             this.client.logger.log(e,'error')
         }

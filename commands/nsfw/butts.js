@@ -22,7 +22,7 @@ class Butts extends Command {
       const msg = await message.channel.send(`**${message.member.displayName}** is looking for butts...`);
       fetch("http://api.obutts.ru/butts/0/1/random").then(res => res.json()).then( async body => {
         await msg.edit({
-            embed: {
+            embeds: [{
             "title": "Click here if the image failed to load.",
             "url": `http://media.obutts.ru/${body[0].preview}`,
             "color": 11273754,
@@ -33,7 +33,7 @@ class Butts extends Command {
                 "icon_url": message.author.displayAvatarURL(),
                 "text": `Requested by ${message.author.tag} | Powered by obutts.ru`
             }
-            }
+            }]
         });
       });
     }

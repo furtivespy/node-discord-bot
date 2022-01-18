@@ -25,7 +25,7 @@ class DadJoke extends Command {
                     description: `_${text}_`,
                     color: 6192321
                 };
-                message.channel.send({embed: embed} );  
+                message.channel.send({embeds: [embed]} );  
             })
         } catch (e) {
             this.client.logger.log(e,'error')

@@ -22,7 +22,7 @@ class Urban extends Command {
             if (args.length === 0) {
                 urban.random().then(definition => {
                     if (definition) {
-                        message.channel.send({embed: {
+                        message.channel.send({embeds: [{
                             author: { name: definition.word, url: definition.permalink },
                             description: definition.definition,
                             color: 13749966,
@@ -35,13 +35,13 @@ class Urban extends Command {
                             footer: {
                                 text: `👍 ${definition.thumbs_up} | 👎 ${definition.thumbs_down}`
                             }
-                        }})
+                        }]})
                     } 
                 })
             } else {
                 urban.top(args.join(" ")).then(definition => {
                     if (definition) {
-                        message.channel.send({embed: {
+                        message.channel.send({embeds: [{
                             author: { name: definition.word, url: definition.permalink },
                             description: definition.definition,
                             color: 13749966,
@@ -54,7 +54,7 @@ class Urban extends Command {
                             footer: {
                                 text: `👍 ${definition.thumbs_up} | 👎 ${definition.thumbs_down}`
                             }
-                        }})
+                        }]})
                     } else {
                         message.reply(`Sorry, I couldn't find anything on ${args.join(" ")}`)
                     }

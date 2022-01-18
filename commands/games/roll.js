@@ -45,7 +45,7 @@ class Roll extends Command {
                         }
                     }
                     message.delete().catch(O_o=>{})
-                    message.channel.send({embed: embedItem})
+                    message.channel.send({embeds: [embedItem]})
                 })
             } else {
                 message.react('🚫')

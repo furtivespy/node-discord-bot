@@ -80,9 +80,9 @@ class StarBoardRemove extends Event {
                 db.starboardDelete(starMsg.starMessage)
                 starPost.delete().catch(O_o=>{})
             } else {
-                await starPost.edit(
-                    `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, {
-                    embed: theEmbed
+                await starPost.edit({
+                    content: `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, 
+                    embeds: [theEmbed]
                 })
             }
         } catch (e) {

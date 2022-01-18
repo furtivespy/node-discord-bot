@@ -129,10 +129,10 @@ class Bringo extends Command {
                             scoreMessage += `${icon} ${sorted[i].value} :: Unknown User ${sorted[i].key}\n`
                         }
                     }
-                    await message.channel.send({embed: { color: 13207824, 
+                    await message.channel.send({embeds: [{ color: 13207824, 
                         title: "Bringo Scoreboard",
                         description: scoreMessage 
-                    }})
+                    }]})
                 } else if (args[0] && args[0].toLowerCase() === 'add' && level >= 3) {
                     if (args.length === 1) {
                         await message.channel.send("use the add command to add words to the possible boards");
@@ -266,9 +266,9 @@ class Bringo extends Command {
                             })
                             if(!BringoData.isGameActive) {
                                 await message.channel.send("```" + showboard(BringoData) + "```")
-                                await message.channel.send({embed: { "image": {
+                                await message.channel.send({embeds: [{ "image": {
                                     "url": "https://media.giphy.com/media/xLsaBMK6Mg8DK/giphy.gif"
-                                    } }})
+                                    } }]})
                                 this.client.setGameData(message.guild, 'BRINGO', BringoData)
                             }
                         }

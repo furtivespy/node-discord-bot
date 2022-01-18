@@ -28,7 +28,7 @@ class Pun extends Command {
                     description: `_${he.decode(text)}_`,
                     color: 6192321
                 };
-                message.channel.send({embed: embed} );  
+                message.channel.send({embeds: [embed]} );  
             })
         } catch (e) {
             this.client.logger.log(e,'error')

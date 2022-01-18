@@ -49,7 +49,7 @@ class Apex extends Command {
                         value: child.stats.map(stat => `**${stat.metadata.name}:** ${stat.value}`).join("\n") || " - "
                     })
                 })
-                return msg.edit({embed: embed} )
+                return msg.edit({embeds: [embed]} )
             })
         } catch (e) {
             this.client.logger.log(e,'error')

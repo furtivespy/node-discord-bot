@@ -27,7 +27,7 @@ class Cat extends Command {
             var catAvatar = $('img.avatar').attr('src');
             fetch("https://aws.random.cat/meow").then(res => res.json()).then(async cat => {
                 await msg.edit({
-                    embed: {
+                    embeds: [{
                         "description": data.fact,
                         "color": 12746254,
                         "image": {
@@ -40,7 +40,7 @@ class Cat extends Command {
                         "thumbnail": {
                             "url": `https://www.peppercarrot.com/extras/html/2016_cat-generator/${catAvatar}`
                         },
-                    }
+                    }]
                 });
             })
         })

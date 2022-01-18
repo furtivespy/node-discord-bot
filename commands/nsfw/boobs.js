@@ -22,7 +22,7 @@ class Boobs extends Command {
       const msg = await message.channel.send(`**${message.member.displayName}** is looking for boobies...`);
       fetch("http://api.oboobs.ru/boobs/0/1/random").then(res => res.json()).then( async body => {
         await msg.edit({
-            embed: {
+            embeds: [{
             "title": "Click here if the image failed to load.",
             "url": `http://media.oboobs.ru/${body[0].preview}`,
             "color": 15285942,
@@ -33,7 +33,7 @@ class Boobs extends Command {
                 "icon_url": message.author.displayAvatarURL(),
                 "text": `Requested by ${message.author.tag} | Powered by oboobs.ru`
             }
-            }
+            }]
         });
       });
     }

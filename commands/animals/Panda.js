@@ -23,7 +23,7 @@ class Panda extends Command {
       fetch("https://some-random-api.ml/pandafact").then(res => res.json()).then( data => {
             fetch("https://some-random-api.ml/pandaimg").then(res => res.json()).then(async panda => {
                 await msg.edit({
-                    embed: {
+                    embeds: [{
                         "description": data.fact,
                         "color": 1,
                         "image": {
@@ -33,7 +33,7 @@ class Panda extends Command {
                             "name": "Panda Fact",
                             "icon_url": panda.link,
                         },
-                    }
+                    }]
                 });
             })
       });

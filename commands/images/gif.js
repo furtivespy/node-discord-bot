@@ -25,12 +25,12 @@ class Gif extends Command {
             var anImage = _.sample(listImages)
             if (anImage) {
                 await message.channel.send({
-                    embed: {
+                    embeds: [{
                         "color": 10531591,
                         "image": {
                             "url": anImage.link
                         },
-                    }
+                    }]
                 })
             } else {
                 message.reply(`Sorry, I couldn't find any ${search}`)

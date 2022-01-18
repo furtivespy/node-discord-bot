@@ -118,7 +118,7 @@ client.on("message", async message => {
         color: 6192321
       };
       console.log(text);
-      message.channel.send({embed: embed} );  
+      message.channel.send({embeds: [embed]} );  
     })
   }
 

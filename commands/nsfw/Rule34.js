@@ -45,7 +45,7 @@ class Rule34 extends Command {
             return await msg.edit("too weird, couldn't find anything")
           }
           await msg.edit({
-            embed: {
+            embeds: [{
               title: "Click here if the image failed to load.",
               url: `${post.file_url}`,
               color: 9234325,
@@ -58,7 +58,7 @@ class Rule34 extends Command {
                   message.author.tag
                 } | Powered by rule34.xxx`
               }
-            }
+            }]
           });
         });
     } catch (e) {

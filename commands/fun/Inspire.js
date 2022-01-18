@@ -23,7 +23,7 @@ class Inspire extends Command {
             var msg = await message.channel.send(`Attempting to inspire ${message.member.displayName}...`)
             fetch('http://inspirobot.me/api?generate=true').then(res => res.text()).then(text => {
                 msg.edit({
-                    embed: {
+                    embeds: [{
                         "image": {
                             "url": text
                         },
@@ -31,7 +31,7 @@ class Inspire extends Command {
                         "footer": {
                             "text": `Powered by inspirobot.me`
                         }
-                    }
+                    }]
                 })
             })
         } catch (e) {

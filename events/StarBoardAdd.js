@@ -76,16 +76,14 @@ class StarBoardAdd extends Event {
                 if (attachments) { theEmbed.image = attachments}
 
                 if (!starMsg) {
-                    var newStarMsg = await starChan.send(`${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, theEmbed)
+                    var newStarMsg = await starChan.send({content: `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, embeds: [theEmbed]})
 
                     db.starboardAdd({message: msg.id, starMessage: newStarMsg.id, startype: reaction._emoji.name })
                 } else {
                     var starPost = await starChan.messages.fetch(starMsg.starMessage)
                     
-                    await starPost.edit(
-                        `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`, {
-                        embed: theEmbed
-                    })
+                    await starPost.edit({content: `${reaction._emoji.id ? "<:" + reaction._emoji.name + ":" + reaction._emoji.id + ">" : reaction._emoji}x${reaction.count}`,
+                        embeds: [theEmbed]})
                 }
             } 
         } catch (e) {

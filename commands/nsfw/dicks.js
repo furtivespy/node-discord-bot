@@ -31,7 +31,7 @@ class Dick extends Command {
       const msg = await message.channel.send(`**${message.member.displayName}** is looking for a dick...`);
       randomPuppy(sub).then( async (url) => {
         await msg.edit({
-            embed: {
+            embeds: [{
             "title": "Click here if the image failed to load.",
             "url": url,
             "color": 11340494,
@@ -42,7 +42,7 @@ class Dick extends Command {
                 "icon_url": message.author.displayAvatarURL(),
                 "text": `Requested by ${message.author.tag} | Powered by ${sub} subreddit`
             }
-            }
+            }]
         });
       });
     }

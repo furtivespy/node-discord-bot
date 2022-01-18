@@ -23,7 +23,7 @@ class Dog extends Command {
       fetch("https://dog-api.kinduff.com/api/facts").then(res => res.json()).then( data => {
             fetch("https://dog.ceo/api/breeds/image/random").then(res => res.json()).then(async dog => {
                 await msg.edit({
-                    embed: {
+                    embeds: [{
                         "description": data.facts[0],
                         "color": 6700573,
                         "image": {
@@ -33,7 +33,7 @@ class Dog extends Command {
                             "name": "Dog Fact",
                             "icon_url": dog.message,
                         },
-                    }
+                    }]
                 });
             })
       });

@@ -27,7 +27,7 @@ class xkcd extends Command {
             }
             var res = await fetch(url).then(res => res.json()).then(async comic => {
                 await message.channel.send({
-                    embed: {
+                    embeds: [{
                         "color": 16777215,
                         "image": {
                             "url": comic.img
@@ -38,7 +38,7 @@ class xkcd extends Command {
                         "footer": {
                             "text": comic.alt
                         }
-                    }
+                    }]
                 })
             }).catch(e => this.client.logger.log(e,'error'))
         } catch (e) {

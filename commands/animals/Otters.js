@@ -67,7 +67,7 @@ class Otter extends Command {
         var otterImages = await super.getGoogleImg("otters", null, Math.floor(Math.random() * 70))
         var anOtter = _.sample(otterImages)
         await msg.edit({
-            embed: {
+            embeds: [{
                 "description": _.sample(otterfacts),
                 "color": 5385222,
                 "image": {
@@ -77,7 +77,7 @@ class Otter extends Command {
                     "name": "Otter Fact",
                     "icon_url": anOtter.link,
                 },
-            }
+            }]
         })
     }
   }

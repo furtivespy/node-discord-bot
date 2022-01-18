@@ -34,12 +34,12 @@ class Wiki extends Command {
                             somelinks.forEach(item => {links += `\n${item.page}`})
                             message.channel.send(`Too many ${searchResults[0]} results. Try being more specific with "(film)" or "(album)" or something like:${links}`);
                         } else {
-                            message.channel.send({embed: {
+                            message.channel.send({embeds: [{
                                 author: { name: doc.title(), url: searchResults[3][0] },
                                 description: doc.section(0).markdown().substring(0,2040),
                                 color: 13749966,
                                 thumbnail: { url: doc.images(0) ? doc.images(0).json().thumb : "" },
-                            }})
+                            }]})
                         }
                     })
                 } else {
