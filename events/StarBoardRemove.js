@@ -49,7 +49,7 @@ class StarBoardRemove extends Event {
             var starMsg = db.starboardFind(reaction.message.id, reaction._emoji.name)
             if (!starMsg) { return }
             
-            const msg = reaction.message;
+            const msg = await reaction.message.fetch();
             if (reaction.message.channel.nsfw) {
                 msg.attachments = undefined
                 msg.embeds = []
