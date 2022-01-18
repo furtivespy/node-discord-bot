@@ -50,6 +50,7 @@ class StarBoardRemove extends Event {
             if (!starMsg) { return }
             
             const msg = await reaction.message.fetch();
+            await msg.member.fetch()
             if (reaction.message.channel.nsfw) {
                 msg.attachments = undefined
                 msg.embeds = []
