@@ -58,6 +58,10 @@ class Drink extends SlashCommand {
                     if (newInteraction) {
                         const val = parseInt(newInteraction.values[0])
                         theDrink = json.drinks[val]
+                        newInteraction.update({
+                            content: json.drinks[val].strDrink,
+                            components: []
+                          })
                     } else {
                         rply.delete()
                         return
@@ -105,7 +109,9 @@ class Drink extends SlashCommand {
                 drinkDetail.addField(`Instrctions`, theDrink.strInstructions)
 
                 if (rply){
+                    //await interaction.editReply({ content: 'Selected', components: [] })
                     await interaction.followUp({ embeds: [drinkDetail] })
+                    
                 } else {
                     await interaction.reply({ embeds: [drinkDetail] })
                 }
