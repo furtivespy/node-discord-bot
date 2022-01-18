@@ -233,7 +233,13 @@ const init = async () => {
       client.settings.set("default", client.config.defaultSettings);
     }
 
+    await client.guilds.fetch()
     client.logger.log(`Bot has started, in ${client.guilds.cache.size} guilds.`, 'ready');
+
+    client.guilds.cache.forEach(async (gld) => {
+      await gld.members.fetch()
+    })
+    client.logger.log(`guild members cached`)
 
     //Register Slash Commands
     const cmds = client.slashcommands.map(sc => sc.data.toJSON())

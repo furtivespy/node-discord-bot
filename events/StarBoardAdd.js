@@ -51,7 +51,6 @@ class StarBoardAdd extends Event {
                 var starMsg = db.starboardFind(reaction.message.id, reaction._emoji.name)
                 
                 const msg = await reaction.message.fetch();
-                await msg.member.fetch()
                 if (reaction.message.channel.nsfw) {
                     msg.attachments = undefined
                     msg.embeds = []
