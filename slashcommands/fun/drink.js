@@ -66,35 +66,6 @@ class Drink extends SlashCommand {
                         rply.delete()
                         return
                     }
-                    
-                    /*
-                    const drinkChoice = new Discord.MessageEmbed().setColor(13928716).setTitle(`Select a Drink`)
-                    let drinkList = ""
-                    for (let i = 0; i <json.drinks.length && i < 10; i++) {
-                        drinkList += `${Emoji.IndexToEmoji(i)}:arrow_right:  ${json.drinks[i].strDrink}\n`
-                    }
-                    drinkChoice.setDescription(drinkList)
-                    let msg = await message.channel.send(drinkChoice)
-                    for (let i = 0; i < json.drinks.length && i < 10; i++) {
-                        await msg.react(Emoji.IndexToEmoji(i))
-                    }
-                    try {
-                        var drinkReaction = await msg.awaitReactions((reaction, user) => user.id == message.author.id
-                            && (reaction.emoji.name == '1️⃣' || reaction.emoji.name == '2️⃣' || reaction.emoji.name == '3️⃣' || reaction.emoji.name == '4️⃣' || reaction.emoji.name == '5️⃣'
-                             || reaction.emoji.name == '6️⃣' || reaction.emoji.name == '7️⃣' || reaction.emoji.name == '8️⃣' || reaction.emoji.name == '9️⃣' || reaction.emoji.name == '🔟'),
-                            { max: 1, time: 60000 })
-                    } catch {
-                        drinkReaction = {}
-                    }
-            
-                    if (!drinkReaction.first()){
-                        await msg.edit(`No reaction after 60 seconds, ${actionName} canceled - try again when ready`);
-                        await msg.suppressEmbeds(true)
-                        return undefined
-                    }
-                    theDrink = json.drinks[Emoji.EmojiToIndex(drinkReaction.first().emoji.name)]
-                    msg.delete()
-                    */
                 } 
                  
                 const drinkDetail = new MessageEmbed().setColor(13928716).setTitle(theDrink.strDrink).setImage(theDrink.strDrinkThumb)
