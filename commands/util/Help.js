@@ -51,7 +51,7 @@ class Help extends Command {
           const cmd = this.client.commands.get(command) || this.client.commands.get(this.client.aliases.get(command));
           if (!cmd) return;
           if (level < this.client.levelCache[cmd.conf.permLevel]) return;
-          message.channel.send(`= ${cmd.help.name} = \n${cmd.help.description}\nusage:: ${cmd.help.usage}\nalises:: ${cmd.conf.aliases.join(", ")}`, {code:"asciidoc"});
+          message.channel.send(codeBlock("asciidoc", `= ${cmd.help.name} = \n${cmd.help.description}\nusage:: ${cmd.help.usage}\nalises:: ${cmd.conf.aliases.join(", ")}`));
         }
       }
 }
