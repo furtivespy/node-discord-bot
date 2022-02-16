@@ -7,7 +7,7 @@ class Say extends Command {
             description: "Make Bender speak.",
             category: "Fun",
             usage: "Use command followed by anything you want the bot to say - Bot will delete your message and say it himself\n- e.x.: '!say I am a robot'",
-            enabled: true,
+            enabled: false,
             guildOnly: false,
             allMessages: false,
             showHelp: true,
