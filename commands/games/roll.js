@@ -50,7 +50,6 @@ class Roll extends Command {
             } else {
                 message.react('🚫')
                 message.react('🎲')
-                message.react(message.guild.emojis.get('548934402646999042')).catch(this.client.logger.log("no emoji", 'error'))
             }
 
         } catch (e) {
