@@ -48,7 +48,7 @@
     "weighted": "^0.3.0",
     "word-salience": "^0.0.1",
     "word-wrap": "^1.2.3",
-    "wtf_wikipedia": "^8.5.1",
-    "wtf-plugin-markdown": "^0.2.0"
+    "wtf_wikipedia": "^10.0.3",
+    "wtf-plugin-markdown": "^1.0.0"
   }
 }

@@ -1,6 +1,4 @@
 const Command = require('../../base/Command.js')
-const fetch = require('node-fetch');
-var qs = require( 'querystring' );
 
 class Goss extends Command {
     constructor(client){
