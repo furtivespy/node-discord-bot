@@ -1,7 +1,7 @@
 const SlashCommand = require('../../base/SlashCommand.js')
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const fetch = require('node-fetch');
-const { MessageEmbed } = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 
 class Cy extends SlashCommand {
     constructor(client){
@@ -24,7 +24,7 @@ class Cy extends SlashCommand {
             let res = await fetch('http://inspirobot.me/api?generate=true')
             let text = await res.text()
             
-            const inspiration = new MessageEmbed()
+            const inspiration = new EmbedBuilder()
                 .setColor(6682360)
                 .setImage(text)
                 .setFooter({text: `Powered by inspirobot.me`})

@@ -18,6 +18,7 @@ class Help extends Command {
     }
 
     async run (message, args, level) {
+        console.log("Help command invoked")
         // If no specific command is called, show all filtered commands.
         if (!args[0]) {
           // Load guild settings (for prefixes and eventually per-guild tweaks)

@@ -1,7 +1,7 @@
 const SlashCommand = require('../../base/SlashCommand.js')
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const fetch = require('node-fetch');
-const { MessageEmbed, MessageActionRow, MessageSelectMenu } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, SelectMenuBuilder } = require('discord.js');
 
 class Drink extends SlashCommand {
     constructor(client){
@@ -38,9 +38,9 @@ class Drink extends SlashCommand {
                         })         
                     }
 
-                    const row = new MessageActionRow()
+                    const row = new ActionRowBuilder()
                     .addComponents(
-                        new MessageSelectMenu()
+                        new SelectMenuBuilder()
                             .setCustomId('select')
                             .setPlaceholder('Nothing selected')
                             .addOptions(options),
@@ -68,7 +68,7 @@ class Drink extends SlashCommand {
                     }
                 } 
                  
-                const drinkDetail = new MessageEmbed().setColor(13928716).setTitle(theDrink.strDrink).setImage(theDrink.strDrinkThumb)
+                const drinkDetail = new EmbedBuilder().setColor(13928716).setTitle(theDrink.strDrink).setImage(theDrink.strDrinkThumb)
                 let ingredients = ""
                 for (let i = 1; i < 16; i++) {
                     if (theDrink[`strMeasure${i}`] == null && theDrink[`strIngredient${i}`] == null) {
@@ -76,8 +76,8 @@ class Drink extends SlashCommand {
                     }
                     ingredients += `${theDrink[`strMeasure${i}`]} ${theDrink[`strIngredient${i}`]}\n`
                 }
-                drinkDetail.addField(`Ingredients`, ingredients)
-                drinkDetail.addField(`Instrctions`, theDrink.strInstructions)
+                drinkDetail.addFields({name: `Ingredients`, value: ingredients})
+                drinkDetail.addFields({name: `Instructions`, value: theDrink.strInstructions})
 
                 if (rply){
                     //await interaction.editReply({ content: 'Selected', components: [] })

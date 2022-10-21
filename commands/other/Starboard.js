@@ -1,3 +1,4 @@
+const { PermissionsBitField } = require('discord.js');
 const Command = require('../../base/Command.js')
 
 const EmptyStarboardData = {
@@ -42,7 +43,7 @@ class Starboard extends Command {
                     newChan = args[1].slice(2,-1)
                 }
                 const chan = message.guild.channels.cache.find(c => c.name == newChan || c.id == newChan)
-                if (chan && chan.permissionsFor(this.client.user).has("SEND_MESSAGES")) {
+                if (chan && chan.permissionsFor(this.client.user).has(PermissionsBitField.Flags.SendMessages)) {
                     starboardData.starboardChannel = chan.name
                     starboardData.starboardChannelId = chan.id
                     message.reply("Channel Updated")

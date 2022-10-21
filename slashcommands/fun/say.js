@@ -1,6 +1,5 @@
 const SlashCommand = require('../../base/SlashCommand.js')
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { MessageEmbed } = require('discord.js');
 const leet = require('leet')
 const flip = require('flip');
 const luni = require('../../modules/lunicode')

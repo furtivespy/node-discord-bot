@@ -1,205 +1,268 @@
-const { Client, Collection, Intents } = require("discord.js");
-const { REST } = require('@discordjs/rest');
-const { Routes } = require('discord-api-types/v9');
+const {
+  Client,
+  Collection,
+  Partials,
+  GatewayIntentBits,
+  PermissionsBitField,
+} = require("discord.js");
+const { REST } = require("@discordjs/rest");
+const { Routes } = require("discord-api-types/v9");
 const Enmap = require("enmap");
 const klaw = require("klaw");
 const path = require("path");
-const database = require('./db/db.js')
+const database = require("./db/db.js");
 
 class BenderBot extends Client {
-    constructor (options) {
-      super(options);
-      this.config = require("./config.js");
-      this.permLevels = require("./config.permissionLevels.js")
-      this.settings = new Enmap({ name: "settings", cloneLevel: "deep", fetchAll: false, autoFetch: true });
-      this.exclusions = new Enmap({ name: "exclusions", cloneLevel: "deep", fetchAll: false, autoFetch: true });
-      this.gamedata = new Enmap({ name: "gamedata", cloneLevel: "deep", fetchAll: false, autoFetch: true });
+  constructor(options) {
+    super(options);
+    this.config = require("./config.js");
+    this.permLevels = require("./config.permissionLevels.js");
+    this.settings = new Enmap({
+      name: "settings",
+      cloneLevel: "deep",
+      fetchAll: false,
+      autoFetch: true,
+    });
+    this.exclusions = new Enmap({
+      name: "exclusions",
+      cloneLevel: "deep",
+      fetchAll: false,
+      autoFetch: true,
+    });
+    this.gamedata = new Enmap({
+      name: "gamedata",
+      cloneLevel: "deep",
+      fetchAll: false,
+      autoFetch: true,
+    });
 
-      this.commands = new Collection();
-      this.slashcommands = new Collection();
-      this.aliases = new Collection();
-      this.messageEvents = new Collection();
-      this.guildDBs = {};
-  
-      //requiring the Logger class for easy console logging
-      this.logger = require("./modules/Logger.js");
-  
-      // Basically just an async shortcut to using a setTimeout. Nothing fancy!
-      this.wait = require("util").promisify(setTimeout);
-    }
-  
-    permlevel (message) {
-      let permlvl = 0;
-  
-      const permOrder = this.permLevels.slice(0).sort((p, c) => p.level < c.level ? 1 : -1);
-  
-      while (permOrder.length) {
-        const currentLevel = permOrder.shift();
-        if (message.guild && currentLevel.guildOnly) continue;
-        if (currentLevel.check(message)) {
-          permlvl = currentLevel.level;
-          break;
-        }
-      }
-      return permlvl;
-    }
-    
-    loadCommand (commandPath, commandName) {
-      try {
-        const props = new (require(`${commandPath}${path.sep}${commandName}`))(this);
-        this.logger.log(`Loading Command: ${props.help.name}. 👌`, "log");
-        props.conf.location = commandPath;
-        if (props.init) {
-          props.init(this);
-        }
-        this.commands.set(props.help.name, props);
-        props.conf.aliases.forEach(alias => {
-          this.aliases.set(alias, props.help.name);
-        });
-        return false;
-      } catch (e) {
-        return `Unable to load command ${commandName}: ${e}`;
-      }
-    }
+    this.commands = new Collection();
+    this.slashcommands = new Collection();
+    this.aliases = new Collection();
+    this.messageEvents = new Collection();
+    this.guildDBs = {};
 
-    loadSlashCommand (commandPath, commandName) {
-      try {
-        const props = new (require(`${commandPath}${path.sep}${commandName}`))(this);
-        this.logger.log(`Loading Slash Command: ${props.help.name}. 👌`, "log");
-        this.slashcommands.set(props.help.name, props);
-        return false;
-      } catch (e) {
-        return `Unable to load command ${commandName}: ${e}`;
-      }
-    }
+    //requiring the Logger class for easy console logging
+    this.logger = require("./modules/Logger.js");
 
-    loadEvent (commandPath, commandName) {
-      try {
-        const props = new (require(`${commandPath}${path.sep}${commandName}`))(this);
-        this.logger.log(`Loading Event: ${props.help.name}. 👌`, "log");
-        props.conf.location = commandPath;
-        if (props.init) {
-          props.init(this);
-        }
-        this.messageEvents.set(props.help.name, props);
-        return false;
-      } catch (e) {
-        return `Unable to load event ${commandName}: ${e}`;
+    // Basically just an async shortcut to using a setTimeout. Nothing fancy!
+    this.wait = require("util").promisify(setTimeout);
+  }
+
+  permlevel(message) {
+    let permlvl = 0;
+
+    const permOrder = this.permLevels
+      .slice(0)
+      .sort((p, c) => (p.level < c.level ? 1 : -1));
+
+    while (permOrder.length) {
+      const currentLevel = permOrder.shift();
+      if (message.guild && currentLevel.guildOnly) continue;
+      if (currentLevel.check(message)) {
+        permlvl = currentLevel.level;
+        break;
       }
     }
-  
-    async unloadCommand (commandPath, commandName) {
-      let command;
-      if (this.commands.has(commandName)) {
-        command = this.commands.get(commandName);
-      } else if (this.aliases.has(commandName)) {
-        command = this.commands.get(this.aliases.get(commandName));
+    return permlvl;
+  }
+
+  loadCommand(commandPath, commandName) {
+    try {
+      const props = new (require(`${commandPath}${path.sep}${commandName}`))(
+        this
+      );
+      this.logger.log(`Loading Command: ${props.help.name}. 👌`, "log");
+      props.conf.location = commandPath;
+      if (props.init) {
+        props.init(this);
       }
-      if (!command) return `The command \`${commandName}\` doesn"t seem to exist, nor is it an alias. Try again!`;
-  
-      if (command.shutdown) {
-        await command.shutdown(this);
+      this.commands.set(props.help.name, props);
+      props.conf.aliases.forEach((alias) => {
+        this.aliases.set(alias, props.help.name);
+      });
+      return false;
+    } catch (e) {
+      return `Unable to load command ${commandName}: ${e}`;
+    }
+  }
+
+  loadSlashCommand(commandPath, commandName) {
+    try {
+      const props = new (require(`${commandPath}${path.sep}${commandName}`))(
+        this
+      );
+      this.logger.log(`Loading Slash Command: ${props.help.name}. 👌`, "log");
+      this.slashcommands.set(props.help.name, props);
+      return false;
+    } catch (e) {
+      return `Unable to load command ${commandName}: ${e}`;
+    }
+  }
+
+  loadEvent(commandPath, commandName) {
+    try {
+      const props = new (require(`${commandPath}${path.sep}${commandName}`))(
+        this
+      );
+      this.logger.log(`Loading Event: ${props.help.name}. 👌`, "log");
+      props.conf.location = commandPath;
+      if (props.init) {
+        props.init(this);
       }
-      delete require.cache[require.resolve(`${commandPath}${path.sep}${commandName}.js`)];
+      this.messageEvents.set(props.help.name, props);
+      return false;
+    } catch (e) {
+      return `Unable to load event ${commandName}: ${e}`;
+    }
+  }
+
+  async unloadCommand(commandPath, commandName) {
+    let command;
+    if (this.commands.has(commandName)) {
+      command = this.commands.get(commandName);
+    } else if (this.aliases.has(commandName)) {
+      command = this.commands.get(this.aliases.get(commandName));
+    }
+    if (!command)
+      return `The command \`${commandName}\` doesn"t seem to exist, nor is it an alias. Try again!`;
+
+    if (command.shutdown) {
+      await command.shutdown(this);
+    }
+    delete require.cache[
+      require.resolve(`${commandPath}${path.sep}${commandName}.js`)
+    ];
+    return false;
+  }
+
+  getDatabase(guildId) {
+    if (this.guildDBs[guildId]) {
+      return this.guildDBs[guildId];
+    }
+    this.guildDBs[guildId] = new database(guildId);
+    return this.guildDBs[guildId];
+  }
+  /* SETTINGS FUNCTIONS
+  These functions are used by any and all location in the bot that wants to either
+  read the current *complete* guild settings (default + overrides, merged) or that
+  wants to change settings for a specific guild.
+  */
+
+  // getSettings merges the client defaults with the guild settings. guild settings in
+  // enmap should only have *unique* overrides that are different from defaults.
+  getSettings(guild) {
+    this.settings.ensure("default", this.config.defaultSettings);
+    if (!guild) return this.settings.get("default");
+    const guildConf = this.settings.get(guild.id) || {};
+    return {
+      ...this.settings.get("default"),
+      ...guildConf,
+    };
+  }
+
+  // writeSettings overrides, or adds, any configuration item that is different
+  // than the defaults. This ensures less storage wasted and to detect overrides.
+  writeSettings(id, newSettings) {
+    const defaults = this.settings.get("default");
+    let settings = this.settings.get(id);
+    if (typeof settings != "object") settings = {};
+    for (const key in newSettings) {
+      if (defaults[key] !== newSettings[key]) {
+        settings[key] = newSettings[key];
+      } else {
+        delete settings[key];
+      }
+    }
+    this.settings.set(id, settings);
+  }
+
+  getExclusions(guild) {
+    if (!guild) return [];
+    const guildData = this.exclusions.get(guild.id) || [];
+    return guildData;
+  }
+  setExclusions(guild, exclusionList) {
+    this.exclusions.set(guild.id, exclusionList);
+  }
+  getGameData(guild, gameName) {
+    const guildData = this.gamedata.get(guild.id) || {};
+    return guildData[gameName] || {};
+  }
+  setGameData(guild, gameName, updatedData) {
+    const guildData = this.gamedata.get(guild.id) || {};
+    this.gamedata.set(
+      guild.id,
+      Object.assign(guildData, {
+        [gameName]: updatedData,
+      })
+    );
+  }
+  /*
+  SINGLE-LINE AWAITMESSAGE
+  A simple way to grab a single reply, from the user that initiated
+  the command. Useful to get "precisions" on certain things...
+  USAGE
+  const response = await client.awaitReply(msg, "Favourite Color?");
+  msg.reply(`Oh, I really love ${response} too!`);
+  */
+  async awaitReply(msg, question, limit = 60000) {
+    const filter = (m) => (m.author.id = msg.author.id);
+    await msg.channel.send(question);
+    try {
+      const collected = await msg.channel.awaitMessages(filter, {
+        max: 1,
+        time: limit,
+        errors: ["time"],
+      });
+      return collected.first().content;
+    } catch (e) {
       return false;
     }
-  
-    getDatabase(guildId) {
-      if (this.guildDBs[guildId]) { return this.guildDBs[guildId] }
-      this.guildDBs[guildId] = new database(guildId)
-      return this.guildDBs[guildId]
-    }
-    /* SETTINGS FUNCTIONS
-    These functions are used by any and all location in the bot that wants to either
-    read the current *complete* guild settings (default + overrides, merged) or that
-    wants to change settings for a specific guild.
-    */
-  
-    // getSettings merges the client defaults with the guild settings. guild settings in
-    // enmap should only have *unique* overrides that are different from defaults.
-    getSettings (guild) {
-      this.settings.ensure("default", this.config.defaultSettings);
-      if(!guild) return this.settings.get("default");
-      const guildConf = this.settings.get(guild.id) || {};
-      return ({...this.settings.get("default"), ...guildConf});
-    }
-  
-    // writeSettings overrides, or adds, any configuration item that is different
-    // than the defaults. This ensures less storage wasted and to detect overrides.
-    writeSettings (id, newSettings) {
-      const defaults = this.settings.get("default");
-      let settings = this.settings.get(id);
-      if (typeof settings != "object") settings = {};
-      for (const key in newSettings) {
-        if (defaults[key] !== newSettings[key]) {
-          settings[key] = newSettings[key];
-        } else {
-          delete settings[key];
-        }
-      }
-      this.settings.set(id, settings);
-    }
-  
-    getExclusions (guild) {
-      if (!guild) return []
-      const guildData = this.exclusions.get(guild.id) || [];
-      return guildData;
-    }
-    setExclusions (guild, exclusionList){
-      this.exclusions.set(guild.id, exclusionList)
-    }
-    getGameData (guild, gameName) {
-      const guildData = this.gamedata.get(guild.id) || {};
-      return guildData[gameName] || {}
-    }
-    setGameData (guild, gameName, updatedData){
-      const guildData = this.gamedata.get(guild.id) || {};
-      this.gamedata.set(guild.id, Object.assign(guildData, {[gameName]: updatedData}))
-    }
-    /*
-    SINGLE-LINE AWAITMESSAGE
-    A simple way to grab a single reply, from the user that initiated
-    the command. Useful to get "precisions" on certain things...
-    USAGE
-    const response = await client.awaitReply(msg, "Favourite Color?");
-    msg.reply(`Oh, I really love ${response} too!`);
-    */
-    async awaitReply (msg, question, limit = 60000) {
-      const filter = m=>m.author.id = msg.author.id;
-      await msg.channel.send(question);
-      try {
-        const collected = await msg.channel.awaitMessages(filter, { max: 1, time: limit, errors: ["time"] });
-        return collected.first().content;
-      } catch (e) {
-        return false;
-      }
-    }
+  }
 }
 
-const client = new BenderBot({ partials: ['MESSAGE', 'CHANNEL', 'REACTION'], intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MEMBERS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS] });
+const client = new BenderBot({
+  partials: ["Partials.Guild", "Partials.Channel", "Partials.Reaction"],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions,
+  ],
+});
+
 const init = async () => {
   klaw("./commands").on("data", (item) => {
-      const cmdFile = path.parse(item.path);
-      if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-      const response = client.loadCommand(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
-      if (response) client.logger.error(response);
+    const cmdFile = path.parse(item.path);
+    if (!cmdFile.ext || cmdFile.ext !== ".js") return;
+    const response = client.loadCommand(
+      cmdFile.dir,
+      `${cmdFile.name}${cmdFile.ext}`
+    );
+    if (response) client.logger.error(response);
   });
 
   klaw("./events").on("data", (item) => {
     const cmdFile = path.parse(item.path);
     if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-    const response = client.loadEvent(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
+    const response = client.loadEvent(
+      cmdFile.dir,
+      `${cmdFile.name}${cmdFile.ext}`
+    );
     if (response) client.logger.error(response);
   });
-  
+
   klaw("./slashcommands").on("data", (item) => {
     const cmdFile = path.parse(item.path);
     if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-    const response = client.loadSlashCommand(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
+    const response = client.loadSlashCommand(
+      cmdFile.dir,
+      `${cmdFile.name}${cmdFile.ext}`
+    );
     if (response) client.logger.error(response);
   });
-
-
 
   // Then we load events, which will include our message and ready event.
   // const evtFiles = await readdir("./events/");
@@ -219,56 +282,85 @@ const init = async () => {
     client.levelCache[thisLevel.name] = thisLevel.level;
   }
 
-  client.on('ready', async () => {
+  client.on("ready", async () => {
     //nice to wait a sec before really being ready
     await client.wait(1000);
-    
-    client.user.setActivity(client.config.activity, {type: client.config.activityType});
+
+    client.user.setActivity(client.config.activity, {
+      type: client.config.activityType,
+    });
     client.appInfo = await client.application.fetch();
-    setInterval( async () => {
+    setInterval(async () => {
       client.appInfo = await client.application.fetch();
     }, 60000);
     if (!client.settings.has("default")) {
-      if (!client.config.defaultSettings) throw new Error("defaultSettings not preset in config.js or settings database. Bot cannot load.");
+      if (!client.config.defaultSettings)
+        throw new Error(
+          "defaultSettings not preset in config.js or settings database. Bot cannot load."
+        );
       client.settings.set("default", client.config.defaultSettings);
     }
 
-    await client.guilds.fetch()
-    client.logger.log(`Bot has started, in ${client.guilds.cache.size} guilds.`, 'ready');
+    await client.guilds.fetch();
+    client.logger.log(
+      `Bot has started, in ${client.guilds.cache.size} guilds.`,
+      "ready"
+    );
 
     client.guilds.cache.forEach(async (gld) => {
-      await gld.members.fetch()
-    })
-    client.logger.log(`guild members cached`)
+      await gld.members.fetch();
+    });
+    client.logger.log(`guild members cached`);
 
     //Register Slash Commands
-    const cmds = client.slashcommands.map(sc => sc.data.toJSON())
-    const rest = new REST({ version: '9' }).setToken(client.config.token);
+    const cmds = client.slashcommands.map((sc) => sc.data.toJSON());
+    const rest = new REST({
+      version: "9",
+    }).setToken(client.config.token);
 
-    
-    if (client.config.clientId == '548570412959662080') {
+    if (client.config.clientId == "548570412959662080") {
       //Test Server
-      rest.put(Routes.applicationGuildCommands(client.config.clientId, '545109131330191371'), { body: cmds })
-      .then(() => client.logger.log('Successfully registered application commands.'))
-      .catch(error => client.logger.error(error));
+      rest
+        .put(
+          Routes.applicationGuildCommands(
+            client.config.clientId,
+            "545109131330191371"
+          ),
+          {
+            body: cmds,
+          }
+        )
+        .then(() =>
+          client.logger.log("Successfully registered application commands.")
+        )
+        .catch((error) => client.logger.error(error));
     } else {
       //Prod Server
-      rest.put(
-        Routes.applicationCommands(client.config.clientId),
-        { body: cmds },
-      ).then(() => client.logger.log('Successfully registered application commands.'))
-      .catch(error => client.logger.error(error));
+      rest
+        .put(Routes.applicationCommands(client.config.clientId), {
+          body: cmds,
+        })
+        .then(() =>
+          client.logger.log("Successfully registered application commands.")
+        )
+        .catch((error) => client.logger.error(error));
     }
-  })
+  });
 
-  client.on("messageCreate", async message => {
+  client.on("messageCreate", async (message) => {
+    
     if (message.author.bot) return;
 
     // If message in in a server, see if bot can send to that channel, otherwise bot will ignore the messages
     if (message.guild) {
-      if (!message.channel.permissionsFor(message.guild.me).missing("SEND_MESSAGES")) return;
+      if (
+        !message.channel
+          .permissionsFor(message.guild.members.me)
+          .has(PermissionsBitField.Flags.SendMessages)
+      )
+        return;
     }
-    
+
     const settings = client.getSettings(message.guild);
     message.settings = settings;
 
@@ -277,64 +369,73 @@ const init = async () => {
     if (message.content.match(prefixMention)) {
       return message.reply(`My prefix on this guild is \`${settings.prefix}\``);
     }
-  
     // Also good practice to ignore any message that does not start with our prefix,
     // which is set in the configuration file.
     if (message.content.indexOf(settings.prefix) !== 0) return;
-
-    var args = []
+    var args = [];
     if (!message.guild) {
       args = message.content.trim().split(/ +/g);
-    } else { 
+    } else {
       args = message.content.slice(settings.prefix.length).trim().split(/ +/g);
     }
     const command = args.shift().toLowerCase();
-
     // If the member on a guild is invisible or not cached, fetch them.
-    if (message.guild && !message.member) await message.guild.members.fetch(message.author);
-
+    if (message.guild && !message.member)
+      await message.guild.members.fetch(message.author);
     // Get the user or member's permission level from the elevation
     const level = client.permlevel(message);
 
     // Check whether the command, or alias, exist in the collections defined
     // in app.js.
-    const cmd = client.commands.get(command) || client.commands.get(client.aliases.get(command));
+    const cmd =
+      client.commands.get(command) ||
+      client.commands.get(client.aliases.get(command));
     // using this const varName = thing OR otherthign; is a pretty efficient
     // and clean way to grab one of 2 values!
     if (!cmd) return;
-
     // Some commands may not be useable in DMs. This check prevents those commands from running
     // and return a friendly error message.
     if (cmd && !message.guild && cmd.conf.guildOnly)
-      return message.channel.send("This command is unavailable via private message. Please run this command in a server.");
+      return message.channel.send(
+        "This command is unavailable via private message. Please run this command in a server."
+      );
     //don't run a disabled command
-    if (!cmd.conf.enabled) return
+    if (!cmd.conf.enabled) return;
     //dont run an exluced command
-    const exclusions = client.getExclusions(message.guild)
-    if(exclusions.includes(cmd.help.name)) return
+    const exclusions = client.getExclusions(message.guild);
+    if (exclusions.includes(cmd.help.name)) return;
     //check permission level
     if (level < client.levelCache[cmd.conf.permLevel]) {
       if (settings.systemNotice === "true") {
-        return message.channel.send(`You do not have permission to use this command.
-        Your permission level is ${level} (${client.permLevels.find(l => l.level === level).name})
-        This command requires level ${client.levelCache[cmd.conf.permLevel]} (${cmd.conf.permLevel})`);
+        return message.channel
+          .send(`You do not have permission to use this command.
+        Your permission level is ${level} (${
+          client.permLevels.find((l) => l.level === level).name
+        })
+        This command requires level ${client.levelCache[cmd.conf.permLevel]} (${
+          cmd.conf.permLevel
+        })`);
       } else {
         return;
       }
     }
-      
     // To simplify message arguments, the author's level is now put on level (not member, so it is supported in DMs)
     // The "level" command module argument will be deprecated in the future.
     message.author.permLevel = level;
     message.command = command;
 
     message.flags = [];
-    while (args[0] &&args[0][0] === "-") {
+    while (args[0] && args[0][0] === "-") {
       message.flags.push(args.shift().slice(1));
     }
-    
+
     // If the command exists, **AND** the user has permission, run it.
-    client.logger.log(`${client.permLevels.find(l => l.level === level).name} ${message.author.username} (${message.author.id}) ran command ${cmd.help.name}`, "cmd");
+    client.logger.log(
+      `${client.permLevels.find((l) => l.level === level).name} ${
+        message.author.username
+      } (${message.author.id}) ran command ${cmd.help.name}`,
+      "cmd"
+    );
     //client.logger.log(`${message.author.username} (${message.author.id}) ran command ${cmd.help.name}`, "cmd");
     cmd.run(message, args, level);
   });
@@ -344,12 +445,16 @@ const init = async () => {
 };
 
 //run every message commands
-client.on("messageCreate", async message => {
+client.on("messageCreate", async (message) => {
+  
   if (message.author.bot) return;
   if (!message.guild) {
     return;
   }
-  if (!message.channel.permissionsFor(message.guild.me).missing("SEND_MESSAGES")) return;
+  if (
+    !message.channel.permissionsFor(message.guild.members.me).has(PermissionsBitField.Flags.SendMessages)
+  )
+    return;
   const settings = client.getSettings(message.guild);
   message.settings = settings;
   //Ignore actual commands or command attempts
@@ -357,20 +462,26 @@ client.on("messageCreate", async message => {
   //args is each word now
   const args = message.content.trim().split(/ +/g);
   // If the member on a guild is invisible or not cached, fetch them.
-  if (message.guild && !message.member) await message.guild.members.fetch(message.author);
+  if (message.guild && !message.member)
+    await message.guild.members.fetch(message.author);
   // Get the user or member's permission level from the elevation
   const level = client.permlevel(message);
-  const exclusions = client.getExclusions(message.guild)
-  const commandsToRun = 
-    client.commands.filter(cmd => client.levelCache[cmd.conf.permLevel] <= level && cmd.conf.enabled && cmd.conf.allMessages && !exclusions.includes(cmd.help.name));
-  commandsToRun.forEach(cmd => {
+  const exclusions = client.getExclusions(message.guild);
+  const commandsToRun = client.commands.filter(
+    (cmd) =>
+      client.levelCache[cmd.conf.permLevel] <= level &&
+      cmd.conf.enabled &&
+      cmd.conf.allMessages &&
+      !exclusions.includes(cmd.help.name)
+  );
+  commandsToRun.forEach((cmd) => {
     cmd.run(message, args, level);
   });
 });
 
 const events = {
-	MESSAGE_REACTION_ADD: 'messageReactionAdd',
-	MESSAGE_REACTION_REMOVE: 'messageReactionRemove',
+  MESSAGE_REACTION_ADD: "messageReactionAdd",
+  MESSAGE_REACTION_REMOVE: "messageReactionRemove",
 };
 /*
 client.on('raw', async event => {
@@ -394,9 +505,9 @@ client.on('raw', async event => {
 	//if (message.reactions.size === 1) message.reactions.delete(emojiKey);
 });
 */
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (reaction.partial){
-    await reaction.fetch()
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (reaction.partial) {
+    await reaction.fetch();
   }
   if (!reaction.message.guild) {
     return;
@@ -404,19 +515,22 @@ client.on('messageReactionAdd', async (reaction, user) => {
   const settings = client.getSettings(reaction.message.guild);
   reaction.settings = settings;
   //const level = client.permlevel(message);
-  const exclusions = client.getExclusions(reaction.message.guild)
-  const commandsToRun = 
-    client.messageEvents.filter(cmd => cmd.help.eventType == 'messageReactionAdd' && !exclusions.includes(cmd.help.name) && cmd.conf.enabled);
-  commandsToRun.forEach(cmd => {
+  const exclusions = client.getExclusions(reaction.message.guild);
+  const commandsToRun = client.messageEvents.filter(
+    (cmd) =>
+      cmd.help.eventType == "messageReactionAdd" &&
+      !exclusions.includes(cmd.help.name) &&
+      cmd.conf.enabled
+  );
+  commandsToRun.forEach((cmd) => {
     client.logger.log(`ran Event ${cmd.help.name}`, "cmd");
     cmd.run(reaction, user);
   });
-
 });
 
-client.on('messageReactionRemove', async (reaction, user) => {
-  if (reaction.partial){
-    await reaction.fetch()
+client.on("messageReactionRemove", async (reaction, user) => {
+  if (reaction.partial) {
+    await reaction.fetch();
   }
   if (!reaction.message.guild) {
     return;
@@ -424,47 +538,53 @@ client.on('messageReactionRemove', async (reaction, user) => {
   const settings = client.getSettings(reaction.message.guild);
   reaction.settings = settings;
   //const level = client.permlevel(message);
-  const exclusions = client.getExclusions(reaction.message.guild)
-  const commandsToRun = 
-    client.messageEvents.filter(cmd => cmd.help.eventType == 'messageReactionRemove' && !exclusions.includes(cmd.help.name) && cmd.conf.enabled);
-  commandsToRun.forEach(cmd => {
+  const exclusions = client.getExclusions(reaction.message.guild);
+  const commandsToRun = client.messageEvents.filter(
+    (cmd) =>
+      cmd.help.eventType == "messageReactionRemove" &&
+      !exclusions.includes(cmd.help.name) &&
+      cmd.conf.enabled
+  );
+  commandsToRun.forEach((cmd) => {
     client.logger.log(`ran Event ${cmd.help.name}`, "cmd");
     cmd.run(reaction, user);
-  })
+  });
 });
 
-client.on('interactionCreate', async interaction => {
-  client.logger.log(`Slash Command ${interaction.commandName}`)
-	if (!interaction.isCommand()) return;
-	const command = client.slashcommands.get(interaction.commandName);
+client.on("interactionCreate", async (interaction) => {
+  client.logger.log(`Slash Command ${interaction.commandName}`);
+  if (!interaction.isCommand()) return;
+  const command = client.slashcommands.get(interaction.commandName);
 
-	if (!command) return;
+  if (!command) return;
 
-	try {
-		await command.execute(interaction);
-	} catch (error) {
-		console.error(error);
-		return interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-	}
+  try {
+    await command.execute(interaction);
+  } catch (error) {
+    console.error(error);
+    return interaction.reply({
+      content: "There was an error while executing this command!",
+      ephemeral: true,
+    });
+  }
 });
 
-  
 init();
 
-client.on("disconnect", () => client.logger.warn("Bot is disconnecting..."))
+client
+  .on("disconnect", () => client.logger.warn("Bot is disconnecting..."))
   .on("reconnecting", () => client.logger.log("Bot reconnecting...", "log"))
-  .on("error", e => client.logger.error(e))
-  .on("warn", info => client.logger.warn(info));
+  .on("error", (e) => client.logger.error(e))
+  .on("warn", (info) => client.logger.warn(info));
 
 process.on("uncaughtException", (err) => {
   const errorMsg = err.stack.replace(new RegExp(`${__dirname}/`, "g"), "./");
   console.error("Uncaught Exception: ", errorMsg);
-  // Always best practice to let the code crash on uncaught exceptions. 
+  // Always best practice to let the code crash on uncaught exceptions.
   // Because you should be catching them anyway.
   process.exit(1);
 });
 
-process.on("unhandledRejection", err => {
+process.on("unhandledRejection", (err) => {
   console.error("Uncaught Promise Error: ", err);
 });
-  

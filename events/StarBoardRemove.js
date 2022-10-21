@@ -1,6 +1,6 @@
 const Event = require('../base/Event.js')
 const EventTypes = require('../base/EventTypes.js')
-const { MessageEmbed } = require("discord.js")
+const { EmbedBuilder, PermissionsBitField } = require("discord.js")
 
 const EmptyStarboardData = {
     starboardChannel: undefined,
@@ -44,7 +44,7 @@ class StarBoardRemove extends Event {
             if (!starboardData.starboardChannel) { return }
             var db = this.client.getDatabase(reaction.message.guild.id)
             const starChan = reaction.message.guild.channels.cache.find(c => c.id == starboardData.starboardChannelId)
-            if (!starChan || !starChan.permissionsFor(this.client.user).has("SEND_MESSAGES")) { return }
+            if (!starChan || !starChan.permissionsFor(this.client.user).has(PermissionsBitField.Flags.SendMessages)) { return }
 
             var starMsg = db.starboardFind(reaction.message.id, reaction._emoji.name)
             if (!starMsg) { return }
@@ -57,23 +57,23 @@ class StarBoardRemove extends Event {
             }
             const attachments = msg.attachments && msg.attachments.first() ? msg.attachments.first() : undefined;
 
-            var theEmbed = new MessageEmbed()
+            var theEmbed = new EmbedBuilder()
             if (msg.embeds[0]) {
-                theEmbed = new MessageEmbed(msg.embeds[0])
+                theEmbed = new EmbedBuilder(msg.embeds[0])
             } else {
-                theEmbed.color = 15133822
-                theEmbed.description = msg.content
+                theEmbed.setColor(15133822)
+                theEmbed.setDescription(msg.content)
             }
-            theEmbed.timestamp = msg.createdAt
-            theEmbed.color = 15133822
-            theEmbed.author = {
+            theEmbed.setTimestamp(msg.createdAt)
+            theEmbed.setColor(15133822)
+            theEmbed.setAuthor({
                 "name": msg.member.displayName,
                 "icon_url": msg.author.displayAvatarURL(),
                 "url": msg.url,
-            }
-            theEmbed.footer = {text: `in #${msg.channel.name}`}
-            theEmbed.addField("Source", `[link](${msg.url})`)
-            if (attachments) { theEmbed.image = attachments}
+            })
+            theEmbed.setFooter({text: `in #${msg.channel.name}`})
+            theEmbed.addFields({name: "Source", value: `[link](${msg.url})`})
+            if (attachments) { theEmbed.setImage(attachments)}
 
             var starPost = await starChan.messages.fetch(starMsg.starMessage)
             if (reaction.count < starboardData.minimumStarCount) {
