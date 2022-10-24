@@ -22,54 +22,11 @@ class Wiki extends Command {
 
   async run(message, args, level) {
     try {
-      let query = new URLSearchParams();
-      query.set("action", "opensearch");
-      query.set("format", "json");
-      query.set("limit", 1);
-      query.set("search", args.join(" "));
-      fetch(`https://en.wikipedia.org/w/api.php?${query.toString()}`)
-        .then((res) => res.json())
-        .then((searchResults) => {
-          if (searchResults[1].length > 0) {
-            wtf.extend(require("wtf-plugin-markdown"));
-            wtf.fetch(searchResults[1][0]).then((doc) => {
-              if (doc.isDisambiguation()) {
-                let somelinks = SampleSize(doc.links(), 6);
-                let links = "";
-                somelinks.forEach((item) => {
-                  links += `\n * ${item.page()}`;
-                });
-                message.channel.send(
-                  `Too many ${searchResults[0]} results. Try being more specific with "(film)" or "(album)" or something like:${links}`
-                );
-              } else {
-                let description = doc.section(0).markdown();
-                description = description.replace(
-                  /(\(.\/)/gm,
-                  "(https://en.wikipedia.org/wiki/"
-                );
-                message.channel.send({
-                  embeds: [
-                    {
-                      author: { name: doc.title(), url: searchResults[3][0] },
-                      description: description.substring(0, 2040),
-                      color: 13749966,
-                      thumbnail: {
-                        url: doc.images()[0] ? doc.images()[0].url() : "",
-                      },
-                    },
-                  ],
-                });
-              }
-            });
-          } else {
-            message.channel.send(
-              "Couldn't find any info on " + searchResults[0]
-            );
-          }
-        });
+        message.reply({
+            content: "The Wiki command is now deprecated. Please use the `/wiki` command instead.",
+        })
     } catch (e) {
-      this.client.logger.log(e, "error");
+        this.client.logger.log(e,'error');
     }
   }
 }

@@ -18,14 +18,9 @@ class Goss extends Command {
 
     async run (message, args, level) {
         try {
-            let announce = (message.command == "mildgoss") ? "Mild goss, Mooks!" : "@here Listen up, Mooks!";
-
-            let input = args.join(" ");
-            if (input.length === 0) { input = this.client.emojis.cache.get("543465138997690368") }
-            message.channel.send(`${announce} 
-${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}
-${this.client.emojis.cache.get("543465138997690368")}${this.client.emojis.cache.get("543465138997690368")}   GOSS ALERT   ${this.client.emojis.cache.get("543465138997690368")}${this.client.emojis.cache.get("543465138997690368")}
-${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}${input}${this.client.emojis.cache.get("543465138997690368")}`)
+            message.reply({
+                content: "The Goss command is now deprecated. Please use the `/gossip` command instead.",
+            })
         } catch (e) {
             this.client.logger.log(e,'error');
         }
