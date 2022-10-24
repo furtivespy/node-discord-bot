@@ -89,7 +89,7 @@ class StarBoardAdd extends Event {
           theEmbed = new EmbedBuilder(msg.embeds[0]);
         } else {
           theEmbed.setColor(15133822)
-          theEmbed.setDescription(msg.content)
+          theEmbed.setDescription(msg.content && msg.content.length >= 1 ? msg.content : "--");
         }
         theEmbed.setTimestamp(msg.createdAt)
         theEmbed.setColor(15133822)
