@@ -52,14 +52,19 @@ class Wiki extends SlashCommand {
       } else {
         wtf.extend(require("wtf-plugin-markdown"));
         wtf.fetch(search).then((doc) => {
-          if (doc.isDisambiguation()) {
-            let somelinks = SampleSize(doc.links(), 6);
+          if (!doc) {
+            interaction.reply({
+              content: `Unable to find a wikipedia page with the title of '${search}'`,
+              ephemeral: true,
+            });
+          } else if (doc.isDisambiguation()) {
+            let somelinks = SampleSize(doc.links(), 10);
             let links = "";
             somelinks.forEach((item) => {
               links += `\n * ${item.page()}`;
             });
             interaction.reply({
-              content: `Too many ${search} results. Try being more specific with "(film)" or "(album)" or something like:${links}`,
+              content: `[${search}](${doc.url()}) is a disambiguation page.\nPerhaps you meant to be more specific with "(film)" or "(album)"?)\n\n**Here are some articles associated with your search:** ${links}`,
               ephemeral: true,
             });
           } else {
