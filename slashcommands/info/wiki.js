@@ -1,5 +1,5 @@
 const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
+const { SlashCommandBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const wtf = require("wtf_wikipedia");
 const SampleSize = require("lodash/sampleSize");

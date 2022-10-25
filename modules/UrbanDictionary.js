@@ -1,13 +1,13 @@
 const fetch = require('node-fetch');
-const qs = require( 'querystring' );
 const _ = require('lodash');
 const BASE_URL = 'https://api.urbandictionary.com/v0';
 
 class UrbanDictionary {
     static async search(searchTerm){
          try {
-            var query =  qs.stringify( {term: searchTerm});
-            var res = await fetch(`${BASE_URL}/define?${query}`);
+            let query = new URLSearchParams()
+            query.set("term", searchTerm)
+            var res = await fetch(`${BASE_URL}/define?${query.toString()}`);
             var searchResults = await res.json();
             if (searchResults.list.length === 0) return [];
             var exactMatches = _.filter(searchResults.list, d => d.word.toLowerCase() === searchTerm.toLowerCase());
