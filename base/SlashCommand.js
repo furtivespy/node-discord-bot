@@ -1,4 +1,4 @@
-
+const fetch = require("node-fetch");
 
 class SlashCommand {
     constructor(client, {
@@ -13,7 +13,20 @@ class SlashCommand {
       this.help = { name, description, usage };
     }
 
-
+    async getGoogleImg(searchTerm, isGif, start=1, safeSearch = true){
+      let query = new URLSearchParams()
+      query.set("key", this.client.config.google_key)
+      query.set("cx", this.client.config.google_cxid)
+      query.set("searchType", "image")
+      query.set("q", searchTerm)
+      query.set("start", start)
+      query.set("safe", (safeSearch) ? 'high' : 'off')
+      if(isGif) query.set("fileType", "gif")
+      
+      let res = await fetch(`https://www.googleapis.com/customsearch/v1?${query.toString()}`)
+      let json = await res.json()
+      return json.items
+    }
     
   }
   module.exports = SlashCommand;
