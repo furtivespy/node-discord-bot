@@ -82,7 +82,7 @@ class Wiki extends SlashCommand {
         await interaction.editReply({ embeds: [embed] })
 
       } else {
-        const res = await fetch(`https://some-random-api.ml/animal/${theAnimal}`);
+        const res = await fetch(`https://some-random-api.com/animal/${theAnimal}`);
         const data = await res.json()
         const embed = new EmbedBuilder()
           .setTitle(`Random ${theAnimal}`)
