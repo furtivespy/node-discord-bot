@@ -29,7 +29,7 @@
     "discord-api-types": "^0.26.1",
     "discord.js": "^14.6.0",
     "enmap": "^5.8.2",
-    "fast-xml-parser": "^3.17.4",
+    "fast-xml-parser": "^4.2.4",
     "flip": "^1.0.0",
     "fuse.js": "^6.4.3",
     "he": "^1.2.0",
