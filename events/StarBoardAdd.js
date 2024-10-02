@@ -30,7 +30,7 @@ class StarBoardAdd extends Event {
       qualifier: "⭐",
       description: "Add some stars!",
       category: "Miscellaneous",
-      usage: "React to message to add messge to starboard",
+      usage: "React to message to add message to starboard",
       enabled: true,
       guildOnly: true,
       showHelp: true,

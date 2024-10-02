@@ -3,6 +3,7 @@ const fetch = require('node-fetch')
 const he = require('he')
 const _ = require('lodash')
 const ws = require('word-salience')
+const { createGeminiAI } = require('../../modules/geminiai.js')
 
 const clean = text => {
     if (typeof(text) === "string")
@@ -42,6 +43,24 @@ class Test extends Command {
     async run (message, args, level) {
         try {
             //message.channel.send('Testing...')
+
+            const gemini = createGeminiAI(this.client, this.client.config.geminiKey)
+            const context = await gemini.buildContext(message)
+            console.log(context)
+            const result = await gemini.generateContent(context)
+            //console.log(result)
+            message.channel.send(result)
+
+            /*
+            const genAI = new GoogleGenerativeAI(this.client.config.geminiKey)
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+            const result = await model.generateContent("in under 2000 characters, write a short story about a raccoon learning to code.")
+            console.log(result.response.text())
+            message.channel.send(result.response.text())    
+*/
+
+            /// Old Test:
+            /*
             var db = this.client.getDatabase(message.guild.id)
             var count3 = db.db.prepare("select count(*) as rows from trigram")
             var count4 = db.db.prepare("select count(*) as rows from quadgram")
@@ -70,6 +89,7 @@ class Test extends Command {
             await message.author.send(results.slice(25,50).join(", "))
             await message.author.send(results.slice(50,75).join(", "))
             console.log("sent messages!")
+            */
         } catch (e) {
            this.client.logger.log(e,'error')
            //message.channel.send(clean(e))

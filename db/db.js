@@ -9,7 +9,11 @@ const endWord = String.fromCharCode(0x0003)
 
 class Database {
     constructor(guildid){
-        this.db = new sqlite(`./data/${guildid}.sqlite`)
+        if (process.env.IS_ON_FLY) {
+            this.db = new sqlite(`/data/${guildid}.sqlite`)
+        } else {
+            this.db = new sqlite(`./data/${guildid}.sqlite`)
+        }
 
         //DB INIT SECTION
         //Markov Chains

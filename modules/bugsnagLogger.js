@@ -3,7 +3,7 @@ const Bugsnag = require('@bugsnag/js')
 class BugsnagLogger {
   constructor (apiKey) {
     this.logger = require("./Logger.js");
-    this.bugsnagClient = Bugsnag.start(apiKey)
+    this.bugsnagClient = Bugsnag.start({apiKey: apiKey,  releaseStage: 'development' })
   }
 
 
