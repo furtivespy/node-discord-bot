@@ -1,5 +1,4 @@
 const Command = require('../../base/Command.js')
-
 class Chatbot extends Command {
     constructor(client){
         super(client, {
@@ -31,7 +30,14 @@ class Chatbot extends Command {
                 var respond = Math.floor(Math.random() * 100)
                 if(respond < responseChance || message.mentions.has(this.client.user)){                
                     var words = db.makeSentence(message.settings.markovLevel)
-                    message.channel.send(words)
+
+                    if (message.mentions.has(this.client.user)) {
+                        const context = await this.client.geminiAI.buildContext(message, words)
+                        const result = await this.client.geminiAI.generateContent(context, message)
+                        message.channel.send(result)
+                    } else {
+                        await message.channel.send(words)
+                    }
                 }
             }
         } catch (e) {

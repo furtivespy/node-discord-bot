@@ -11,6 +11,8 @@ const Enmap = require("enmap");
 const klaw = require("klaw");
 const path = require("path");
 const database = require("./db/db.js");
+const { createGeminiAI } = require("./modules/geminiai.js")
+const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
 
 class BenderBot extends Client {
   constructor(options) {
@@ -22,18 +24,21 @@ class BenderBot extends Client {
       cloneLevel: "deep",
       fetchAll: false,
       autoFetch: true,
+      dataDir: enmapDataDir,
     });
     this.exclusions = new Enmap({
       name: "exclusions",
       cloneLevel: "deep",
       fetchAll: false,
       autoFetch: true,
+      dataDir: enmapDataDir,
     });
     this.gamedata = new Enmap({
       name: "gamedata",
       cloneLevel: "deep",
       fetchAll: false,
       autoFetch: true,
+      dataDir: enmapDataDir,
     });
 
     this.commands = new Collection();
@@ -46,6 +51,8 @@ class BenderBot extends Client {
     //this.logger = require("./modules/Logger.js");
     this.logger = require("./modules/bugsnagLogger.js")(this.config.bugsnagKey);
 
+    // add geminiAI module
+    this.geminiAI = createGeminiAI(this)
     // Basically just an async shortcut to using a setTimeout. Nothing fancy!
     this.wait = require("util").promisify(setTimeout);
   }
@@ -224,7 +231,7 @@ class BenderBot extends Client {
 }
 
 const client = new BenderBot({
-  partials: ["Partials.Guild", "Partials.Channel", "Partials.Reaction"],
+  
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -232,6 +239,13 @@ const client = new BenderBot({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
   ],
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.Guild,
+    Partials.User,
+  ]
 });
 
 const init = async () => {
