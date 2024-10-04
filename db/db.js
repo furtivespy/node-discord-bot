@@ -255,6 +255,83 @@ class Database {
         this.starDelete.run(starMessageId)
     }
 
+    top500Words() {
+        // Table Structure: trigram (id TEXT PRIMARY KEY NOT NULL, word1 TEXT, word2 TEXT, word3 TEXT, count INT)
+        // words 1,2,3 are words that have appeared in a row, and count is the number of times these 3 words have appeared in that order
+        // This function runs a SQL query that returns the 500 most popular words used, excluding common English words and words with 3 or fewer characters
+
+        const commonWords = [
+            'the', 'of', 'to', 'and', 'a', 'in', 'is', 'it', 'you', 'that', 'he', 'was', 'for', 'on', 'are', 'with', 'as', 'I', 'his', 'they',
+            'be', 'at', 'one', 'have', 'this', 'from', 'or', 'had', 'by', 'hot', 'but', 'some', 'what', 'there', 'we', 'can', 'out', 'other',
+            'were', 'all', 'your', 'when', 'up', 'use', 'word', 'how', 'said', 'an', 'each', 'she', 'which', 'do', 'their', 'time', 'if',
+            'will', 'way', 'about', 'many', 'then', 'them', 'would', 'write', 'like', 'so', 'these', 'her', 'long', 'make', 'thing', 'see',
+            'him', 'two', 'has', 'look', 'more', 'day', 'could', 'go', 'come', 'did', 'my', 'sound', 'no', 'most', 'number', 'who', 'over',
+            'know', 'water', 'than', 'call', 'first', 'people', 'may', 'down', 'side', 'been', 'now', 'find', 'any', 'new', 'work', 'part',
+            'take', 'get', 'place', 'made', 'live', 'where', 'after', 'back', 'little', 'only', 'round', 'man', 'year', 'came', 'show',
+            'every', 'good', 'me', 'give', 'our', 'under', 'name', 'very', 'through', 'just', 'form', 'much', 'great', 'think', 'say',
+            'help', 'low', 'line', 'before', 'turn', 'cause', 'same', 'mean', 'differ', 'move', 'right', 'boy', 'old', 'too', 'does',
+            'tell', 'sentence', 'set', 'three', 'want', 'air', 'well', 'also', 'play', 'small', 'end', 'put', 'home', 'read', 'hand',
+            'port', 'large', 'spell', 'add', 'even', 'land', 'here', 'must', 'big', 'high', 'such', 'follow', 'act', 'why', 'ask',
+            'men', 'change', 'went', 'light', 'kind', 'off', 'need', 'house', 'picture', 'try', 'us', 'again', 'animal'
+        ].map(word => `'${word}'`).join(',');
+
+        const query = `
+            SELECT word, SUM(count) as total_count
+            FROM (
+                SELECT word1 as word, SUM(count) as count FROM trigram GROUP BY word1
+                UNION ALL
+                SELECT word2 as word, SUM(count) as count FROM trigram GROUP BY word2
+                UNION ALL
+                SELECT word3 as word, SUM(count) as count FROM trigram GROUP BY word3
+            )
+            WHERE LOWER(word) NOT IN (${commonWords})
+            AND LENGTH(word) > 3
+            GROUP BY word
+            ORDER BY total_count DESC
+            LIMIT 500
+        `;
+        
+        return this.db.prepare(query).all();
+    }
+
+    top500WordPairs() {
+        // This function runs a SQL query that returns the 500 most popular word pairs used,
+        // excluding pairs containing common English words and words with 3 or fewer characters
+
+        const commonWords = [
+            'the', 'of', 'to', 'and', 'a', 'in', 'is', 'it', 'you', 'that', 'he', 'was', 'for', 'on', 'are', 'with', 'as', 'I', 'his', 'they',
+            'be', 'at', 'one', 'have', 'this', 'from', 'or', 'had', 'by', 'hot', 'but', 'some', 'what', 'there', 'we', 'can', 'out', 'other',
+            'were', 'all', 'your', 'when', 'up', 'use', 'word', 'how', 'said', 'an', 'each', 'she', 'which', 'do', 'their', 'time', 'if',
+            'will', 'way', 'about', 'many', 'then', 'them', 'would', 'write', 'like', 'so', 'these', 'her', 'long', 'make', 'thing', 'see',
+            'him', 'two', 'has', 'look', 'more', 'day', 'could', 'go', 'come', 'did', 'my', 'sound', 'no', 'most', 'number', 'who', 'over',
+            'know', 'water', 'than', 'call', 'first', 'people', 'may', 'down', 'side', 'been', 'now', 'find', 'any', 'new', 'work', 'part',
+            'take', 'get', 'place', 'made', 'live', 'where', 'after', 'back', 'little', 'only', 'round', 'man', 'year', 'came', 'show',
+            'every', 'good', 'me', 'give', 'our', 'under', 'name', 'very', 'through', 'just', 'form', 'much', 'great', 'think', 'say',
+            'help', 'low', 'line', 'before', 'turn', 'cause', 'same', 'mean', 'differ', 'move', 'right', 'boy', 'old', 'too', 'does',
+            'tell', 'sentence', 'set', 'three', 'want', 'air', 'well', 'also', 'play', 'small', 'end', 'put', 'home', 'read', 'hand',
+            'port', 'large', 'spell', 'add', 'even', 'land', 'here', 'must', 'big', 'high', 'such', 'follow', 'act', 'why', 'ask',
+            'men', 'change', 'went', 'light', 'kind', 'off', 'need', 'house', 'picture', 'try', 'us', 'again', 'animal'
+        ].map(word => `'${word}'`).join(',');
+
+        const query = `
+            SELECT word_pair, SUM(count) as total_count
+            FROM (
+                SELECT word1 || ' ' || word2 as word_pair, SUM(count) as count FROM trigram GROUP BY word1, word2
+                UNION ALL
+                SELECT word2 || ' ' || word3 as word_pair, SUM(count) as count FROM trigram GROUP BY word2, word3
+            )
+            WHERE LOWER(SUBSTR(word_pair, 1, INSTR(word_pair, ' ') - 1)) NOT IN (${commonWords})
+            AND LOWER(SUBSTR(word_pair, INSTR(word_pair, ' ') + 1)) NOT IN (${commonWords})
+            AND LENGTH(SUBSTR(word_pair, 1, INSTR(word_pair, ' ') - 1)) > 2
+            AND LENGTH(SUBSTR(word_pair, INSTR(word_pair, ' ') + 1)) > 2
+            GROUP BY word_pair
+            ORDER BY total_count DESC
+            LIMIT 500
+        `;
+        
+        return this.db.prepare(query).all();
+    }
+
 }
 
 module.exports = Database;

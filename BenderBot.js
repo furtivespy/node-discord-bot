@@ -345,9 +345,9 @@ const init = async () => {
             body: cmds,
           }
         )
-        .then(() =>
+        .then((response) => {
           client.logger.log("Successfully registered application commands.")
-        )
+        })
         .catch((error) => client.logger.error(error));
     } else {
       //Prod Server
@@ -355,9 +355,10 @@ const init = async () => {
         .put(Routes.applicationCommands(client.config.clientId), {
           body: cmds,
         })
-        .then(() =>
-          client.logger.log("Successfully registered application commands.")
-        )
+        .then((response) => {
+          client.logger.log("Successfully registered application commands.");
+          //client.logger.log(JSON.stringify(response, null, 2));
+        })
         .catch((error) => client.logger.error(error));
     }
   });

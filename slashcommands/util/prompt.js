@@ -26,11 +26,15 @@ class Prompt extends SlashCommand {
 
 		try {
 			const response = await interaction.client.geminiAI.runPrompt(prompt)
-
-			let msg = await interaction.editReply(response[0]);
+      let msg = interaction
+      if (response[0].length >= 0) {
+        msg = await interaction.editReply(response[0]);
+      }
 			if (response.length > 1) {
 				for (let i = 1; i < response.length; i++) {
-					msg = await msg.reply(response[i]);
+          if (response[i].length >= 0) {
+					  msg = await msg.reply(response[i]);
+          }
 				}
 			}
 
