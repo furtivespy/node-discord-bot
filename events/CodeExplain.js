@@ -31,12 +31,19 @@ class CodeExplain extends Event {
           let code = block.replace(/```(\w+)?\n/, '').replace(/```$/, '').trim();
                     
           const explanation = await this.client.geminiAI.explainCode(code, language);
-          if (explanation) {
-            await reaction.message.reply(
-              {
-                content: explanation
+
+          let msg = reaction.message;
+          for (let i = 0; i < explanation.length; i++) {
+            if (explanation[i].length > 0) {
+              if (explanation[i].length <= 1999) {
+                msg = await msg.reply(explanation[i]);
+              } else {
+                const firstPart = explanation[i].substring(0, 1999);
+                const secondPart = explanation[i].substring(1999);
+                msg = await msg.reply(firstPart);
+                msg = await msg.reply(secondPart);
               }
-            )  
+            }
           }
         } 
       } else {

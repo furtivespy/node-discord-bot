@@ -76,16 +76,18 @@ class GeminiAI {
     }
 
     async explainCode(code, language) {
-        const prompt = `Please explain the following ${language} code: \
+        const prompt = ` In chunks of 2000 characters or less, Please explain the following ${language} code: \
         \`\`\`${language} \
         ${code} \
         \`\`\`  \
         Provide a clear and concise explanation of what this code does, its purpose, and any notable features or potential issues. \
-        keep your response under 2000 characters.`;
+        \n\nThe response needs to be broken into chunks of 2000 characters or less. use markdown when appropriate, \
+      and use the text "||SEPARATE||" to indicate where one chunk ends and another begins.`
 
         try {
             const result = await this.model.generateContent(prompt);
-            return result.response.text();
+            const response = result.response.text();
+            return response.split('||SEPARATE||').map(chunk => chunk.trim());
         } catch (error) {
             this.client.logger.error(error);
             return '';
