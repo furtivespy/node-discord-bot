@@ -9,7 +9,7 @@ class GeminiAI {
         this.client = client
         this.genAI = new GoogleGenerativeAI(this.client.config.geminiKey)
         this.model = this.genAI.getGenerativeModel(
-          { model: "gemini-1.5-flash",
+          { model: "gemini-2.0-flash",
             safetySettings: [
               {
                 category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -57,21 +57,28 @@ class GeminiAI {
         let botname = message.guild.members.cache.get(this.client.user.id).displayName
         let context = `${this.standardContext} ${botname} or <@${this.client.user.id}>. `
         if (nonSequitur) {
-            context += `please also include an idea from this group of random thoughts: "${nonSequitur}" `
+            context += `please also try to include an idea from this group of random thoughts: "${nonSequitur}" `
         }
-        context += `Your response is next, please keep it under 2000 characters. \
-        when referring to a user, we use either the ID or the name, not both. \
+        context += `Your response is next, The response needs to be broken into chunks of 2000 characters or less. use markdown when appropriate, \
+      and use the text "||SEPARATE||" to indicate where one chunk ends and another begins. \
+        when referring to a user, we use either the ID or the name, not both. You should use the ID if you can. \
         Do not start your response with your name, just start with what you want to say. \
+        The following is the recent transcript of the chat, you are probably there listed as "${botname} (id: <@${this.client.user.id}>" before your previous thoughts. \
+        The messages are sorted oldest to newest. Don't repeat yourself too much. Keep it conversational. \
+        Focus on the more recent messages (this is a chat) feel free to ignore the older messages if you think they are not relevant. \
         Here are the previous messages (possibly including yours, you don't need to repeat yourself.):`
         let msgs = await message.channel.messages.fetch({limit:25}) 
         Array.from(msgs).reverse().forEach(msg => {
             if (msg[1].content[0] == message.settings.prefix) return
             let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName
             if (name !== undefined) {
-                name += " (id: <@" + msg[1].author.id + ">)"
-                context += `\n${name}: ${msg[1].content}`
+              name += " (id: <@" + msg[1].author.id + ">)"
+            } else {
+              name = "(id: <@" + msg[1].author.id + ">)"
             }
+            context += `\n${name}: ${msg[1].content}`
         })
+        //this.client.logger.log(context)
         return context
     }
 

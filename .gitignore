@@ -66,3 +66,4 @@ config.json
 
 #sqlite data
 data/
+benderTest.session.sql
