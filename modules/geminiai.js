@@ -27,7 +27,12 @@ class GeminiAI {
                 category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
                 threshold: HarmBlockThreshold.BLOCK_NONE,
               },
-            ]
+            ],
+            tools: [
+              {
+                google_search: {}
+              },
+            ],
            }
         )
     }
@@ -35,18 +40,7 @@ class GeminiAI {
     async generateContent(prompt, message) {
         const result = await this.model.generateContent(prompt)
         let botname = message.guild.members.cache.get(this.client.user.id).displayName
-        let text = result.response.text()
-        if (text.startsWith(`<@${this.client.user.id}>`)) {
-            text = text.replace(`<@${this.client.user.id}>: `, "")
-        }
-        if (text.startsWith(`${botname}: `)) {
-          text = text.replace(`${botname}: `, "")
-        }
-        text = text.trim()
-        if (text.startsWith(`"`)) {
-            text = text.slice(1, -1)
-        }
-        return text
+        return this.processResponse(result, botname)
     }
 
     standardContext = "You are playing the role of a slightly sarcastic, somewhat mean, but ultimately helpful AI friend. \
@@ -60,7 +54,7 @@ class GeminiAI {
             context += `please also try to include an idea from this group of random thoughts: "${nonSequitur}" `
         }
         context += `Your response is next, The response needs to be broken into chunks of 2000 characters or less. use markdown when appropriate, \
-      and use the text "||SEPARATE||" to indicate where one chunk ends and another begins. \
+      and use the text "||SEPARATE||" to indicate where one chunk ends and another begins. Feel free to use Grounding with Google Search to help you answer questions. \
         when referring to a user, we use either the ID or the name, not both. You should use the ID if you can. \
         Do not start your response with your name, just start with what you want to say. \
         The following is the recent transcript of the chat, you are probably there listed as "${botname} (id: <@${this.client.user.id}>" before your previous thoughts. \
@@ -111,12 +105,43 @@ class GeminiAI {
     async runPrompt(prompt){
       try {
         const result = await this.model.generateContent(this.buildBasicPrompt(prompt));
-        const response = result.response.text();
+        const response = this.processResponse(result)
+        
         return response.split('||SEPARATE||').map(chunk => chunk.trim());
       } catch (error) {
         this.client.logger.error(error);
         return ['An error occurred while processing your request.'];
       }
+    }
+
+    processResponse(result, botname) {
+      let response = result.response.text().trim()
+      if (response.endsWith('||SEPARATE||')) {
+          response = response.slice(0, -12); // Remove trailing ||SEPARATE||
+      }
+      if (response.startsWith(`<@${this.client.user.id}>`)) {
+        response = response.replace(`<@${this.client.user.id}>: `, "")
+      }
+      if (botname && response.startsWith(`${botname}: `)) {
+        response = response.replace(`${botname}: `, "")
+      }
+      if (response.startsWith(`"`)) {
+        response = response.slice(1, -1)
+      }
+      result.response.candidates.forEach(candidate => {
+        console.log("groundingMetadata", candidate.groundingMetadata)
+        if (candidate.groundingMetadata?.groundingChunks) {
+          response += "||SEPARATE||Sources: "
+          candidate.groundingMetadata.groundingChunks.forEach(chunk => {
+            response += `[${chunk.web.title}](<${chunk.web.uri}>) `
+          })
+        }
+      })
+
+      //console.log("response", response)
+      //console.log("result", result.response)
+
+      return response
     }
 }
 
