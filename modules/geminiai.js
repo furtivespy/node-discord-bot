@@ -60,7 +60,7 @@ class GeminiAI {
         The following is the recent transcript of the chat, you are probably there listed as "${botname} (id: <@${this.client.user.id}>" before your previous thoughts. \
         The messages are sorted oldest to newest. Don't repeat yourself too much. Keep it conversational. \
         Focus on the more recent messages (this is a chat) feel free to ignore the older messages if you think they are not relevant. \
-        Here are the previous messages (possibly including yours, you don't need to repeat yourself.):`
+        Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`
         let msgs = await message.channel.messages.fetch({limit:25}) 
         Array.from(msgs).reverse().forEach(msg => {
             if (msg[1].content[0] == message.settings.prefix) return
@@ -70,7 +70,7 @@ class GeminiAI {
             } else {
               name = "(id: <@" + msg[1].author.id + ">)"
             }
-            context += `\n${name}: ${msg[1].content}`
+            context += `\n[${msg[1].createdAt.toLocaleString()}] ${name}: ${msg[1].content}`
         })
         //this.client.logger.log(context)
         return context
