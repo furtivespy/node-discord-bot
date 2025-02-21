@@ -44,14 +44,13 @@ class Oversee extends Command {
             message.reply(`successfully unexcluded ${cmd.help.name}`);
         } else {
             //if not add/remove then list all commands and status
-            var table = new AsciiTable('[All Commands]')
+            var table = new AsciiTable('[Old Not Slash Commands]')
             table.setHeading('{Category:}', '{Command:}', '{Permission:}', '{Active:}', '{Description:}')
             const myCommands = this.client.commands.filter(cmd => cmd.conf.enabled) 
-            const sorted = myCommands.array().sort((p, c) => p.help.category > c.help.category ? 1 :  p.help.name > c.help.name && p.help.category === c.help.category ? 1 : -1 );
 
-            sorted.forEach(acommand => {
-                if(table.toString().length > 1600){
-                    message.channel.send(table.toString(), {code:"css"})
+            myCommands.forEach(acommand => {
+                if(table.toString().length > 1700){
+                    message.channel.send(`\`\`\`css\n${table.toString()}\n\`\`\``)
                     table.clear()   
                 }
                 table.addRow(
@@ -62,7 +61,7 @@ class Oversee extends Command {
                     wrap(acommand.help.description, {width: 25})
                 )
             })
-            message.channel.send(table.toString(), {code:"css"})
+            message.channel.send(`\`\`\`css\n${table.toString()}\n\`\`\``)
         }
       }
     }
