@@ -169,22 +169,6 @@ class BenderBot extends Client {
     };
   }
 
-  // writeSettings overrides, or adds, any configuration item that is different
-  // than the defaults. This ensures less storage wasted and to detect overrides.
-  writeSettings(id, newSettings) {
-    const defaults = this.settings.get("default");
-    let settings = this.settings.get(id);
-    if (typeof settings != "object") settings = {};
-    for (const key in newSettings) {
-      if (defaults[key] !== newSettings[key]) {
-        settings[key] = newSettings[key];
-      } else {
-        delete settings[key];
-      }
-    }
-    this.settings.set(id, settings);
-  }
-
   getExclusions(guild) {
     if (!guild) return [];
     const guildData = this.exclusions.get(guild.id) || [];
