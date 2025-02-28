@@ -1,6 +1,7 @@
 const SlashCommand = require("../../base/SlashCommand.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { PermissionsBitField } = require("discord.js");
+const Pull = require('lodash/pull')
 
 const configsThatMatter = [
   {
@@ -19,6 +20,21 @@ const configsThatMatter = [
   },
   { name: "enableCommand", description: "Enable an older command" },
   { name: "disableCommand", description: "Disable an older command" },
+];
+
+const listOfCommands = [
+  {
+    name: "Bringo - a bingo like game with words in everyday conversations",
+    command: "bringo"
+  },
+  { name: "Ferengi - Responds with a rule of acquisition to money talk",
+    command: "ferengi"
+  },
+  { name: "Frozen - reacts to 'frozen' messages with a snowman",
+    command: "frozen"
+  },
+
+  
 ];
 
 class Config extends SlashCommand {
@@ -73,17 +89,39 @@ class Config extends SlashCommand {
               )
           )
       )
-          
-
       .addSubcommand((option) =>
         option
           .setName("enablecommand")
           .setDescription("Enable an older command")
+          .addStringOption((option) =>
+            option
+              .setName("command")
+              .setDescription("The command to enable")
+              .setRequired(true)
+              .addChoices(
+                listOfCommands.map((command) => ({
+                  name: command.name,
+                  value: command.command
+                }))
+              )
+          )
       )
       .addSubcommand((option) =>
         option
           .setName("disablecommand")
           .setDescription("Disable an older command")
+          .addStringOption((option) =>
+            option
+              .setName("command")
+              .setDescription("The command to disable")
+              .setRequired(true)
+              .addChoices(
+                listOfCommands.map((command) => ({
+                  name: command.name,
+                  value: command.command
+                }))
+              )
+          )
       );
   }
 
@@ -103,10 +141,10 @@ class Config extends SlashCommand {
           await this.markovLevel(interaction);
           break;
         case "enablecommand":
-          //await this.enableCommand(interaction);
+          await this.enableCommand(interaction);
           break;
         case "disablecommand":
-          //await this.disableCommand(interaction);
+          await this.disableCommand(interaction);
           break;
       }
     } catch (e) {
@@ -192,6 +230,37 @@ class Config extends SlashCommand {
     }
     await interaction.reply({
       content: `The current markov level is: \`${settings.markovLevel}\``,
+      ephemeral: true,
+    });
+  }
+
+  async enableCommand(interaction) {
+    const command = interaction.options.getString("command");
+    const exclusions = this.client.getExclusions(interaction.guild)
+    if (!exclusions.includes(command)) {
+      await interaction.reply({ content: "This command is already enabled", ephemeral: true });
+      return;
+    }
+    Pull(exclusions, command)
+    this.client.setExclusions(interaction.guild, exclusions);
+    await interaction.reply({
+      content: `Command enabled: \`${command}\``,
+      ephemeral: true,
+    });
+
+  }
+
+  async disableCommand(interaction) {
+    const command = interaction.options.getString("command");
+    const exclusions = this.client.getExclusions(interaction.guild)
+    if (exclusions.includes(command)) {
+      await interaction.reply({ content: "This command is already disabled", ephemeral: true });
+      return;
+    }
+    exclusions.push(command)
+    this.client.setExclusions(interaction.guild, exclusions);
+    await interaction.reply({
+      content: `Command disabled: \`${command}\``,
       ephemeral: true,
     });
   }
