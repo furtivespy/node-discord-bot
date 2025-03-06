@@ -40,6 +40,13 @@ class BenderBot extends Client {
       autoFetch: true,
       dataDir: enmapDataDir,
     });
+    this.skipChannels = new Enmap({
+      name: "skipChannels",
+      cloneLevel: "deep",
+      fetchAll: false,
+      autoFetch: true,
+      dataDir: enmapDataDir,
+    });
 
     this.commands = new Collection();
     this.slashcommands = new Collection();
@@ -49,7 +56,7 @@ class BenderBot extends Client {
 
     //requiring the Logger class for easy console logging
     //this.logger = require("./modules/Logger.js");
-    this.logger = require("./modules/bugsnagLogger.js")(this.config.bugsnagKey);
+    this.logger = require("./modules/bugsnagLogger.js")(this.config.bugsnagKey, this.config.releaseStage);
 
     // add geminiAI module
     this.geminiAI = createGeminiAI(this)
@@ -176,6 +183,14 @@ class BenderBot extends Client {
   }
   setExclusions(guild, exclusionList) {
     this.exclusions.set(guild.id, exclusionList);
+  }
+  getSkipChannels(guild) {
+    if (!guild) return [];
+    const guildData = this.skipChannels.get(guild.id) || [];
+    return guildData;
+  }
+  setSkipChannels(guild, skipChannelList) {
+    this.skipChannels.set(guild.id, skipChannelList);
   }
   getGameData(guild, gameName) {
     const guildData = this.gamedata.get(guild.id) || {};

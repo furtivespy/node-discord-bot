@@ -61,7 +61,7 @@ class GeminiAI {
         The messages are sorted oldest to newest. Don't repeat yourself too much. Keep it conversational. \
         Focus on the more recent messages (this is a chat) feel free to ignore the older messages if you think they are not relevant. \
         Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`
-        let msgs = await message.channel.messages.fetch({limit:25}) 
+        let msgs = await message.channel.messages.fetch({limit:30}) 
         Array.from(msgs).reverse().forEach(msg => {
             if (msg[1].content[0] == message.settings.prefix) return
             let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName

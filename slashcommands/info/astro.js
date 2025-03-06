@@ -24,23 +24,20 @@ class Astro extends SlashCommand {
     try {
       const date = interaction.options.getString("date");
       let jsDate = null;
+      let url = `https://api.nasa.gov/planetary/apod?api_key=${
+          this.client.config.NASA_API_KEY
+        }`
       if (date) {
         jsDate = Date.parse(date);
       }
-      if (!jsDate || isNaN(jsDate)) {
-        jsDate = new Date();
-      } else {
+      if (jsDate && !isNaN(jsDate)) {
         jsDate = new Date(jsDate);
+        url += `&date=${jsDate.toISOString().split("T")[0]}`
       }
       await interaction.deferReply();
 
-      const res = await fetch(
-        `https://api.nasa.gov/planetary/apod?api_key=${
-          this.client.config.NASA_API_KEY
-        }&date=${jsDate.toISOString().split("T")[0]}`
-      );
+      const res = await fetch(url);
       const data = await res.json();
-
       const embed = new EmbedBuilder()
         .setTitle(data.title)
         .setDescription(data.explanation)

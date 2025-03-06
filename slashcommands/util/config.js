@@ -20,6 +20,8 @@ const configsThatMatter = [
   },
   { name: "enableCommand", description: "Enable an older command" },
   { name: "disableCommand", description: "Disable an older command" },
+  { name: "skipChannel", description: "Skip the current channel from being stored in the markov chain db" },
+  { name: "unskipChannel", description: "remove the current channel from being skipped from the markov chain db" },
 ];
 
 const listOfCommands = [
@@ -33,8 +35,6 @@ const listOfCommands = [
   { name: "Frozen - reacts to 'frozen' messages with a snowman",
     command: "frozen"
   },
-
-  
 ];
 
 class Config extends SlashCommand {
@@ -122,7 +122,17 @@ class Config extends SlashCommand {
                 }))
               )
           )
-      );
+      )
+      .addSubcommand((option) =>
+        option
+          .setName("skipchannel")
+          .setDescription("Skip the current channel from being stored in the markov chain db")
+      )
+      .addSubcommand((option) =>
+        option
+          .setName("unskipchannel")
+          .setDescription("remove the current channel from being skipped from the markov chain db")
+      )
   }
 
   async execute(interaction) {
@@ -146,6 +156,12 @@ class Config extends SlashCommand {
         case "disablecommand":
           await this.disableCommand(interaction);
           break;
+        case "skipchannel":
+          await this.skipChannel(interaction);
+          break;
+        case "unskipchannel":
+          await this.unskipChannel(interaction);
+          break;  
       }
     } catch (e) {
       this.client.logger.log(e, "error");
@@ -263,6 +279,28 @@ class Config extends SlashCommand {
       content: `Command disabled: \`${command}\``,
       ephemeral: true,
     });
+  }
+
+  async skipChannel(interaction) {
+    const skipChannels = this.client.getSkipChannels(interaction.guild)
+    if (skipChannels.includes(interaction.channel.id)) {
+      await interaction.reply({ content: "This channel is already skipped", ephemeral: true });
+      return;
+    }
+    skipChannels.push(interaction.channel.id)
+    this.client.setSkipChannels(interaction.guild, skipChannels)
+    await interaction.reply({ content: "Channel skipped", ephemeral: true });
+  } 
+
+  async unskipChannel(interaction) {
+    const skipChannels = this.client.getSkipChannels(interaction.guild)
+    if (!skipChannels.includes(interaction.channel.id)) {
+      await interaction.reply({ content: "This channel is not skipped", ephemeral: true });
+      return;
+    }
+    Pull(skipChannels, interaction.channel.id)
+    this.client.setSkipChannels(interaction.guild, skipChannels)
+    await interaction.reply({ content: "Channel unskipped", ephemeral: true });
   }
 }
 

@@ -22,9 +22,12 @@ class Chatbot extends Command {
             } else {
                 var fullText = message.content.trim().toLowerCase()
                 var db = this.client.getDatabase(message.guild.id)
+                const skipChannels = this.client.getSkipChannels(message.guild)
                 if (fullText.length > 0 && !message.channel.nsfw) {
+                    if (!skipChannels.includes(message.channel.id)) {
                     db.markovInput(fullText)
                     this.client.logger.log(`recording text starting with ${fullText.substring(0,20)}`,'log')
+                    }
                 }
                 var responseChance = parseInt(message.settings.randRspPct)
                 var respond = Math.floor(Math.random() * 100)

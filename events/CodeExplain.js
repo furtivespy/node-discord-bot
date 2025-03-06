@@ -19,6 +19,12 @@ class CodeExplain extends Event {
 
   async run(reaction, user, level) {
     if (reaction.emoji.name == this.help.qualifier) {
+      // Check if there is more than one reaction of this type
+      const reactionCount = reaction.count;
+      if (reactionCount > 1) {
+        console.log("Code has already been explained (multiple reactions found).");
+        return;
+      }
 
       // Extract code blocks from the message content
       const codeBlocks = reaction.message.content.match(/```[\s\S]*?```/g);
