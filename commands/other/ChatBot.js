@@ -20,6 +20,9 @@ class Chatbot extends Command {
             if(message.command && (message.command == "chatbot" || message.command == "chat")) {
 
             } else {
+                if (message.system) {
+                    return
+                }
                 var fullText = message.content.trim().toLowerCase()
                 var db = this.client.getDatabase(message.guild.id)
                 const skipChannels = this.client.getSkipChannels(message.guild)
@@ -31,7 +34,7 @@ class Chatbot extends Command {
                 }
                 var responseChance = parseInt(message.settings.randRspPct)
                 var respond = Math.floor(Math.random() * 100)
-                if(respond < responseChance || message.mentions.has(this.client.user)){                
+                if(respond < responseChance || message.mentions.has(this.client.user)){             
                     var words = db.makeSentence(message.settings.markovLevel)
 
                     if (message.mentions.has(this.client.user)) {
