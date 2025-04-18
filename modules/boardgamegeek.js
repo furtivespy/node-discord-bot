@@ -81,6 +81,14 @@ class BoardGameGeek {
   }
 
   async GetGameImageEmbed() {
+    if (!this.gameInfo.image) {
+      // If no image is available, create a basic embed without an image
+      const imageEmbed = new EmbedBuilder()
+          .setTitle(this.gameName)
+          .setURL(`https://boardgamegeek.com/boardgame/${this.gameId}`);
+      this.embeds.push(imageEmbed);
+      return;
+    }
     const gameImage = await loadImage(this.gameInfo.image);
     const scaledWidth = 600;
     const canvas = createCanvas(scaledWidth, (scaledWidth / gameImage.width) * gameImage.height);

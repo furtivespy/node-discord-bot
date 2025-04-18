@@ -34,15 +34,19 @@ class Chatbot extends Command {
                 }
                 var responseChance = parseInt(message.settings.randRspPct)
                 var respond = Math.floor(Math.random() * 100)
-                if(respond < responseChance || message.mentions.has(this.client.user)){             
+                if(respond < responseChance || message.mentions.users.has(this.client.user.id)){             
                     var words = db.makeSentence(message.settings.markovLevel)
 
-                    if (message.mentions.has(this.client.user)) {
+                    if (message.mentions.users.has(this.client.user.id)) {
+                        console.log("responding...")
                         const context = await this.client.geminiAI.buildContext(message, words)
-                        const result = await this.client.geminiAI.generateContent(context, message)
-                        const parts = result.split('||SEPARATE||').map(chunk => chunk.trim())
+                        const {response, imageResponse} = await this.client.geminiAI.generateContent(context, message)
+                        const parts = response.split('||SEPARATE||').map(chunk => chunk.trim())
                         for (const thought of parts) {
                             await message.channel.send(thought)
+                        }
+                        if (imageResponse) {
+                            await message.channel.send({files: [imageResponse]})
                         }
                     } else {
                         await message.channel.send(words)
