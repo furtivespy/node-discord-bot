@@ -43,7 +43,7 @@ class Chatbot extends Command {
                         const {response, imageResponse} = await this.client.geminiAI.generateContent(context, message)
                         const parts = response.split('||SEPARATE||').map(chunk => chunk.trim())
                         for (const thought of parts) {
-                            await message.channel.send(thought)
+                            await message.channel.send(thought.slice(0, 2000))
                         }
                         if (imageResponse) {
                             await message.channel.send({files: [imageResponse]})
