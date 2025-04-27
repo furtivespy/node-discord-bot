@@ -15,7 +15,7 @@ class GeminiAI {
     async generateContent(prompt, message) {
         //const result = await this.model.generateContent(prompt)
         const result = await this.AI2.models.generateContent({
-          model: "gemini-2.0-flash",
+          model: "gemini-2.5-flash-preview-04-17",
           contents: prompt,
           config: {
             tools: [
@@ -123,7 +123,7 @@ class GeminiAI {
       try {
         //const result = await this.model.generateContent(this.buildBasicPrompt(prompt));
         const result = await this.AI2.models.generateContent({
-          model: "gemini-2.0-flash",
+          model: "gemini-2.5-flash-preview-04-17",
           contents: this.buildBasicPrompt(prompt),
         })
         const {response, imageResponse} = await this.processResponse(result, "Bender")
@@ -136,7 +136,6 @@ class GeminiAI {
     }
 
     async generateImage(prompt) {
-      console.log('Generating image with prompt:', prompt);
       const result = await this.AI2.models.generateContent({
         model: "gemini-2.0-flash-exp-image-generation",
         contents: prompt,
@@ -160,7 +159,6 @@ class GeminiAI {
 
         // Access the nested inlineData object
         const imageData = inlineDataPart.inlineData;
-        console.log('Found image data with mime type:', imageData.mimeType);
 
         return this.createAttachmentFromInlineData(imageData);
       } catch (error) {
@@ -177,7 +175,6 @@ class GeminiAI {
 
       try {
         const buffer = Buffer.from(imageData.data, 'base64');
-        console.log('Created buffer from base64 data, length:', buffer.length);
         const attachment = new AttachmentBuilder(buffer);
         return attachment;
       } catch (error) {
@@ -186,12 +183,7 @@ class GeminiAI {
       }
     }
 
-    async processResponse(result, botname) {
-      console.log("result", result)
-      console.log("result.candidates", result.candidates.length)
-      console.log("result.candidates[0]", result.candidates[0].content.parts.length)
-      console.log("text", result.text.trim())
-      
+    async processResponse(result, botname) {      
       let response = result.text.trim()
 
       //check if there is an image needed, if so prompt the imagegen for the image
@@ -227,9 +219,7 @@ class GeminiAI {
       //check if there is an image needed, if so prompt the imagegen for the image
       let imageResponse = null
       if (image) {
-        console.log("image", image)
         imageResponse = await this.generateImage(`generate an image of ${image}`)
-        console.log("imageResponse", imageResponse)
       }
 
       return {response, imageResponse}
