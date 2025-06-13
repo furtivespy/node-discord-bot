@@ -52,13 +52,46 @@ class GeminiAI {
       const botname = message.guild.members.cache.get(this.client.user.id).displayName;
       const clientId = this.client.user.id;
 
-      const settings = this.client.getSettings(message.guild);
+      // New block for loading personality based on ai_selected_personality setting
+      const selectedPersonalityKey = message.settings.ai_selected_personality || "bender";
       let personality;
-      if (settings && settings.aiPersonalityPrompt && settings.aiPersonalityPrompt.trim().length > 0) {
-        personality = settings.aiPersonalityPrompt;
-      } else {
-        personality = require('./prompt_components/default_personality.js');
+
+      switch (selectedPersonalityKey) {
+        case "detective":
+          personality = require('./prompt_components/personality_detective.js');
+          break;
+        case "zenmaster_nj":
+          personality = require('./prompt_components/personality_zenmaster_nj.js');
+          break;
+        case "dwarf_craftsman":
+          personality = require('./prompt_components/personality_dwarf_craftsman.js');
+          break;
+        case "ship_computer":
+          const shipComputerFn = require('./prompt_components/personality_ship_computer.js');
+          personality = shipComputerFn(message.guild ? message.guild.name : "Default Guild"); // Added a fallback for guild name
+          break;
+        case "educator_joy":
+          personality = require('./prompt_components/personality_educator_joy.js');
+          break;
+        case "oracle_sigh":
+          personality = require('./prompt_components/personality_oracle_sigh.js');
+          break;
+        case "shakespeare": // New case
+          personality = require('./prompt_components/personality_shakespeare.js');
+          break;
+        case "pirate_qm": // New case
+          const pirateQmFn = require('./prompt_components/personality_pirate_qm.js');
+          personality = pirateQmFn(message.guild ? message.guild.name : "Default Guild");
+          break;
+        case "anxious_philosopher": // New case
+          personality = require('./prompt_components/personality_anxious_philosopher.js');
+          break;
+        case "bender":
+        default: // Fallback to bender if key is invalid or explicitly bender
+          personality = require('./prompt_components/personality_bender.js');
+          break;
       }
+      // End of new block
       const identity = require('./prompt_components/identity.js')(botname, clientId);
       const chatInstructions = require('./prompt_components/chat_instructions.js');
       const formattingInstructions = require('./prompt_components/formatting_instructions.js');
