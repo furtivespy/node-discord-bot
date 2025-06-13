@@ -80,10 +80,6 @@ class StarBoardAdd extends Event {
           msg.embeds = [];
           msg.content = `[NSFW Post](${msg.url})`;
         }
-        const attachments =
-          msg.attachments && msg.attachments.first()
-            ? msg.attachments.first()
-            : undefined;
         var theEmbed = new EmbedBuilder();
         if (msg.embeds[0]) {
           theEmbed = new EmbedBuilder(msg.embeds[0]);
@@ -100,8 +96,14 @@ class StarBoardAdd extends Event {
         })
         theEmbed.setFooter({ text: `in #${msg.channel.name}` })
         theEmbed.addFields({ name: "Source", value: `[link](${msg.url})` });
-        if (attachments) {
-          theEmbed.setImage(attachments)
+
+        const attachment = resolveAttachment(msg);
+        if (attachment) {
+          if (typeof attachment === 'string') {
+            theEmbed.setImage(attachment);
+          } else if (attachment.url) {
+            theEmbed.setImage(attachment.url);
+          }
         }
 
         if (!starMsg) {
