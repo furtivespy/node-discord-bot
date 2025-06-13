@@ -49,49 +49,61 @@ class GeminiAI {
     }
 
     getSystemInstructions(message) {
-      let botname = message.guild.members.cache.get(this.client.user.id).displayName
-      let instructions = `You are playing the role of a slightly sarcastic, somewhat mean, but ultimately helpful AI friend. \
-      A good reference for you is the character Bender from Futurama, but more helpful. \
-      Actually try to be more helpful than Bender and answer questions. \
-      You go by many names, such as Bender, BenderBot, GossBot, but right now you are called ${botname} or <@${this.client.user.id}>. \
-      You will be given a recent transcript of a chat, you are probably there listed as "${botname} (id: <@${this.client.user.id}>" before your previous thoughts. \
-      The messages are sorted oldest to newest. Don't repeat yourself too much. Keep it conversational. \
-      Focus on the more recent messages (this is a chat) feel free to ignore the older messages if you think they are not relevant. \
-      If you need to include an image, use the text "Processing image of" or "Generating image of" \
-      to indicate where the image should be and what "prompt" should be used for it. Be very descriptive in your prompt. It will be generated with post-processing. \
-      Feel free to use Grounding with Google Search to help you answer questions. \
-      when referring to a user, we use either the ID or the name, not both. You should use the ID if you can. \
-      Do not start your response with your name, just start with what you want to say. \
-      The response needs to be broken into chunks of 2000 characters or less. use markdown when appropriate, \
-      and use the text "||SEPARATE||" to indicate where one chunk ends and another begins. `
-      return instructions
-    }
+      const botname = message.guild.members.cache.get(this.client.user.id).displayName;
+      const clientId = this.client.user.id;
 
-    standardContext = "You are playing the role of a slightly sarcastic, somewhat mean, but ultimately helpful AI friend. \
-    A good reference for you is the character Bender from Futurama, but more helpful. Actually try to be more helpful than Bender and answer questions. \
-    You go by many names, such as Bender, BenderBot, GossBot, but right now you are called"
+      const settings = this.client.getSettings(message.guild);
+      let personality;
+      if (settings && settings.aiPersonalityPrompt && settings.aiPersonalityPrompt.trim().length > 0) {
+        personality = settings.aiPersonalityPrompt;
+      } else {
+        personality = require('./prompt_components/default_personality.js');
+      }
+      const identity = require('./prompt_components/identity.js')(botname, clientId);
+      const chatInstructions = require('./prompt_components/chat_instructions.js');
+      const formattingInstructions = require('./prompt_components/formatting_instructions.js');
+      const capabilities = require('./prompt_components/capabilities.js');
+
+      // Construct the full instruction string, joining components with a space.
+      const instructions = [
+        personality,
+        identity,
+        chatInstructions,
+        capabilities,
+        formattingInstructions
+      ].join(' ');
+
+      return instructions;
+    }
 
     async buildContext(message, nonSequitur) {
-        let botname = message.guild.members.cache.get(this.client.user.id).displayName
-        let context = `${this.standardContext} ${botname} or <@${this.client.user.id}>. `
-        if (nonSequitur) {
-            context += `Please try to include an idea from this group of random thoughts: "${nonSequitur}" `
-        }
-        context += `Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`
-        let msgs = await message.channel.messages.fetch({limit:30}) 
-        Array.from(msgs).reverse().forEach(msg => {
-            if (msg[1].content[0] == message.settings.prefix) return
-            let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName
-            if (name !== undefined) {
-              name += " (id: <@" + msg[1].author.id + ">)"
-            } else {
-              name = "(id: <@" + msg[1].author.id + ">)"
-            }
-            context += `\n[${msg[1].createdAt.toLocaleString()}] ${name}: ${msg[1].content}`
-        })
-        //this.client.logger.log(context)
-        return context
+    let context = "";
+    if (nonSequitur) {
+        // Ensure there's a space after the nonSequitur if other text follows,
+        // but here it's followed by a descriptive sentence.
+        context += `Please try to include an idea from this group of random thoughts: "${nonSequitur}" `;
     }
+
+    // If nonSequitur was added, ensure the next part of the context starts appropriately.
+    // Adding a newline or space if needed. Here, the next part is a sentence, so a space or newline is good.
+    if (context.length > 0) {
+        context += "\n"; // Add a newline if nonSequitur was present for better separation
+    }
+
+    context += `Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`;
+    let msgs = await message.channel.messages.fetch({limit:30});
+    Array.from(msgs).reverse().forEach(msg => {
+        if (msg[1].content[0] == message.settings.prefix) return;
+        let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName;
+        if (name !== undefined) {
+          name += " (id: <@" + msg[1].author.id + ">)";
+        } else {
+          name = "(id: <@" + msg[1].author.id + ">)";
+        }
+        context += `\n[${msg[1].createdAt.toLocaleString()}] ${name}: ${msg[1].content}`;
+    });
+    return context;
+}
 
     async explainCode(code, language) {
         const prompt = ` In chunks of 2000 characters or less, Please explain the following ${language} code: \

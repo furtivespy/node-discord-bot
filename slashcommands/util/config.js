@@ -22,6 +22,10 @@ const configsThatMatter = [
   { name: "disableCommand", description: "Disable an older command" },
   { name: "skipChannel", description: "Skip the current channel from being stored in the markov chain db" },
   { name: "unskipChannel", description: "remove the current channel from being skipped from the markov chain db" },
+  {
+    name: "aiPersonalityPrompt",
+    description: "The custom personality prompt for the AI. If not set, uses default.",
+  },
 ];
 
 const listOfCommands = [
@@ -133,6 +137,28 @@ class Config extends SlashCommand {
           .setName("unskipchannel")
           .setDescription("remove the current channel from being skipped from the markov chain db")
       )
+    // After other .addSubcommand calls
+    .addSubcommand((option) =>
+      option
+        .setName("set_ai_personality")
+        .setDescription("Set a custom personality prompt for the AI.")
+        .addStringOption((input) =>
+          input
+            .setName("prompt")
+            .setDescription("The custom personality prompt string.")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((option) =>
+      option
+        .setName("view_ai_personality")
+        .setDescription("View the current AI personality prompt (custom or default).")
+    )
+    .addSubcommand((option) =>
+      option
+        .setName("reset_ai_personality")
+        .setDescription("Reset the AI personality to the default.")
+    )
   }
 
   async execute(interaction) {
@@ -161,7 +187,17 @@ class Config extends SlashCommand {
           break;
         case "unskipchannel":
           await this.unskipChannel(interaction);
-          break;  
+          break;
+    // Inside the switch (interaction.options.getSubcommand())
+    case "set_ai_personality":
+      await this.setAiPersonality(interaction);
+      break;
+    case "view_ai_personality":
+      await this.viewAiPersonality(interaction);
+      break;
+    case "reset_ai_personality":
+      await this.resetAiPersonality(interaction);
+      break;
       }
     } catch (e) {
       this.client.logger.log(e, "error");
@@ -179,6 +215,13 @@ class Config extends SlashCommand {
           value = ` '[Current: ${settings.randRspPct}%]'`;
         } else if (config.name === 'markovLevel') {
           value = ` '[Current: ${settings.markovLevel}]'`;
+        } else if (config.name === 'aiPersonalityPrompt') {
+          const currentPrompt = settings.aiPersonalityPrompt;
+          if (currentPrompt && currentPrompt.trim().length > 0) {
+            value = ` '[Custom: ${currentPrompt.substring(0, 30)}...]'`; // Show a snippet
+          } else {
+            value = ` '[Using Default]'`;
+          }
         }
         return `${config.name}${" ".repeat(22 - config.name.length)}:: ${
           config.description
@@ -301,6 +344,69 @@ class Config extends SlashCommand {
     Pull(skipChannels, interaction.channel.id)
     this.client.setSkipChannels(interaction.guild, skipChannels)
     await interaction.reply({ content: "Channel unskipped", ephemeral: true });
+  }
+
+  async setAiPersonality(interaction) {
+    const newPrompt = interaction.options.getString("prompt");
+    if (!newPrompt || newPrompt.trim().length === 0) {
+      await interaction.reply({
+        content: "Personality prompt cannot be empty.",
+        ephemeral: true,
+      });
+      return;
+    }
+    // Max length check (optional, but good practice for prompts)
+    if (newPrompt.length > 1000) { // Adjust length as needed
+      await interaction.reply({
+        content: "Personality prompt is too long (max 1000 characters).",
+        ephemeral: true,
+      });
+      return;
+    }
+    if (!this.client.settings.has(interaction.guild.id)) {
+      this.client.settings.set(interaction.guild.id, {});
+    }
+    this.client.settings.set(interaction.guild.id, newPrompt, "aiPersonalityPrompt");
+    await interaction.reply({
+      content: "AI personality prompt has been updated.",
+      ephemeral: true,
+    });
+  }
+
+  async viewAiPersonality(interaction) {
+    const settings = this.client.getSettings(interaction.guild);
+    const customPrompt = settings.aiPersonalityPrompt;
+    if (customPrompt && customPrompt.trim().length > 0) {
+      await interaction.reply({
+        content: `Current custom AI personality prompt:\n\`\`\`\n${customPrompt}\n\`\`\``,
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: "Currently using the default AI personality.",
+        ephemeral: true,
+      });
+    }
+  }
+
+  async resetAiPersonality(interaction) {
+    if (!this.client.settings.has(interaction.guild.id)) {
+      this.client.settings.set(interaction.guild.id, {});
+    }
+    // Check if it's actually set before attempting to delete
+    const settings = this.client.getSettings(interaction.guild);
+    if (settings.aiPersonalityPrompt) {
+      this.client.settings.delete(interaction.guild.id, "aiPersonalityPrompt");
+      await interaction.reply({
+        content: "AI personality has been reset to default.",
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: "AI personality is already using the default. No changes made.",
+        ephemeral: true,
+      });
+    }
   }
 }
 
