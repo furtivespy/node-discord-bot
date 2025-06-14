@@ -161,7 +161,7 @@ class Config extends SlashCommand {
           break;
         case "unskipchannel":
           await this.unskipChannel(interaction);
-          break;  
+          break;
       }
     } catch (e) {
       this.client.logger.log(e, "error");
