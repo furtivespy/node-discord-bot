@@ -231,47 +231,104 @@ class GeminiAI {
       }
     }
 
-    async processResponse(result, botname) {      
-      let response = result.text.trim()
+    async processResponse(result, botname) {
+  let responseText = "";
 
-      //check if there is an image needed, if so prompt the imagegen for the image
-      let image = null
-      if (response.includes("Processing image of") || response.includes("Generating image of")) {
-        const keyword = response.includes("Processing image of") ? "Processing image of" : "Generating image of"
-        const parts = response.split(keyword)
-        const imagePart = parts[1].split("\n")[0]
-        image = imagePart.trim()
-      }
+  // --- Start: New precise text extraction logic based on user feedback ---
+  if (result && result.response && result.response.candidates && result.response.candidates.length > 0) {
+    const candidate = result.response.candidates[0];
+    if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+      // Find the first part that has a 'text' property with actual content
+      const textPart = candidate.content.parts.find(part =>
+        part && typeof part.text === 'string' && part.text.trim() !== ""
+      );
 
-      if (response.endsWith('||SEPARATE||')) {
-          response = response.slice(0, -12); // Remove trailing ||SEPARATE||
+      if (textPart) {
+        responseText = textPart.text.trim();
+        // this.client.logger.log(`GeminiAI: Successfully extracted text part: "${responseText}"`, "debug");
+      } else {
+        this.client.logger.warn("GeminiAI: No suitable text part found in API response candidate.", { parts: JSON.stringify(candidate.content.parts) });
+        responseText = "Error: Could not extract AI response text part.";
       }
-      if (response.startsWith(`<@${this.client.user.id}>`)) {
-        response = response.replace(`<@${this.client.user.id}>: `, "")
-      }
-      if (botname && response.startsWith(`${botname}: `)) {
-        response = response.replace(`${botname}: `, "")
-      }
-      if (response.startsWith(`"`)) {
-        response = response.slice(1, -1)
-      }
-      result.candidates.forEach(candidate => {
-        if (candidate.groundingMetadata?.groundingChunks) {
-          response += "||SEPARATE||Sources: "
-          candidate.groundingMetadata.groundingChunks.forEach(chunk => {
-            response += `[${chunk.web.title}](<${chunk.web.uri}>) `
-          })
-        }
-      })
-
-      //check if there is an image needed, if so prompt the imagegen for the image
-      let imageResponse = null
-      if (image) {
-        imageResponse = await this.generateImage(`generate an image of ${image}`)
-      }
-
-      return {response, imageResponse}
+    } else {
+      this.client.logger.warn("GeminiAI: API response candidate missing content or parts.", { candidate: JSON.stringify(candidate) });
+      responseText = "Error: Invalid API response candidate structure.";
     }
+  } else {
+    this.client.logger.error("GeminiAI: Invalid or incomplete API response structure (missing response, candidates, or candidate[0]).", { resultSummary: result ? Object.keys(result) : 'null' });
+    responseText = "Error: Invalid API response.";
+  }
+  // --- End: New precise text extraction logic ---
+
+  // --- Start: Remove the entire regex-based reasoning prefix stripping section ---
+  // The section starting with "const reasoningRegexes = [...]" and the loop
+  // that used them should be completely deleted.
+  // --- End: Remove regex-based reasoning prefix stripping ---
+
+  let image = null;
+  // Image prompt extraction - operates on the precisely extracted responseText
+  if (responseText.includes("Processing image of") || responseText.includes("Generating image of")) {
+    const keyword = responseText.includes("Processing image of") ? "Processing image of" : "Generating image of";
+    // Split carefully to get text after the keyword
+    const keywordParts = responseText.split(keyword);
+    if (keywordParts.length > 1 && keywordParts[1]) {
+        const imagePartCandidate = keywordParts[1].split("\n")[0]; // Get first line after keyword
+        image = imagePartCandidate.trim();
+        // this.client.logger.log(`GeminiAI: Extracted image prompt: "${image}"`, "debug");
+    }
+  }
+
+  // Standard cleanup - operates on the precisely extracted responseText
+  if (responseText.endsWith('||SEPARATE||')) {
+    responseText = responseText.slice(0, -12);
+  }
+  // Ensure botname and client.user.id are valid before using in startsWith/replace
+  const userIdTag = "<@" + this.client.user.id + ">";
+  if (responseText.startsWith(userIdTag)) {
+    responseText = responseText.replace(userIdTag + ": ", "");
+  }
+  if (botname && responseText.startsWith(botname + ": ")) {
+    responseText = responseText.replace(botname + ": ", "");
+  }
+
+  // Only remove surrounding quotes if they both exist
+  if (responseText.startsWith('"') && responseText.endsWith('"')) {
+    responseText = responseText.substring(1, responseText.length - 1);
+  }
+
+  let finalResponseText = responseText;
+
+  // Grounding metadata processing - appends to finalResponseText
+  // This uses the original `result` object, which is correct.
+  if (result && result.response && result.response.candidates) {
+    result.response.candidates.forEach(candidate => {
+      if (candidate.groundingMetadata?.groundingChunks) {
+        // Check if sources are already added by the model in the text part
+        if (!finalResponseText.includes("||SEPARATE||Sources:")) {
+            finalResponseText += "||SEPARATE||Sources: ";
+        } else {
+            // If already present, ensure a space if needed, or just append.
+            // This case might mean the model itself added sources.
+            // For simplicity, we'll just ensure it doesn't duplicate the header.
+            // Adding a space if not already there.
+            if (!finalResponseText.endsWith(" ")) {
+                finalResponseText += " ";
+            }
+        }
+        candidate.groundingMetadata.groundingChunks.forEach(chunk => {
+          finalResponseText += `[${chunk.web.title}](<${chunk.web.uri}>) `;
+        });
+      }
+    });
+  }
+
+  let imageResponse = null;
+  if (image) {
+    imageResponse = await this.generateImage(\`generate an image of ${image}\`);
+  }
+
+  return { response: finalResponseText, imageResponse };
+}
 }
 
 module.exports = { createGeminiAI }
