@@ -13,6 +13,7 @@ const personalityChoices = [
   { name: "Shakespearean Actor", value: "shakespeare" },
   { name: "Pirate Quartermaster", value: "pirate_qm" },
   { name: "Anxious Philosopher", value: "anxious_philosopher" },
+  { name: "The Chicago Pope", value: "chicago_pope" },
 ];
 
 class SetPersonality extends SlashCommand {

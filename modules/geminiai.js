@@ -86,6 +86,9 @@ class GeminiAI {
         case "anxious_philosopher": // New case
           personality = require('./prompt_components/personality_anxious_philosopher.js');
           break;
+        case "chicago_pope": // New case
+          personality = require('./prompt_components/personality_chicago_pope.js');
+          break;
         case "bender":
         default: // Fallback to bender if key is invalid or explicitly bender
           personality = require('./prompt_components/personality_bender.js');
