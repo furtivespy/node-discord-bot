@@ -245,18 +245,19 @@ class GeminiAI {
   }
   // --- End: Flexible path to candidate object ---
 
-  // --- Start: Precise text extraction from candidate parts ---
+  // --- Start: Modified text extraction to concatenate ALL text parts ---
   if (candidate) {
     if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-      const textPart = candidate.content.parts.find(part =>
+      const textParts = candidate.content.parts.filter(part =>
         part && typeof part.text === 'string' && part.text.trim() !== ""
       );
 
-      if (textPart) {
-        responseText = textPart.text.trim();
-        // this.client.logger.log(`GeminiAI: Successfully extracted text part: "${responseText}"`, "debug");
+      if (textParts.length > 0) {
+        // Concatenate the text from all found text parts, separated by a space
+        responseText = textParts.map(part => part.text.trim()).join(' ').trim();
+        // this.client.logger.log(`GeminiAI: Successfully concatenated text parts: "${responseText}"`, "debug");
       } else {
-        this.client.logger.warn("GeminiAI: No suitable text part found in API response candidate's parts.", { parts: JSON.stringify(candidate.content.parts), candidateKeys: Object.keys(candidate) });
+        this.client.logger.warn("GeminiAI: No suitable text parts found in API response candidate's parts.", { parts: JSON.stringify(candidate.content.parts), candidateKeys: Object.keys(candidate) });
         // responseText remains the default error message
       }
     } else {
@@ -264,12 +265,10 @@ class GeminiAI {
       // responseText remains the default error message
     }
   } else {
-    // This specific error message was from the user's log.
-    this.client.logger.error("GeminiAI: Invalid or incomplete API response structure (missing response, candidates, or candidate[0]).", { resultKeys: result ? Object.keys(result).join(', ') : 'null' });
-    // responseText remains the default error message, or could be set to a more specific one here.
-    // For example: responseText = "Error: Invalid API response structure from AI.";
+    this.client.logger.error("GeminiAI: Invalid or incomplete API response structure (no valid candidate found).", { resultKeys: result ? Object.keys(result).join(', ') : 'null' });
+    // responseText remains the default error message
   }
-  // --- End: Precise text extraction from candidate parts ---
+  // --- End: Modified text extraction ---
 
   // Note: Regex-based reasoning stripping is intentionally removed.
 
