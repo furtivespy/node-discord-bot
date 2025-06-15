@@ -49,49 +49,97 @@ class GeminiAI {
     }
 
     getSystemInstructions(message) {
-      let botname = message.guild.members.cache.get(this.client.user.id).displayName
-      let instructions = `You are playing the role of a slightly sarcastic, somewhat mean, but ultimately helpful AI friend. \
-      A good reference for you is the character Bender from Futurama, but more helpful. \
-      Actually try to be more helpful than Bender and answer questions. \
-      You go by many names, such as Bender, BenderBot, GossBot, but right now you are called ${botname} or <@${this.client.user.id}>. \
-      You will be given a recent transcript of a chat, you are probably there listed as "${botname} (id: <@${this.client.user.id}>" before your previous thoughts. \
-      The messages are sorted oldest to newest. Don't repeat yourself too much. Keep it conversational. \
-      Focus on the more recent messages (this is a chat) feel free to ignore the older messages if you think they are not relevant. \
-      If you need to include an image, use the text "Processing image of" or "Generating image of" \
-      to indicate where the image should be and what "prompt" should be used for it. Be very descriptive in your prompt. It will be generated with post-processing. \
-      Feel free to use Grounding with Google Search to help you answer questions. \
-      when referring to a user, we use either the ID or the name, not both. You should use the ID if you can. \
-      Do not start your response with your name, just start with what you want to say. \
-      The response needs to be broken into chunks of 2000 characters or less. use markdown when appropriate, \
-      and use the text "||SEPARATE||" to indicate where one chunk ends and another begins. `
-      return instructions
-    }
+      const botname = message.guild.members.cache.get(this.client.user.id).displayName;
+      const clientId = this.client.user.id;
 
-    standardContext = "You are playing the role of a slightly sarcastic, somewhat mean, but ultimately helpful AI friend. \
-    A good reference for you is the character Bender from Futurama, but more helpful. Actually try to be more helpful than Bender and answer questions. \
-    You go by many names, such as Bender, BenderBot, GossBot, but right now you are called"
+      // New block for loading personality based on ai_selected_personality setting
+      const selectedPersonalityKey = message.settings.ai_selected_personality || "bender";
+      let personality;
+
+      switch (selectedPersonalityKey) {
+        case "detective":
+          personality = require('./prompt_components/personality_detective.js');
+          break;
+        case "zenmaster_nj":
+          personality = require('./prompt_components/personality_zenmaster_nj.js');
+          break;
+        case "dwarf_craftsman":
+          personality = require('./prompt_components/personality_dwarf_craftsman.js');
+          break;
+        case "ship_computer":
+          const shipComputerFn = require('./prompt_components/personality_ship_computer.js');
+          personality = shipComputerFn(message.guild ? message.guild.name : "Default Guild"); // Added a fallback for guild name
+          break;
+        case "educator_joy":
+          personality = require('./prompt_components/personality_educator_joy.js');
+          break;
+        case "oracle_sigh":
+          personality = require('./prompt_components/personality_oracle_sigh.js');
+          break;
+        case "shakespeare": // New case
+          personality = require('./prompt_components/personality_shakespeare.js');
+          break;
+        case "pirate_qm": // New case
+          const pirateQmFn = require('./prompt_components/personality_pirate_qm.js');
+          personality = pirateQmFn(message.guild ? message.guild.name : "Default Guild");
+          break;
+        case "anxious_philosopher": // New case
+          personality = require('./prompt_components/personality_anxious_philosopher.js');
+          break;
+        case "chicago_pope": // New case
+          personality = require('./prompt_components/personality_chicago_pope.js');
+          break;
+        case "bender":
+        default: // Fallback to bender if key is invalid or explicitly bender
+          personality = require('./prompt_components/personality_bender.js');
+          break;
+      }
+      // End of new block
+      const identity = require('./prompt_components/identity.js')(botname, clientId);
+      const chatInstructions = require('./prompt_components/chat_instructions.js');
+      const formattingInstructions = require('./prompt_components/formatting_instructions.js');
+      const capabilities = require('./prompt_components/capabilities.js');
+
+      // Construct the full instruction string, joining components with a space.
+      const instructions = [
+        personality,
+        identity,
+        chatInstructions,
+        capabilities,
+        formattingInstructions
+      ].join(' ');
+
+      return instructions;
+    }
 
     async buildContext(message, nonSequitur) {
-        let botname = message.guild.members.cache.get(this.client.user.id).displayName
-        let context = `${this.standardContext} ${botname} or <@${this.client.user.id}>. `
-        if (nonSequitur) {
-            context += `Please try to include an idea from this group of random thoughts: "${nonSequitur}" `
-        }
-        context += `Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`
-        let msgs = await message.channel.messages.fetch({limit:30}) 
-        Array.from(msgs).reverse().forEach(msg => {
-            if (msg[1].content[0] == message.settings.prefix) return
-            let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName
-            if (name !== undefined) {
-              name += " (id: <@" + msg[1].author.id + ">)"
-            } else {
-              name = "(id: <@" + msg[1].author.id + ">)"
-            }
-            context += `\n[${msg[1].createdAt.toLocaleString()}] ${name}: ${msg[1].content}`
-        })
-        //this.client.logger.log(context)
-        return context
+    let context = "";
+    if (nonSequitur) {
+        // Ensure there's a space after the nonSequitur if other text follows,
+        // but here it's followed by a descriptive sentence.
+        context += `Please try to include an idea from this group of random thoughts: "${nonSequitur}" `;
     }
+
+    // If nonSequitur was added, ensure the next part of the context starts appropriately.
+    // Adding a newline or space if needed. Here, the next part is a sentence, so a space or newline is good.
+    if (context.length > 0) {
+        context += "\n"; // Add a newline if nonSequitur was present for better separation
+    }
+
+    context += `Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`;
+    let msgs = await message.channel.messages.fetch({limit:30});
+    Array.from(msgs).reverse().forEach(msg => {
+        if (msg[1].content[0] == message.settings.prefix) return;
+        let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName;
+        if (name !== undefined) {
+          name += " (id: <@" + msg[1].author.id + ">)";
+        } else {
+          name = "(id: <@" + msg[1].author.id + ">)";
+        }
+        context += `\n[${msg[1].createdAt.toLocaleString()}] ${name}: ${msg[1].content}`;
+    });
+    return context;
+}
 
     async explainCode(code, language) {
         const prompt = ` In chunks of 2000 characters or less, Please explain the following ${language} code: \
@@ -183,47 +231,102 @@ class GeminiAI {
       }
     }
 
-    async processResponse(result, botname) {      
-      let response = result.text.trim()
+    async processResponse(result, botname) {
+  let responseText = "Error: Could not extract AI response text."; // Default error message
+  let candidate = null;
 
-      //check if there is an image needed, if so prompt the imagegen for the image
-      let image = null
-      if (response.includes("Processing image of") || response.includes("Generating image of")) {
-        const keyword = response.includes("Processing image of") ? "Processing image of" : "Generating image of"
-        const parts = response.split(keyword)
-        const imagePart = parts[1].split("\n")[0]
-        image = imagePart.trim()
-      }
+  // --- Start: Flexible path to candidate object ---
+  if (result && result.response && result.response.candidates && result.response.candidates.length > 0) {
+    candidate = result.response.candidates[0];
+    // this.client.logger.log("GeminiAI: Found candidate via result.response.candidates[0]", "debug");
+  } else if (result && result.candidates && result.candidates.length > 0) {
+    candidate = result.candidates[0];
+    // this.client.logger.log("GeminiAI: Found candidate via result.candidates[0]", "debug");
+  }
+  // --- End: Flexible path to candidate object ---
 
-      if (response.endsWith('||SEPARATE||')) {
-          response = response.slice(0, -12); // Remove trailing ||SEPARATE||
-      }
-      if (response.startsWith(`<@${this.client.user.id}>`)) {
-        response = response.replace(`<@${this.client.user.id}>: `, "")
-      }
-      if (botname && response.startsWith(`${botname}: `)) {
-        response = response.replace(`${botname}: `, "")
-      }
-      if (response.startsWith(`"`)) {
-        response = response.slice(1, -1)
-      }
-      result.candidates.forEach(candidate => {
-        if (candidate.groundingMetadata?.groundingChunks) {
-          response += "||SEPARATE||Sources: "
-          candidate.groundingMetadata.groundingChunks.forEach(chunk => {
-            response += `[${chunk.web.title}](<${chunk.web.uri}>) `
-          })
-        }
-      })
+  // --- Start: Modified text extraction to concatenate ALL text parts ---
+  if (candidate) {
+    if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+      const textParts = candidate.content.parts.filter(part =>
+        part && typeof part.text === 'string' && part.text.trim() !== ""
+      );
 
-      //check if there is an image needed, if so prompt the imagegen for the image
-      let imageResponse = null
-      if (image) {
-        imageResponse = await this.generateImage(`generate an image of ${image}`)
+      if (textParts.length > 0) {
+        // Concatenate the text from all found text parts, separated by a space
+        responseText = textParts.map(part => part.text.trim()).join(' ').trim();
+        // this.client.logger.log(`GeminiAI: Successfully concatenated text parts: "${responseText}"`, "debug");
+      } else {
+        this.client.logger.warn("GeminiAI: No suitable text parts found in API response candidate's parts.", { parts: JSON.stringify(candidate.content.parts), candidateKeys: Object.keys(candidate) });
+        // responseText remains the default error message
       }
-
-      return {response, imageResponse}
+    } else {
+      this.client.logger.warn("GeminiAI: API response candidate missing content or parts.", { candidateKeys: Object.keys(candidate), contentKeys: candidate.content ? Object.keys(candidate.content) : 'null' });
+      // responseText remains the default error message
     }
+  } else {
+    this.client.logger.error("GeminiAI: Invalid or incomplete API response structure (no valid candidate found).", { resultKeys: result ? Object.keys(result).join(', ') : 'null' });
+    // responseText remains the default error message
+  }
+  // --- End: Modified text extraction ---
+
+  // Note: Regex-based reasoning stripping is intentionally removed.
+
+  let image = null;
+  // Image prompt extraction - operates on the extracted responseText
+  if (responseText.startsWith("Error:")) {
+    // Do not attempt image prompt extraction if responseText is an error message
+  } else if (responseText.includes("Processing image of") || responseText.includes("Generating image of")) {
+    const keyword = responseText.includes("Processing image of") ? "Processing image of" : "Generating image of";
+    const keywordParts = responseText.split(keyword);
+    if (keywordParts.length > 1 && keywordParts[1]) {
+        const imagePartCandidate = keywordParts[1].split("\n")[0];
+        image = imagePartCandidate.trim();
+    }
+  }
+
+  // Standard cleanup - operates on the extracted responseText
+  // Only apply cleanup if not an error message, or be selective
+  if (!responseText.startsWith("Error:")) {
+    if (responseText.endsWith('||SEPARATE||')) {
+      responseText = responseText.slice(0, -12);
+    }
+    const userIdTag = "<@" + this.client.user.id + ">";
+    if (responseText.startsWith(userIdTag)) {
+      responseText = responseText.replace(userIdTag + ": ", "");
+    }
+    if (botname && responseText.startsWith(botname + ": ")) {
+      responseText = responseText.replace(botname + ": ", "");
+    }
+    if (responseText.startsWith('"') && responseText.endsWith('"')) {
+      responseText = responseText.substring(1, responseText.length - 1);
+    }
+  }
+
+  let finalResponseText = responseText;
+
+  // Grounding metadata processing - appends to finalResponseText
+  // Check if candidate was found before trying to access its groundingMetadata
+  if (candidate && candidate.groundingMetadata?.groundingChunks) {
+    if (!finalResponseText.includes("||SEPARATE||Sources:") && !finalResponseText.startsWith("Error:")) {
+        finalResponseText += "||SEPARATE||Sources: ";
+    } else if (!finalResponseText.startsWith("Error:") && !finalResponseText.endsWith(" ")) {
+        finalResponseText += " ";
+    }
+    if (!finalResponseText.startsWith("Error:")) {
+        candidate.groundingMetadata.groundingChunks.forEach(chunk => {
+          finalResponseText += `[${chunk.web.title}](<${chunk.web.uri}>) `;
+        });
+    }
+  }
+
+  let imageResponse = null;
+  if (image) {
+    imageResponse = await this.generateImage(`generate an image of ${image}`);
+  }
+
+  return { response: finalResponseText, imageResponse };
+}
 }
 
 module.exports = { createGeminiAI }
