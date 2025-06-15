@@ -232,13 +232,22 @@ class GeminiAI {
     }
 
     async processResponse(result, botname) {
-  let responseText = "";
+  let responseText = "Error: Could not extract AI response text."; // Default error message
+  let candidate = null;
 
-  // --- Start: New precise text extraction logic based on user feedback ---
+  // --- Start: Flexible path to candidate object ---
   if (result && result.response && result.response.candidates && result.response.candidates.length > 0) {
-    const candidate = result.response.candidates[0];
-    if (candidate && candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-      // Find the first part that has a 'text' property with actual content
+    candidate = result.response.candidates[0];
+    // this.client.logger.log("GeminiAI: Found candidate via result.response.candidates[0]", "debug");
+  } else if (result && result.candidates && result.candidates.length > 0) {
+    candidate = result.candidates[0];
+    // this.client.logger.log("GeminiAI: Found candidate via result.candidates[0]", "debug");
+  }
+  // --- End: Flexible path to candidate object ---
+
+  // --- Start: Precise text extraction from candidate parts ---
+  if (candidate) {
+    if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
       const textPart = candidate.content.parts.find(part =>
         part && typeof part.text === 'string' && part.text.trim() !== ""
       );
@@ -247,79 +256,69 @@ class GeminiAI {
         responseText = textPart.text.trim();
         // this.client.logger.log(`GeminiAI: Successfully extracted text part: "${responseText}"`, "debug");
       } else {
-        this.client.logger.warn("GeminiAI: No suitable text part found in API response candidate.", { parts: JSON.stringify(candidate.content.parts) });
-        responseText = "Error: Could not extract AI response text part.";
+        this.client.logger.warn("GeminiAI: No suitable text part found in API response candidate's parts.", { parts: JSON.stringify(candidate.content.parts), candidateKeys: Object.keys(candidate) });
+        // responseText remains the default error message
       }
     } else {
-      this.client.logger.warn("GeminiAI: API response candidate missing content or parts.", { candidate: JSON.stringify(candidate) });
-      responseText = "Error: Invalid API response candidate structure.";
+      this.client.logger.warn("GeminiAI: API response candidate missing content or parts.", { candidateKeys: Object.keys(candidate), contentKeys: candidate.content ? Object.keys(candidate.content) : 'null' });
+      // responseText remains the default error message
     }
   } else {
-    this.client.logger.error("GeminiAI: Invalid or incomplete API response structure (missing response, candidates, or candidate[0]).", { resultSummary: result ? Object.keys(result) : 'null' });
-    responseText = "Error: Invalid API response.";
+    // This specific error message was from the user's log.
+    this.client.logger.error("GeminiAI: Invalid or incomplete API response structure (missing response, candidates, or candidate[0]).", { resultKeys: result ? Object.keys(result).join(', ') : 'null' });
+    // responseText remains the default error message, or could be set to a more specific one here.
+    // For example: responseText = "Error: Invalid API response structure from AI.";
   }
-  // --- End: New precise text extraction logic ---
+  // --- End: Precise text extraction from candidate parts ---
 
-  // --- Start: Remove the entire regex-based reasoning prefix stripping section ---
-  // The section starting with "const reasoningRegexes = [...]" and the loop
-  // that used them should be completely deleted.
-  // --- End: Remove regex-based reasoning prefix stripping ---
+  // Note: Regex-based reasoning stripping is intentionally removed.
 
   let image = null;
-  // Image prompt extraction - operates on the precisely extracted responseText
-  if (responseText.includes("Processing image of") || responseText.includes("Generating image of")) {
+  // Image prompt extraction - operates on the extracted responseText
+  if (responseText.startsWith("Error:")) {
+    // Do not attempt image prompt extraction if responseText is an error message
+  } else if (responseText.includes("Processing image of") || responseText.includes("Generating image of")) {
     const keyword = responseText.includes("Processing image of") ? "Processing image of" : "Generating image of";
-    // Split carefully to get text after the keyword
     const keywordParts = responseText.split(keyword);
     if (keywordParts.length > 1 && keywordParts[1]) {
-        const imagePartCandidate = keywordParts[1].split("\n")[0]; // Get first line after keyword
+        const imagePartCandidate = keywordParts[1].split("\n")[0];
         image = imagePartCandidate.trim();
-        // this.client.logger.log(`GeminiAI: Extracted image prompt: "${image}"`, "debug");
     }
   }
 
-  // Standard cleanup - operates on the precisely extracted responseText
-  if (responseText.endsWith('||SEPARATE||')) {
-    responseText = responseText.slice(0, -12);
-  }
-  // Ensure botname and client.user.id are valid before using in startsWith/replace
-  const userIdTag = "<@" + this.client.user.id + ">";
-  if (responseText.startsWith(userIdTag)) {
-    responseText = responseText.replace(userIdTag + ": ", "");
-  }
-  if (botname && responseText.startsWith(botname + ": ")) {
-    responseText = responseText.replace(botname + ": ", "");
-  }
-
-  // Only remove surrounding quotes if they both exist
-  if (responseText.startsWith('"') && responseText.endsWith('"')) {
-    responseText = responseText.substring(1, responseText.length - 1);
+  // Standard cleanup - operates on the extracted responseText
+  // Only apply cleanup if not an error message, or be selective
+  if (!responseText.startsWith("Error:")) {
+    if (responseText.endsWith('||SEPARATE||')) {
+      responseText = responseText.slice(0, -12);
+    }
+    const userIdTag = "<@" + this.client.user.id + ">";
+    if (responseText.startsWith(userIdTag)) {
+      responseText = responseText.replace(userIdTag + ": ", "");
+    }
+    if (botname && responseText.startsWith(botname + ": ")) {
+      responseText = responseText.replace(botname + ": ", "");
+    }
+    if (responseText.startsWith('"') && responseText.endsWith('"')) {
+      responseText = responseText.substring(1, responseText.length - 1);
+    }
   }
 
   let finalResponseText = responseText;
 
   // Grounding metadata processing - appends to finalResponseText
-  // This uses the original `result` object, which is correct.
-  if (result && result.response && result.response.candidates) {
-    result.response.candidates.forEach(candidate => {
-      if (candidate.groundingMetadata?.groundingChunks) {
-        // Check if sources are already added by the model in the text part
-        if (!finalResponseText.includes("||SEPARATE||Sources:")) {
-            finalResponseText += "||SEPARATE||Sources: ";
-        } else {
-            // If already present, ensure a space if needed, or just append.
-            // This case might mean the model itself added sources.
-            // For simplicity, we'll just ensure it doesn't duplicate the header.
-            // Adding a space if not already there.
-            if (!finalResponseText.endsWith(" ")) {
-                finalResponseText += " ";
-            }
-        }
+  // Check if candidate was found before trying to access its groundingMetadata
+  if (candidate && candidate.groundingMetadata?.groundingChunks) {
+    if (!finalResponseText.includes("||SEPARATE||Sources:") && !finalResponseText.startsWith("Error:")) {
+        finalResponseText += "||SEPARATE||Sources: ";
+    } else if (!finalResponseText.startsWith("Error:") && !finalResponseText.endsWith(" ")) {
+        finalResponseText += " ";
+    }
+    if (!finalResponseText.startsWith("Error:")) {
         candidate.groundingMetadata.groundingChunks.forEach(chunk => {
           finalResponseText += `[${chunk.web.title}](<${chunk.web.uri}>) `;
         });
-      }
-    });
+    }
   }
 
   let imageResponse = null;
