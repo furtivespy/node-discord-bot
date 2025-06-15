@@ -96,7 +96,6 @@ class SetPersonality extends SlashCommand {
     const chosenPersonality = personalityChoices.find(p => p.value === chosenPersonalityKey);
     await interaction.reply({
       content: `AI personality set to: **${chosenPersonality ? chosenPersonality.name : chosenPersonalityKey}**.`,
-      ephemeral: true,
     });
   }
 

@@ -322,7 +322,7 @@ class GeminiAI {
 
   let imageResponse = null;
   if (image) {
-    imageResponse = await this.generateImage(\`generate an image of ${image}\`);
+    imageResponse = await this.generateImage(`generate an image of ${image}`);
   }
 
   return { response: finalResponseText, imageResponse };
