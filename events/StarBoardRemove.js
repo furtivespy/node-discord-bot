@@ -127,8 +127,8 @@ class StarBoardRemove extends Event {
             // Let's ensure it's always set to something to fulfill the contract of `edit` expecting an embed with a description field potentially.
             // Final decision: use `descriptionText` which defaults to `""` if no content, or set explicitly.
             // The crucial part is `setDescription` must be called with a string.
-            console.log('StarBoardRemove: Debugging descriptionText. Value:', descriptionText, 'Type:', typeof descriptionText);
-            theEmbed.setDescription(descriptionText || ""); // Ensures it's always a string.
+            
+            theEmbed.setDescription(descriptionText || "-"); // Ensures it's always a string.
 
             var starPost = await starChan.messages.fetch(starMsg.starMessage)
             if (reaction.count < starboardData.minimumStarCount) {

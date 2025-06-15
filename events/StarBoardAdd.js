@@ -72,7 +72,7 @@ class StarBoardAdd extends Event {
         return;
       }
       if (
-        (reaction._emoji == starboardData.starEmoji ||
+        (reaction._emoji.name == starboardData.starEmoji ||
           starboardData.useAllEmoji) &&
         reaction.count >= starboardData.minimumStarCount
       ) {
