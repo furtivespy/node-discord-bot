@@ -132,10 +132,52 @@ class Database {
     }
 
     SayThings(startWithWord){
-        var sentences = this.selectSCount.all()
-        var words = this.selectWCount.all()
-        var sayThisManyS = weighted.select(sentences.map(s => s.id), sentences.map(s => s.Count))
-        var sayThisManyW = weighted.select(words.map(s => s.id), words.map(s => s.Count))
+        var sentencesFromDB = this.selectSCount.all()
+        var wordsFromDB = this.selectWCount.all()
+
+        var sentenceCounts = sentencesFromDB.map(s => s.Count)
+        var sentenceIds = sentencesFromDB.map(s => s.id)
+        var wordCounts = wordsFromDB.map(s => s.Count)
+        var wordIds = wordsFromDB.map(s => s.id)
+
+        var sayThisManyS = 1; // Default
+        if (sentenceIds.length > 0 && sentenceCounts.reduce((sum, w) => sum + w, 0) >= 1) {
+            try {
+                sayThisManyS = weighted.select(sentenceIds, sentenceCounts);
+            } catch (e) {
+                console.error("Error selecting number of sentences, defaulting to 1. IDs:", sentenceIds, "Counts:", sentenceCounts, "Error:", e);
+                sayThisManyS = 1;
+            }
+        } else if (sentenceIds.length > 0) {
+            // If IDs exist but counts sum to < 1 (e.g. all zeros), default to 1 sentence.
+            // Or, could pick a random ID if desired, but weighted.select would fail.
+            console.warn("Sentence counts sum to < 1 or no sentences with count > 0. Defaulting to 1 sentence. IDs:", sentenceIds, "Counts:", sentenceCounts);
+            sayThisManyS = 1;
+        } else {
+            // No sentence entries in DB at all
+            console.warn("No sentence count entries found in DB. Defaulting to 1 sentence.");
+            sayThisManyS = 1;
+        }
+
+
+        var sayThisManyW = 1; // Default
+        if (wordIds.length > 0 && wordCounts.reduce((sum, w) => sum + w, 0) >= 1) {
+            try {
+                sayThisManyW = weighted.select(wordIds, wordCounts);
+            } catch (e) {
+                console.error("Error selecting number of words, defaulting to 1. IDs:", wordIds, "Counts:", wordCounts, "Error:", e);
+                sayThisManyW = 1;
+            }
+        } else if (wordIds.length > 0) {
+            // If IDs exist but counts sum to < 1
+            console.warn("Word counts sum to < 1 or no words with count > 0. Defaulting to 1 word (for length check). IDs:", wordIds, "Counts:", wordCounts);
+            sayThisManyW = 1; // This is a target, not a strict minimum for the first sentence.
+        } else {
+            // No word entries in DB
+            console.warn("No word count entries found in DB. Defaulting to 1 word (for length check).");
+            sayThisManyW = 1;
+        }
+
         var wholeResponse = ""
         for(var i=0;i<sayThisManyS;i++){
             if (i > 0) { 
@@ -170,20 +212,48 @@ class Database {
 
     backThatAssUp(sentence){
         if (sentence[0] === startWord) return
-        var next = this.goBack.all({word2: sentence[0], word3: sentence[1], word4: sentence[2], word5: sentence[3]})
-        if (next === undefined) return 
-        var nextw = weighted.select(next.map(s => s.word1), next.map(s => s.count))
-        sentence.splice(0,0,nextw)
-        this.backThatAssUp(sentence)   
+        var nextResult = this.goBack.all({word2: sentence[0], word3: sentence[1], word4: sentence[2], word5: sentence[3]})
+
+        if (!nextResult || nextResult.length === 0) return
+
+        var items = nextResult.map(s => s.word1)
+        var weights = nextResult.map(s => s.count)
+
+        if (items.length === 0 || weights.reduce((sum, w) => sum + w, 0) < 1) {
+            return;
+        }
+
+        try {
+            var nextw = weighted.select(items, weights)
+            sentence.splice(0,0,nextw)
+            this.backThatAssUp(sentence)
+        } catch (e) {
+            console.error("Error in backThatAssUp during weighted.select. Items:", items, "Weights:", weights, "Error:", e);
+            return; // Stop recursion if error occurs
+        }
     }
     goForthAndMultipy(sentence){
         if (sentence[sentence.length-1] === endWord) return
         var lastFour = sentence.slice((-1 * this.backCount))
-        var next = this.goForth.all({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
-        if (next === undefined) return 
-        var nextw = weighted.select(next.map(s => s.nextword), next.map(s => s.count))
-        sentence.push(nextw)
-        this.goForthAndMultipy(sentence)    
+        var nextResult = this.goForth.all({word1: lastFour[0], word2: lastFour[1], word3: lastFour[2], word4: lastFour[3]})
+
+        if (!nextResult || nextResult.length === 0) return
+
+        var items = nextResult.map(s => s.nextword)
+        var weights = nextResult.map(s => s.count)
+
+        if (items.length === 0 || weights.reduce((sum, w) => sum + w, 0) < 1) {
+            return;
+        }
+
+        try {
+            var nextw = weighted.select(items, weights)
+            sentence.push(nextw)
+            this.goForthAndMultipy(sentence)
+        } catch (e) {
+            console.error("Error in goForthAndMultipy during weighted.select. Items:", items, "Weights:", weights, "Error:", e);
+            return; // Stop recursion if error occurs
+        }
     }
 
     filter(currentSentence) {
