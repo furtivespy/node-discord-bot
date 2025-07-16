@@ -21,13 +21,11 @@ class SetPersonality extends SlashCommand {
     super(client, {
       name: "setpersonality",
       description: "Manage the bot's AI personality.",
-      guildOnly: true,
-      permLevel: "Administrator", // For help system, actual check is below
+      guildOnly: true
     });
     this.data = new SlashCommandBuilder()
       .setName(this.help.name)
       .setDescription(this.help.description)
-      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
       .addSubcommand((option) =>
         option
           .setName("set")
@@ -55,12 +53,6 @@ class SetPersonality extends SlashCommand {
   async execute(interaction) {
     if (!interaction.guild) {
         await interaction.reply({ content: "This command can only be used in a server.", ephemeral: true });
-        return;
-    }
-
-    // Double check permissions, though setDefaultMemberPermissions should handle most cases
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        await interaction.reply({ content: "You need Administrator permissions to use this command.", ephemeral: true});
         return;
     }
 

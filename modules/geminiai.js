@@ -15,7 +15,7 @@ class GeminiAI {
     async generateContent(prompt, message) {
         //const result = await this.model.generateContent(prompt)
         const result = await this.AI2.models.generateContent({
-          model: "gemini-2.5-flash-preview-04-17",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             tools: [
@@ -151,8 +151,11 @@ class GeminiAI {
       and use the text "||SEPARATE||" to indicate where one chunk ends and another begins.`
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const response = result.response.text();
+            const result = await this.AI2.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+            });
+            const {response} = await this.processResponse(result, "Bender");
             return response.split('||SEPARATE||').map(chunk => chunk.trim());
         } catch (error) {
             this.client.logger.error(error);
@@ -171,7 +174,7 @@ class GeminiAI {
       try {
         //const result = await this.model.generateContent(this.buildBasicPrompt(prompt));
         const result = await this.AI2.models.generateContent({
-          model: "gemini-2.5-flash-preview-04-17",
+          model: "gemini-2.5-flash",
           contents: this.buildBasicPrompt(prompt),
         })
         const {response, imageResponse} = await this.processResponse(result, "Bender")
@@ -214,6 +217,206 @@ class GeminiAI {
         return null;
       }
     }
+
+    /**
+     * New image generation method using the dedicated generateImages API
+     * Recommended over the legacy generateImage method
+     */
+    async generateImageNew(prompt, options = {}) {
+      try {
+        const config = {
+          numberOfImages: options.numberOfImages || 1,
+          aspectRatio: options.aspectRatio || "1:1", // "1:1", "3:4", "4:3", "9:16", "16:9"
+          outputMimeType: options.outputMimeType || "image/jpeg",
+          includeRaiReason: true,
+          ...options.config // Allow additional config overrides
+        };
+
+        const result = await this.AI2.models.generateImages({
+          model: "imagen-3.0-generate-002",
+          prompt: prompt,
+          config: config
+        });
+
+        if (!result?.generatedImages || result.generatedImages.length === 0) {
+          console.error('No generated images found in response');
+          return null;
+        }
+
+        // Get the first generated image
+        const generatedImage = result.generatedImages[0];
+        
+        if (generatedImage.raiFilteredReason) {
+          console.warn('Image was filtered:', generatedImage.raiFilteredReason);
+          return null;
+        }
+
+        if (!generatedImage.image?.imageBytes) {
+          console.error('No image bytes found in generated image');
+          return null;
+        }
+
+        // Create Discord attachment from the image bytes
+        const buffer = Buffer.from(generatedImage.image.imageBytes, 'base64');
+        const attachment = new AttachmentBuilder(buffer, { 
+          name: `generated_image.${config.outputMimeType === 'image/png' ? 'png' : 'jpg'}` 
+        });
+        
+        return attachment;
+        // return {
+        //   attachment,
+        //   enhancedPrompt: generatedImage.enhancedPrompt, // If prompt enhancement was used
+        //   safetyAttributes: generatedImage.safetyAttributes // Safety scores if requested
+        // };
+
+             } catch (error) {
+         console.error('Error generating image with new API:', error);
+         return null;
+       }
+     }
+
+     /**
+      * Edit an existing image based on a prompt
+      * @param {string} prompt - Description of how to edit the image
+      * @param {string|Buffer} imageData - Base64 string or Buffer of the image to edit
+      * @param {string} mimeType - MIME type of the input image (e.g., 'image/jpeg')
+      * @param {Object} options - Additional options
+      */
+     async editImage(prompt, imageData, mimeType = 'image/jpeg', options = {}) {
+       try {
+         // Convert Buffer to base64 if needed
+         let imageBytes;
+         if (Buffer.isBuffer(imageData)) {
+           imageBytes = imageData.toString('base64');
+         } else {
+           imageBytes = imageData;
+         }
+
+         const image = {
+           imageBytes: imageBytes,
+           mimeType: mimeType
+         };
+
+         const config = {
+           numberOfImages: options.numberOfImages || 1,
+           aspectRatio: options.aspectRatio || "1:1",
+           outputMimeType: options.outputMimeType || "image/jpeg",
+           includeRaiReason: true,
+           editMode: options.editMode || undefined, // Can be specific edit modes
+           ...options.config
+         };
+
+         const result = await this.AI2.models.editImage({
+           model: "imagen-3.0-capability-001",
+           prompt: prompt,
+           image: image,
+           config: config
+         });
+
+         if (!result?.generatedImages || result.generatedImages.length === 0) {
+           console.error('No edited images found in response');
+           return null;
+         }
+
+         const generatedImage = result.generatedImages[0];
+         
+         if (generatedImage.raiFilteredReason) {
+           console.warn('Edited image was filtered:', generatedImage.raiFilteredReason);
+           return null;
+         }
+
+         if (!generatedImage.image?.imageBytes) {
+           console.error('No image bytes found in edited image');
+           return null;
+         }
+
+         const buffer = Buffer.from(generatedImage.image.imageBytes, 'base64');
+         const attachment = new AttachmentBuilder(buffer, { 
+           name: `edited_image.${config.outputMimeType === 'image/png' ? 'png' : 'jpg'}` 
+         });
+         
+         return {
+           attachment,
+           enhancedPrompt: generatedImage.enhancedPrompt,
+           safetyAttributes: generatedImage.safetyAttributes
+         };
+
+       } catch (error) {
+         console.error('Error editing image:', error);
+         return null;
+       }
+     }
+
+     /**
+      * Upscale an image by a specified factor
+      * @param {string|Buffer} imageData - Base64 string or Buffer of the image to upscale
+      * @param {string} mimeType - MIME type of the input image
+      * @param {string} upscaleFactor - Factor to upscale by ('x2' or 'x4')
+      * @param {Object} options - Additional options
+      */
+     async upscaleImage(imageData, mimeType = 'image/jpeg', upscaleFactor = 'x2', options = {}) {
+       try {
+         // Convert Buffer to base64 if needed
+         let imageBytes;
+         if (Buffer.isBuffer(imageData)) {
+           imageBytes = imageData.toString('base64');
+         } else {
+           imageBytes = imageData;
+         }
+
+         const image = {
+           imageBytes: imageBytes,
+           mimeType: mimeType
+         };
+
+         const config = {
+           outputMimeType: options.outputMimeType || mimeType,
+           includeRaiReason: true,
+           enhanceInputImage: options.enhanceInputImage || false,
+           imagePreservationFactor: options.imagePreservationFactor || undefined,
+           ...options.config
+         };
+
+         const result = await this.AI2.models.upscaleImage({
+           model: "imagen-3.0-generate-002",
+           image: image,
+           upscaleFactor: upscaleFactor,
+           config: config
+         });
+
+         if (!result?.generatedImages || result.generatedImages.length === 0) {
+           console.error('No upscaled images found in response');
+           return null;
+         }
+
+         const generatedImage = result.generatedImages[0];
+         
+         if (generatedImage.raiFilteredReason) {
+           console.warn('Upscaled image was filtered:', generatedImage.raiFilteredReason);
+           return null;
+         }
+
+         if (!generatedImage.image?.imageBytes) {
+           console.error('No image bytes found in upscaled image');
+           return null;
+         }
+
+         const buffer = Buffer.from(generatedImage.image.imageBytes, 'base64');
+         const attachment = new AttachmentBuilder(buffer, { 
+           name: `upscaled_image_${upscaleFactor}.${config.outputMimeType === 'image/png' ? 'png' : 'jpg'}` 
+         });
+         
+         return {
+           attachment,
+           upscaleFactor: upscaleFactor,
+           safetyAttributes: generatedImage.safetyAttributes
+         };
+
+       } catch (error) {
+         console.error('Error upscaling image:', error);
+         return null;
+       }
+     }
 
     createAttachmentFromInlineData(imageData) {
       if (!imageData?.data || !imageData?.mimeType) {
@@ -322,7 +525,7 @@ class GeminiAI {
 
   let imageResponse = null;
   if (image) {
-    imageResponse = await this.generateImage(`generate an image of ${image}`);
+    imageResponse = await this.generateImageNew(`generate an image of ${image}`);
   }
 
   return { response: finalResponseText, imageResponse };
