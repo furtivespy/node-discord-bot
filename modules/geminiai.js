@@ -15,7 +15,7 @@ class GeminiAI {
     async generateContent(prompt, message) {
         //const result = await this.model.generateContent(prompt)
         const result = await this.AI2.models.generateContent({
-          model: "gemini-3-pro-preview",
+          model: "gemini-flash-latest",
           contents: prompt,
           config: {
             tools: [
@@ -152,7 +152,7 @@ class GeminiAI {
 
         try {
             const result = await this.AI2.models.generateContent({
-                model: "gemini-3-pro-preview",
+                model: "gemini-flash-latest",
                 contents: prompt,
             });
             const {response} = await this.processResponse(result, "Bender");
@@ -174,7 +174,7 @@ class GeminiAI {
       try {
         //const result = await this.model.generateContent(this.buildBasicPrompt(prompt));
         const result = await this.AI2.models.generateContent({
-          model: "gemini-3-pro-preview",
+          model: "gemini-flash-latest",
           contents: this.buildBasicPrompt(prompt),
         })
         const {response, imageResponse} = await this.processResponse(result, "Bender")
@@ -233,7 +233,7 @@ class GeminiAI {
         };
 
         const result = await this.AI2.models.generateImages({
-          model: "imagen-4.0-generate-001",
+          model: "imagen-4.0-fast-generate-001",
           prompt: prompt,
           config: config
         });
