@@ -7,7 +7,7 @@ const {
 } = require("discord.js");
 const { REST } = require("@discordjs/rest");
 const { Routes } = require("discord-api-types/v9");
-const Enmap = require("enmap");
+const Enmap = require("./modules/enmap");
 const klaw = require("klaw");
 const path = require("path");
 const database = require("./db/db.js");
