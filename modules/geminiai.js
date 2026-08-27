@@ -12,11 +12,10 @@ class GeminiAI {
         
     }
 
-    async generateContent(prompt, message) {
-        //const result = await this.model.generateContent(prompt)
+    async generateContent(contents, message) {
         const result = await this.AI2.models.generateContent({
           model: "gemini-flash-latest",
-          contents: prompt,
+          contents,
           config: {
             tools: [
               {
@@ -113,33 +112,77 @@ class GeminiAI {
     }
 
     async buildContext(message, nonSequitur) {
-    let context = "";
-    if (nonSequitur) {
-        // Ensure there's a space after the nonSequitur if other text follows,
-        // but here it's followed by a descriptive sentence.
-        context += `Please try to include an idea from this group of random thoughts: "${nonSequitur}" `;
-    }
+      const history = await message.channel.messages.fetch({ limit: 40 });
+      const chronological = Array.from(history.values()).reverse();
+      const botId = this.client.user.id;
+      const turns = [];
 
-    // If nonSequitur was added, ensure the next part of the context starts appropriately.
-    // Adding a newline or space if needed. Here, the next part is a sentence, so a space or newline is good.
-    if (context.length > 0) {
-        context += "\n"; // Add a newline if nonSequitur was present for better separation
-    }
+      for (const discordMessage of chronological) {
+        if (!discordMessage.content) continue;
+        if (discordMessage.content[0] == message.settings.prefix) continue;
 
-    context += `Here are the previous messages with timestamps (possibly including yours, you don't need to repeat yourself.):`;
-    let msgs = await message.channel.messages.fetch({limit:30});
-    Array.from(msgs).reverse().forEach(msg => {
-        if (msg[1].content[0] == message.settings.prefix) return;
-        let name = message.guild.members.cache.get(msg[1].author.id)?.displayName || msg[1].author.globalName;
-        if (name !== undefined) {
-          name += " (id: <@" + msg[1].author.id + ">)";
+        const role = discordMessage.author.id === botId ? "model" : "user";
+        const line = this.formatHistoryLine(message, discordMessage, role);
+        const last = turns[turns.length - 1];
+
+        if (last && last.role === role) {
+          last.parts[0].text += `\n${line}`;
         } else {
-          name = "(id: <@" + msg[1].author.id + ">)";
+          turns.push({ role, parts: [{ text: line }] });
         }
-        context += `\n[${msg[1].createdAt.toLocaleString()}] ${name}: ${msg[1].content}`;
-    });
-    return context;
-}
+      }
+
+      if (turns.length === 0) {
+        turns.push({
+          role: "user",
+          parts: [{ text: this.formatHistoryLine(message, message, "user") }],
+        });
+      }
+
+      this.attachNonSequitur(turns, nonSequitur);
+      this.ensureValidTurnSequence(turns);
+      return turns;
+    }
+
+    formatHistoryLine(message, discordMessage, role) {
+      if (role === "model") {
+        return discordMessage.content;
+      }
+      const member = message.guild.members.cache.get(discordMessage.author.id);
+      const name = member?.displayName || discordMessage.author.globalName || discordMessage.author.username;
+      const speaker = name
+        ? `${name} (id: <@${discordMessage.author.id}>)`
+        : `(id: <@${discordMessage.author.id}>)`;
+      return `[${discordMessage.createdAt.toLocaleString()}] ${speaker}: ${discordMessage.content}`;
+    }
+
+    attachNonSequitur(turns, nonSequitur) {
+      if (!nonSequitur) return;
+      const spice = `Please try to include an idea from this group of random thoughts: "${nonSequitur}"`;
+      for (let i = turns.length - 1; i >= 0; i--) {
+        if (turns[i].role === "user") {
+          turns[i].parts[0].text += `\n\n${spice}`;
+          return;
+        }
+      }
+      turns.push({ role: "user", parts: [{ text: spice }] });
+    }
+
+    ensureValidTurnSequence(turns) {
+      if (turns.length === 0) return;
+      if (turns[0].role === "model") {
+        turns.unshift({
+          role: "user",
+          parts: [{ text: "(conversation already in progress)" }],
+        });
+      }
+      if (turns[turns.length - 1].role === "model") {
+        turns.push({
+          role: "user",
+          parts: [{ text: "Please continue the conversation." }],
+        });
+      }
+    }
 
     async explainCode(code, language) {
         const prompt = ` In chunks of 2000 characters or less, Please explain the following ${language} code: \
@@ -232,10 +275,30 @@ class GeminiAI {
           ...options.config // Allow additional config overrides
         };
 
+        console.log("Generating image with prompt: ", prompt);
+
         const result = await this.AI2.models.generateImages({
           model: "imagen-4.0-fast-generate-001",
           prompt: prompt,
-          config: config
+          config: config,
+          safetySettings: [
+            {
+              category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+          ],
         });
 
         if (!result?.generatedImages || result.generatedImages.length === 0) {
