@@ -39,8 +39,8 @@ class Chatbot extends Command {
 
                     if (message.mentions.users.has(this.client.user.id)) {
                         console.log("responding...")
-                        const context = await this.client.geminiAI.buildContext(message, words)
-                        const {response, imageResponse} = await this.client.geminiAI.generateContent(context, message)
+                        const contents = await this.client.geminiAI.buildContext(message, words)
+                        const {response, imageResponse} = await this.client.geminiAI.generateContent(contents, message)
                         const parts = response.split('||SEPARATE||').map(chunk => chunk.trim())
                         for (const thought of parts) {
                             await message.channel.send(thought.slice(0, 2000))

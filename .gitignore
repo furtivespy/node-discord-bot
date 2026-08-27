@@ -67,3 +67,6 @@ config.json
 #sqlite data
 data/
 benderTest.session.sql
+
+# local planning docs (not part of the published repo)
+docs/
