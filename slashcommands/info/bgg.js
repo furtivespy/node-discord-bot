@@ -1,6 +1,5 @@
 const SlashCommand = require("../../base/SlashCommand.js");
 const { SlashCommandBuilder } = require("discord.js");
-const fetch = require("node-fetch");
 const BoardGameGeek = require('../../modules/boardgamegeek')
 
 class BGG extends SlashCommand {
@@ -44,37 +43,8 @@ class BGG extends SlashCommand {
           await interaction.respond([]);
           return;
         }
-        let query = new URLSearchParams();
-        query.set("q", search);
-        query.set("nosession", 1);
-        query.set("showcount", 20);
-        let results = await fetch(
-          `https://boardgamegeek.com/search/boardgame?${query.toString()}`,
-          {
-            headers: {
-              accept: "application/json, text/plain, */*",
-              "accept-language": "en-US,en;q=0.9",
-              "sec-ch-ua":
-                '"Google Chrome";v="105", "Not)A;Brand";v="8", "Chromium";v="105"',
-              "sec-ch-ua-mobile": "?0",
-              "sec-ch-ua-platform": '"Windows"',
-              "sec-fetch-dest": "empty",
-              "sec-fetch-mode": "cors",
-              "sec-fetch-site": "same-origin",
-              Referer: "https://boardgamegeek.com/",
-              "Referrer-Policy": "strict-origin-when-cross-origin",
-            },
-          }
-        );
-        let games = await results.json();
-        //console.log(JSON.stringify(games))
         await interaction.respond(
-          games.items.map((gameItem) => {
-            let gameName = `${gameItem.name} (${gameItem.yearpublished})`
-            return {
-            name: gameName.slice(0, 100),
-            value: gameItem.objectid,
-          }})
+          await BoardGameGeek.Search(search, this.client.config.BGGToken)
         );
       } else {
         if (isNaN(search)){

@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "BenderBot.js",
+  "engines": {
+    "node": ">=26.8.1 <27",
+    "npm": ">=11.19.0"
+  },
+  "packageManager": "npm@11.19.0",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node BenderBot.js"
@@ -24,14 +29,14 @@
     "@discordjs/rest": "^1.3.0",
     "@google/genai": "^1.9.0",
     "ascii-table": "git+https://github.com/belph/ascii-table.git",
-    "better-sqlite3": "^7.1.1",
-    "canvas": "^2.11.2",
+    "better-sqlite3": "^13.0.3",
+    "canvas": "^3.2.3",
     "chalk": "^2.4.2",
     "cheerio": "^1.0.0-rc.10",
     "discord-api-types": "^0.26.1",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.5",
-    "enmap": "^5.8.2",
+    "enmap": "^5.9.10",
     "fast-xml-parser": "^4.4.1",
     "flip": "^1.0.0",
     "fuse.js": "^6.4.3",
@@ -59,5 +64,14 @@
   },
   "devDependencies": {
     "@flydotio/dockerfile": "^0.5.8"
+  },
+  "overrides": {
+    "better-sqlite3": "$better-sqlite3",
+    "jwa": "^2.0.1"
+  },
+  "allowScripts": {
+    "better-sqlite3": true,
+    "canvas": true,
+    "wtf_wikipedia": true
   }
 }
