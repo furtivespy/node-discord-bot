@@ -39,6 +39,8 @@ class Database {
         this.db.prepare("CREATE TABLE IF NOT EXISTS starboard (_id INTEGER PRIMARY KEY AUTOINCREMENT, message VARCHAR(500) NOT NULL, starMessage VARCHAR(500) NOT NULL, startype VARCHAR(500))").run()
         this.db.prepare('CREATE INDEX IF NOT EXISTS idx_starboard_message on starboard(message, startype)').run()
         this.db.prepare('CREATE INDEX IF NOT EXISTS idx_starboard_starmessage on starboard(starmessage)').run()
+        // Real names (Phase 1b): stable id → name map for chat understanding
+        this.db.prepare("CREATE TABLE IF NOT EXISTS people (user_id TEXT PRIMARY KEY, real_name TEXT NOT NULL)").run()
 
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
@@ -100,6 +102,12 @@ class Database {
             'INSERT INTO starboard (message, starMessage, startype) VALUES (@message, @starMessage, @startype)'
           )
         this.starDelete = this.db.prepare('DELETE FROM starboard WHERE starMessage = ?')
+        this.upsertPerson = this.db.prepare(
+            'INSERT INTO people (user_id, real_name) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET real_name = excluded.real_name'
+        )
+        this.selectPerson = this.db.prepare('SELECT real_name FROM people WHERE user_id = ?')
+        this.selectPeople = this.db.prepare('SELECT user_id, real_name FROM people ORDER BY real_name COLLATE NOCASE')
+        this.deletePerson = this.db.prepare('DELETE FROM people WHERE user_id = ?')
     }
 
     makeSentence(ngramLength, startWithWord){
@@ -324,6 +332,31 @@ class Database {
 
     starboardDelete(starMessageId) {
         this.starDelete.run(starMessageId)
+    }
+
+    setPersonName(userId, realName) {
+        this.upsertPerson.run(userId, realName)
+    }
+
+    getPersonName(userId) {
+        const row = this.selectPerson.get(userId)
+        return row ? row.real_name : null
+    }
+
+    listPeople() {
+        return this.selectPeople.all()
+    }
+
+    getPeopleMap() {
+        const map = new Map()
+        for (const row of this.selectPeople.all()) {
+            map.set(row.user_id, row.real_name)
+        }
+        return map
+    }
+
+    clearPersonName(userId) {
+        return this.deletePerson.run(userId).changes > 0
     }
 
     top500Words() {

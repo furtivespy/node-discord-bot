@@ -94,7 +94,7 @@ class GeminiAI {
           break;
       }
       // End of new block
-      const identity = require('./prompt_components/identity.js')(botname, clientId);
+      const identity = require('./prompt_components/identity.js')(botname, clientId, this.buildPeopleRoster(message));
       const chatInstructions = require('./prompt_components/chat_instructions.js');
       const formattingInstructions = require('./prompt_components/formatting_instructions.js');
       const capabilities = require('./prompt_components/capabilities.js');
@@ -111,10 +111,23 @@ class GeminiAI {
       return instructions;
     }
 
+    buildPeopleRoster(message) {
+      if (!message.guild) return "";
+      const people = this.client.getDatabase(message.guild.id).listPeople();
+      if (people.length === 0) return "";
+      return people.map((person) => `- <@${person.user_id}> is ${person.real_name}`).join("\n");
+    }
+
+    getPeopleMap(message) {
+      if (!message.guild) return new Map();
+      return this.client.getDatabase(message.guild.id).getPeopleMap();
+    }
+
     async buildContext(message, nonSequitur) {
       const history = await message.channel.messages.fetch({ limit: 40 });
       const chronological = Array.from(history.values()).reverse();
       const botId = this.client.user.id;
+      const peopleById = this.getPeopleMap(message);
       const turns = [];
 
       for (const discordMessage of chronological) {
@@ -122,7 +135,7 @@ class GeminiAI {
         if (discordMessage.content[0] == message.settings.prefix) continue;
 
         const role = discordMessage.author.id === botId ? "model" : "user";
-        const line = this.formatHistoryLine(message, discordMessage, role);
+        const line = this.formatHistoryLine(message, discordMessage, role, peopleById);
         const last = turns[turns.length - 1];
 
         if (last && last.role === role) {
@@ -135,7 +148,7 @@ class GeminiAI {
       if (turns.length === 0) {
         turns.push({
           role: "user",
-          parts: [{ text: this.formatHistoryLine(message, message, "user") }],
+          parts: [{ text: this.formatHistoryLine(message, message, "user", peopleById) }],
         });
       }
 
@@ -144,15 +157,18 @@ class GeminiAI {
       return turns;
     }
 
-    formatHistoryLine(message, discordMessage, role) {
+    formatHistoryLine(message, discordMessage, role, peopleById = new Map()) {
       if (role === "model") {
         return discordMessage.content;
       }
       const member = message.guild.members.cache.get(discordMessage.author.id);
       const name = member?.displayName || discordMessage.author.globalName || discordMessage.author.username;
-      const speaker = name
-        ? `${name} (id: <@${discordMessage.author.id}>)`
-        : `(id: <@${discordMessage.author.id}>)`;
+      const realName = peopleById.get(discordMessage.author.id);
+      const speaker = realName
+        ? `${name} (${realName}, id: <@${discordMessage.author.id}>)`
+        : name
+          ? `${name} (id: <@${discordMessage.author.id}>)`
+          : `(id: <@${discordMessage.author.id}>)`;
       return `[${discordMessage.createdAt.toLocaleString()}] ${speaker}: ${discordMessage.content}`;
     }
 
