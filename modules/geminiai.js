@@ -230,113 +230,66 @@ class GeminiAI {
     }
 
     async generateImage(prompt) {
-      const result = await this.AI2.models.generateContent({
-        model: "gemini-2.0-flash-exp-image-generation",
-        contents: prompt,
-        config: {
-          responseModalities: ['image', 'text'],
-        }
-      })
-      try {
-        if (!result?.candidates?.[0]?.content?.parts) {
-          console.error('No candidates or parts found in response');
-          return null;
-        }
-
-        const parts = result.candidates[0].content.parts;
-        const inlineDataPart = parts.find(part => part.inlineData);
-        
-        if (!inlineDataPart) {
-          console.error('No inlineData found in response parts');
-          return null;
-        }
-
-        // Access the nested inlineData object
-        const imageData = inlineDataPart.inlineData;
-
-        return this.createAttachmentFromInlineData(imageData);
-      } catch (error) {
-        console.error('Error generating image:', error);
-        return null;
-      }
+      return this.generateImageNew(prompt);
     }
 
     /**
-     * New image generation method using the dedicated generateImages API
-     * Recommended over the legacy generateImage method
+     * Generate an image with Gemini Flash Image (Imagen 4 endpoints were shut down).
      */
     async generateImageNew(prompt, options = {}) {
       try {
-        const config = {
-          numberOfImages: options.numberOfImages || 1,
-          aspectRatio: options.aspectRatio || "1:1", // "1:1", "3:4", "4:3", "9:16", "16:9"
-          outputMimeType: options.outputMimeType || "image/jpeg",
-          includeRaiReason: true,
-          ...options.config // Allow additional config overrides
-        };
-
+        const aspectRatio = options.aspectRatio || "1:1";
         console.log("Generating image with prompt: ", prompt);
 
-        const result = await this.AI2.models.generateImages({
-          model: "imagen-4.0-fast-generate-001",
-          prompt: prompt,
-          config: config,
-          safetySettings: [
-            {
-              category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        const result = await this.AI2.models.generateContent({
+          model: "gemini-3.1-flash-image",
+          contents: prompt,
+          config: {
+            responseModalities: ["IMAGE"],
+            responseFormat: {
+              image: {
+                aspectRatio,
+              },
             },
-            {
-              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-            {
-              category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-            {
-              category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-          ],
+            safetySettings: [
+              {
+                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+            ],
+          },
         });
 
-        if (!result?.generatedImages || result.generatedImages.length === 0) {
-          console.error('No generated images found in response');
+        const parts = result?.candidates?.[0]?.content?.parts;
+        if (!parts) {
+          console.error("No candidates or parts found in image response");
           return null;
         }
 
-        // Get the first generated image
-        const generatedImage = result.generatedImages[0];
-        
-        if (generatedImage.raiFilteredReason) {
-          console.warn('Image was filtered:', generatedImage.raiFilteredReason);
+        const inlineDataPart = parts.find((part) => part.inlineData);
+        if (!inlineDataPart) {
+          console.error("No inlineData found in image response parts");
           return null;
         }
 
-        if (!generatedImage.image?.imageBytes) {
-          console.error('No image bytes found in generated image');
-          return null;
-        }
-
-        // Create Discord attachment from the image bytes
-        const buffer = Buffer.from(generatedImage.image.imageBytes, 'base64');
-        const attachment = new AttachmentBuilder(buffer, { 
-          name: `generated_image.${config.outputMimeType === 'image/png' ? 'png' : 'jpg'}` 
-        });
-        
-        return attachment;
-        // return {
-        //   attachment,
-        //   enhancedPrompt: generatedImage.enhancedPrompt, // If prompt enhancement was used
-        //   safetyAttributes: generatedImage.safetyAttributes // Safety scores if requested
-        // };
-
-             } catch (error) {
-         console.error('Error generating image with new API:', error);
-         return null;
-       }
-     }
+        return this.createAttachmentFromInlineData(inlineDataPart.inlineData);
+      } catch (error) {
+        console.error("Error generating image:", error);
+        return null;
+      }
+    }
 
      /**
       * Edit an existing image based on a prompt
@@ -488,9 +441,9 @@ class GeminiAI {
       }
 
       try {
-        const buffer = Buffer.from(imageData.data, 'base64');
-        const attachment = new AttachmentBuilder(buffer);
-        return attachment;
+        const buffer = Buffer.from(imageData.data, "base64");
+        const ext = imageData.mimeType === "image/png" ? "png" : "jpg";
+        return new AttachmentBuilder(buffer, { name: `generated_image.${ext}` });
       } catch (error) {
         console.error('Error creating attachment:', error);
         return null;
