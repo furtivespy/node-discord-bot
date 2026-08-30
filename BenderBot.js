@@ -12,6 +12,7 @@ const klaw = require("klaw");
 const path = require("path");
 const database = require("./db/db.js");
 const { createGeminiAI } = require("./modules/geminiai.js")
+const { archiveLiveMessage } = require("./modules/chatArchive.js");
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
 
 class BenderBot extends Client {
@@ -461,7 +462,12 @@ const init = async () => {
 
 //run every message commands
 client.on("messageCreate", async (message) => {
-  
+  try {
+    archiveLiveMessage(client, message);
+  } catch (e) {
+    client.logger.log(e, "error");
+  }
+
   if (message.author.bot) return;
   if (!message.guild) {
     return;

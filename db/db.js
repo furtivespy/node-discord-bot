@@ -41,6 +41,25 @@ class Database {
         this.db.prepare('CREATE INDEX IF NOT EXISTS idx_starboard_starmessage on starboard(starmessage)').run()
         // Real names (Phase 1b): stable id → name map for chat understanding
         this.db.prepare("CREATE TABLE IF NOT EXISTS people (user_id TEXT PRIMARY KEY, real_name TEXT NOT NULL)").run()
+        this.db.prepare(`CREATE TABLE IF NOT EXISTS chat_messages (
+          id TEXT PRIMARY KEY,
+          channel_id TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          author_name TEXT,
+          content TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          is_bot INTEGER NOT NULL DEFAULT 0
+        )`).run()
+        this.db.prepare('CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_created ON chat_messages (channel_id, created_at)').run()
+        this.db.prepare(`CREATE TABLE IF NOT EXISTS backfill_state (
+          channel_id TEXT PRIMARY KEY,
+          oldest_id_seen TEXT,
+          newest_id_seen TEXT,
+          status TEXT NOT NULL,
+          messages_stored INTEGER NOT NULL DEFAULT 0,
+          last_run_at INTEGER,
+          last_error TEXT
+        )`).run()
 
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
@@ -108,6 +127,9 @@ class Database {
         this.selectPerson = this.db.prepare('SELECT real_name FROM people WHERE user_id = ?')
         this.selectPeople = this.db.prepare('SELECT user_id, real_name FROM people ORDER BY real_name COLLATE NOCASE')
         this.deletePerson = this.db.prepare('DELETE FROM people WHERE user_id = ?')
+        this.insertChatMessageStmt = this.db.prepare(
+            'INSERT OR IGNORE INTO chat_messages (id, channel_id, author_id, author_name, content, created_at, is_bot) VALUES (@id, @channel_id, @author_id, @author_name, @content, @created_at, @is_bot)'
+        )
     }
 
     makeSentence(ngramLength, startWithWord){
@@ -357,6 +379,10 @@ class Database {
 
     clearPersonName(userId) {
         return this.deletePerson.run(userId).changes > 0
+    }
+
+    insertChatMessage(row) {
+        this.insertChatMessageStmt.run(row)
     }
 
     top500Words() {
