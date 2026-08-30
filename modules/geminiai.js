@@ -1,5 +1,6 @@
 const { GoogleGenAI, HarmCategory, HarmBlockThreshold } = require("@google/genai");
 const { AttachmentBuilder } = require("discord.js");
+const { liveMessageText } = require("./chatArchive.js");
 
 const createGeminiAI = (client) => {
     return new GeminiAI(client)
@@ -131,11 +132,12 @@ class GeminiAI {
       const turns = [];
 
       for (const discordMessage of chronological) {
-        if (!discordMessage.content) continue;
-        if (discordMessage.content[0] == message.settings.prefix) continue;
+        if (discordMessage.content && discordMessage.content[0] == message.settings.prefix) continue;
+        const text = liveMessageText(discordMessage);
+        if (!text) continue;
 
         const role = discordMessage.author.id === botId ? "model" : "user";
-        const line = this.formatHistoryLine(message, discordMessage, role, peopleById);
+        const line = this.formatHistoryLine(message, discordMessage, role, peopleById, text);
         const last = turns[turns.length - 1];
 
         if (last && last.role === role) {
@@ -157,9 +159,9 @@ class GeminiAI {
       return turns;
     }
 
-    formatHistoryLine(message, discordMessage, role, peopleById = new Map()) {
+    formatHistoryLine(message, discordMessage, role, peopleById = new Map(), text = liveMessageText(discordMessage)) {
       if (role === "model") {
-        return discordMessage.content;
+        return text;
       }
       const member = message.guild.members.cache.get(discordMessage.author.id);
       const name = member?.displayName || discordMessage.author.globalName || discordMessage.author.username;
@@ -169,7 +171,7 @@ class GeminiAI {
         : name
           ? `${name} (id: <@${discordMessage.author.id}>)`
           : `(id: <@${discordMessage.author.id}>)`;
-      return `[${discordMessage.createdAt.toLocaleString()}] ${speaker}: ${discordMessage.content}`;
+      return `[${discordMessage.createdAt.toLocaleString()}] ${speaker}: ${text}`;
     }
 
     attachNonSequitur(turns, nonSequitur) {

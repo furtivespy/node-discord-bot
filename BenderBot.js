@@ -13,6 +13,7 @@ const path = require("path");
 const database = require("./db/db.js");
 const { createGeminiAI } = require("./modules/geminiai.js")
 const { archiveLiveMessage } = require("./modules/chatArchive.js");
+const { createChatBackfill } = require("./modules/chatBackfill.js");
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
 
 class BenderBot extends Client {
@@ -61,6 +62,7 @@ class BenderBot extends Client {
 
     // add geminiAI module
     this.geminiAI = createGeminiAI(this)
+    this.chatBackfill = createChatBackfill(this)
     // Basically just an async shortcut to using a setTimeout. Nothing fancy!
     this.wait = require("util").promisify(setTimeout);
   }
@@ -298,68 +300,91 @@ const init = async () => {
   }
 
   client.on("ready", async () => {
-    //nice to wait a sec before really being ready
-    await client.wait(1000);
+    try {
+      //nice to wait a sec before really being ready
+      await client.wait(1000);
 
-    client.user.setActivity(client.config.activity, {
-      type: client.config.activityType,
-    });
-    client.appInfo = await client.application.fetch();
-    setInterval(async () => {
-      client.appInfo = await client.application.fetch();
-    }, 60000);
-    if (!client.settings.has("default")) {
-      if (!client.config.defaultSettings)
-        throw new Error(
-          "defaultSettings not preset in config.js or settings database. Bot cannot load."
+      if (!client.isReady() || !client.ws.shards.size) {
+        client.logger.log(
+          "ready fired but the Discord gateway is not connected; skipping startup work",
+          "warn"
         );
-      client.settings.set("default", client.config.defaultSettings);
-    }
+        return;
+      }
 
-    await client.guilds.fetch();
-    client.logger.log(
-      `Bot has started, in ${client.guilds.cache.size} guilds.`,
-      "ready"
-    );
+      try {
+        client.user.setActivity(client.config.activity, {
+          type: client.config.activityType,
+        });
+      } catch (e) {
+        client.logger.log(e, "warn");
+      }
+      client.appInfo = await client.application.fetch();
+      setInterval(async () => {
+        try {
+          if (!client.isReady()) return;
+          client.appInfo = await client.application.fetch();
+        } catch (e) {
+          client.logger.log(e, "warn");
+        }
+      }, 60000);
+      if (!client.settings.has("default")) {
+        if (!client.config.defaultSettings)
+          throw new Error(
+            "defaultSettings not preset in config.js or settings database. Bot cannot load."
+          );
+        client.settings.set("default", client.config.defaultSettings);
+      }
 
-    client.guilds.cache.forEach(async (gld) => {
-      await gld.members.fetch();
-    });
-    client.logger.log(`guild members cached`);
+      await client.guilds.fetch();
+      client.logger.log(
+        `Bot has started, in ${client.guilds.cache.size} guilds.`,
+        "ready"
+      );
 
-    //Register Slash Commands
-    const cmds = client.slashcommands.map((sc) => sc.data.toJSON());
-    const rest = new REST({
-      version: "9",
-    }).setToken(client.config.token);
+      client.guilds.cache.forEach(async (gld) => {
+        await gld.members.fetch();
+      });
+      client.logger.log(`guild members cached`);
 
-    if (client.config.clientId == "548570412959662080") {
-      //Test Server
-      rest
-        .put(
-          Routes.applicationGuildCommands(
-            client.config.clientId,
-            "545109131330191371"
-          ),
-          {
+      //Register Slash Commands
+      const cmds = client.slashcommands.map((sc) => sc.data.toJSON());
+      const rest = new REST({
+        version: "9",
+      }).setToken(client.config.token);
+
+      if (client.config.clientId == "548570412959662080") {
+        //Test Server
+        rest
+          .put(
+            Routes.applicationGuildCommands(
+              client.config.clientId,
+              "545109131330191371"
+            ),
+            {
+              body: cmds,
+            }
+          )
+          .then((response) => {
+            client.logger.log("Successfully registered application commands.")
+          })
+          .catch((error) => client.logger.error(error));
+      } else {
+        //Prod Server
+        rest
+          .put(Routes.applicationCommands(client.config.clientId), {
             body: cmds,
-          }
-        )
-        .then((response) => {
-          client.logger.log("Successfully registered application commands.")
-        })
-        .catch((error) => client.logger.error(error));
-    } else {
-      //Prod Server
-      rest
-        .put(Routes.applicationCommands(client.config.clientId), {
-          body: cmds,
-        })
-        .then((response) => {
-          client.logger.log("Successfully registered application commands.");
-          //client.logger.log(JSON.stringify(response, null, 2));
-        })
-        .catch((error) => client.logger.error(error));
+          })
+          .then((response) => {
+            client.logger.log("Successfully registered application commands.");
+            //client.logger.log(JSON.stringify(response, null, 2));
+          })
+          .catch((error) => client.logger.error(error));
+      }
+
+      client.chatBackfill.onReady();
+    } catch (e) {
+      client.logger.log(e, "error");
     }
   });
 

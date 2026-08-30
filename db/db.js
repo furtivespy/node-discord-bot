@@ -60,6 +60,40 @@ class Database {
           last_run_at INTEGER,
           last_error TEXT
         )`).run()
+        this.db.prepare(`CREATE TABLE IF NOT EXISTS backfill_worker (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          status TEXT NOT NULL,
+          priority_channel_id TEXT,
+          updated_at INTEGER
+        )`).run()
+        this.db.prepare("INSERT OR IGNORE INTO backfill_worker (id, status, updated_at) VALUES (1, 'paused', NULL)").run()
+        for (const sql of [
+            "ALTER TABLE backfill_state ADD COLUMN kind TEXT NOT NULL DEFAULT 'channel'",
+            "ALTER TABLE backfill_state ADD COLUMN threads_synced INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE backfill_state ADD COLUMN thread_archive_before TEXT",
+            "ALTER TABLE backfill_state ADD COLUMN thread_archive_kind TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN compile_channel_id TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN compile_period_key TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN compile_period_type TEXT",
+        ]) {
+            try { this.db.prepare(sql).run() } catch {}
+        }
+        this.db.prepare(`CREATE TABLE IF NOT EXISTS transcript_exports (
+          channel_id TEXT NOT NULL,
+          period_type TEXT NOT NULL,
+          period_key TEXT NOT NULL,
+          path TEXT NOT NULL,
+          channel_name TEXT,
+          parent_channel_id TEXT,
+          parent_channel_name TEXT,
+          kind TEXT,
+          start_at INTEGER NOT NULL,
+          end_at INTEGER NOT NULL,
+          message_count INTEGER NOT NULL,
+          compiled_at INTEGER NOT NULL,
+          PRIMARY KEY (channel_id, period_type, period_key)
+        )`).run()
+        this.db.prepare('CREATE INDEX IF NOT EXISTS idx_transcript_exports_period ON transcript_exports (period_type, period_key)').run()
 
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
@@ -130,6 +164,154 @@ class Database {
         this.insertChatMessageStmt = this.db.prepare(
             'INSERT OR IGNORE INTO chat_messages (id, channel_id, author_id, author_name, content, created_at, is_bot) VALUES (@id, @channel_id, @author_id, @author_name, @content, @created_at, @is_bot)'
         )
+        this.insertChatMessagesTxn = this.db.transaction((rows) => {
+            let added = 0
+            for (const row of rows) {
+                added += this.insertChatMessageStmt.run(row).changes
+            }
+            return added
+        })
+        this.commitBackfillPageTxn = this.db.transaction((rows, progress) => {
+            let added = 0
+            for (const row of rows) {
+                added += this.insertChatMessageStmt.run(row).changes
+            }
+            this.updateBackfillProgressStmt.run({
+                ...progress,
+                added,
+                last_run_at: Date.now(),
+            })
+            return added
+        })
+        this.selectChatMessageCreatedAt = this.db.prepare('SELECT created_at FROM chat_messages WHERE id = ?')
+        this.ensureBackfillStateStmt = this.db.prepare(
+            "INSERT OR IGNORE INTO backfill_state (channel_id, oldest_id_seen, newest_id_seen, status, messages_stored, last_run_at, last_error, kind, threads_synced) VALUES (@channel_id, NULL, NULL, @status, 0, NULL, NULL, @kind, @threads_synced)"
+        )
+        this.selectBackfillState = this.db.prepare('SELECT * FROM backfill_state WHERE channel_id = ?')
+        this.selectAllBackfillState = this.db.prepare('SELECT * FROM backfill_state ORDER BY status, channel_id')
+        this.selectNextBackfillChannel = this.db.prepare(`
+            SELECT * FROM backfill_state
+            WHERE status IN ('pending', 'running', 'discovering')
+            ORDER BY CASE WHEN channel_id = ? THEN 0 ELSE 1 END,
+                     CASE status WHEN 'running' THEN 0 WHEN 'pending' THEN 1 WHEN 'discovering' THEN 2 ELSE 3 END,
+                     channel_id
+            LIMIT 1
+        `)
+        this.selectBackfillSummary = this.db.prepare(`
+            SELECT
+              COUNT(*) as queued,
+              COALESCE(SUM(CASE WHEN COALESCE(kind, 'channel') = 'thread' THEN 1 ELSE 0 END), 0) as threads,
+              COALESCE(SUM(CASE WHEN COALESCE(kind, 'channel') != 'thread' THEN 1 ELSE 0 END), 0) as channels,
+              COALESCE(SUM(messages_stored), 0) as messages,
+              COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending,
+              COALESCE(SUM(CASE WHEN status IN ('running', 'discovering') THEN 1 ELSE 0 END), 0) as in_progress,
+              COALESCE(SUM(CASE WHEN status = 'caught_up' THEN 1 ELSE 0 END), 0) as caught_up,
+              COALESCE(SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped,
+              COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0) as error
+            FROM backfill_state
+        `)
+        this.selectRunningBackfill = this.db.prepare(`
+            SELECT * FROM backfill_state
+            WHERE status IN ('running', 'discovering')
+            ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END, last_run_at DESC
+            LIMIT 1
+        `)
+        this.selectDiscoveringBackfill = this.db.prepare(`
+            SELECT * FROM backfill_state WHERE status = 'discovering' LIMIT 1
+        `)
+        this.updateThreadDiscoveryStmt = this.db.prepare(`
+            UPDATE backfill_state SET
+              thread_archive_before = @thread_archive_before,
+              thread_archive_kind = @thread_archive_kind,
+              threads_synced = @threads_synced,
+              status = @status,
+              last_run_at = @last_run_at,
+              last_error = NULL
+            WHERE channel_id = @channel_id
+        `)
+        this.updateBackfillProgressStmt = this.db.prepare(`
+            UPDATE backfill_state SET
+              oldest_id_seen = @oldest_id_seen,
+              newest_id_seen = COALESCE(newest_id_seen, @newest_id_seen),
+              status = @status,
+              messages_stored = messages_stored + @added,
+              last_run_at = @last_run_at,
+              last_error = @last_error
+            WHERE channel_id = @channel_id
+        `)
+        this.setBackfillChannelStatusStmt = this.db.prepare(`
+            UPDATE backfill_state SET status = ?, last_error = ?, last_run_at = ? WHERE channel_id = ?
+        `)
+        this.selectBackfillWorker = this.db.prepare('SELECT * FROM backfill_worker WHERE id = 1')
+        this.setBackfillWorkerStatusStmt = this.db.prepare(
+            'UPDATE backfill_worker SET status = ?, updated_at = ? WHERE id = 1'
+        )
+        this.setBackfillPriorityStmt = this.db.prepare(
+            'UPDATE backfill_worker SET priority_channel_id = ?, updated_at = ? WHERE id = 1'
+        )
+        this.resetBackfillErrorsStmt = this.db.prepare(
+            "UPDATE backfill_state SET status = 'pending', last_error = NULL, last_run_at = ? WHERE status = 'error'"
+        )
+        this.setCompileProgressStmt = this.db.prepare(
+            "UPDATE backfill_worker SET compile_channel_id = ?, compile_period_key = ?, compile_period_type = ?, updated_at = ? WHERE id = 1"
+        )
+        this.selectChannelMonthCounts = this.db.prepare(`
+            SELECT channel_id,
+                   strftime('%Y-%m', created_at / 1000, 'unixepoch') as period_key,
+                   COUNT(*) as message_count
+            FROM chat_messages
+            GROUP BY channel_id, period_key
+            ORDER BY channel_id, period_key
+        `)
+        this.selectChannelWeekCounts = this.db.prepare(`
+            SELECT ((CAST(strftime('%d', created_at / 1000, 'unixepoch') AS INTEGER) - 1) / 7) + 1 as week,
+                   COUNT(*) as message_count
+            FROM chat_messages
+            WHERE channel_id = ? AND created_at >= ? AND created_at < ?
+            GROUP BY week
+            ORDER BY week
+        `)
+        this.selectMessagesInRange = this.db.prepare(`
+            SELECT id, channel_id, author_id, author_name, content, created_at, is_bot
+            FROM chat_messages
+            WHERE channel_id = ? AND created_at >= ? AND created_at < ?
+            ORDER BY created_at ASC, id ASC
+        `)
+        this.selectTranscriptExport = this.db.prepare(
+            "SELECT * FROM transcript_exports WHERE channel_id = ? AND period_type = ? AND period_key = ?"
+        )
+        this.upsertTranscriptExportStmt = this.db.prepare(`
+            INSERT INTO transcript_exports (
+              channel_id, period_type, period_key, path, channel_name, parent_channel_id,
+              parent_channel_name, kind, start_at, end_at, message_count, compiled_at
+            ) VALUES (
+              @channel_id, @period_type, @period_key, @path, @channel_name, @parent_channel_id,
+              @parent_channel_name, @kind, @start_at, @end_at, @message_count, @compiled_at
+            )
+            ON CONFLICT(channel_id, period_type, period_key) DO UPDATE SET
+              path = excluded.path,
+              channel_name = excluded.channel_name,
+              parent_channel_id = excluded.parent_channel_id,
+              parent_channel_name = excluded.parent_channel_name,
+              kind = excluded.kind,
+              start_at = excluded.start_at,
+              end_at = excluded.end_at,
+              message_count = excluded.message_count,
+              compiled_at = excluded.compiled_at
+        `)
+        this.selectTranscriptWeeksForMonth = this.db.prepare(
+            "SELECT * FROM transcript_exports WHERE channel_id = ? AND period_type = 'week' AND period_key LIKE ?"
+        )
+        this.deleteTranscriptWeeksForMonthStmt = this.db.prepare(
+            "DELETE FROM transcript_exports WHERE channel_id = ? AND period_type = 'week' AND period_key LIKE ?"
+        )
+        this.selectTranscriptSummary = this.db.prepare(`
+            SELECT
+              COALESCE(SUM(CASE WHEN period_type = 'month' THEN 1 ELSE 0 END), 0) as months,
+              COALESCE(SUM(CASE WHEN period_type = 'week' THEN 1 ELSE 0 END), 0) as weeks,
+              COALESCE(SUM(message_count), 0) as messages
+            FROM transcript_exports
+        `)
     }
 
     makeSentence(ngramLength, startWithWord){
@@ -383,6 +565,132 @@ class Database {
 
     insertChatMessage(row) {
         this.insertChatMessageStmt.run(row)
+    }
+
+    insertChatMessages(rows) {
+        if (!rows.length) return 0
+        return this.insertChatMessagesTxn(rows)
+    }
+
+    commitBackfillPage(rows, progress) {
+        return this.commitBackfillPageTxn(rows, progress)
+    }
+
+    resetBackfillErrors() {
+        this.resetBackfillErrorsStmt.run(Date.now())
+    }
+
+    getChatMessageCreatedAt(id) {
+        if (!id) return null
+        const row = this.selectChatMessageCreatedAt.get(id)
+        return row ? row.created_at : null
+    }
+
+    ensureBackfillChannel(channelId, status, { kind = "channel", threads_synced = 0 } = {}) {
+        this.ensureBackfillStateStmt.run({ channel_id: channelId, status, kind, threads_synced })
+    }
+
+    getBackfillSummary() {
+        return this.selectBackfillSummary.get()
+    }
+
+    getRunningBackfill() {
+        return this.selectRunningBackfill.get() || null
+    }
+
+    getDiscoveringBackfill() {
+        return this.selectDiscoveringBackfill.get() || null
+    }
+
+    updateThreadDiscovery({ channel_id, thread_archive_before, thread_archive_kind, threads_synced, status }) {
+        this.updateThreadDiscoveryStmt.run({
+            channel_id,
+            thread_archive_before,
+            thread_archive_kind,
+            threads_synced,
+            status,
+            last_run_at: Date.now(),
+        })
+    }
+
+    getBackfillState(channelId) {
+        return this.selectBackfillState.get(channelId) || null
+    }
+
+    listBackfillState() {
+        return this.selectAllBackfillState.all()
+    }
+
+    getNextBackfillChannel(priorityChannelId) {
+        return this.selectNextBackfillChannel.get(priorityChannelId || '') || null
+    }
+
+    updateBackfillProgress({ channel_id, oldest_id_seen, newest_id_seen, status, added, last_error }) {
+        this.updateBackfillProgressStmt.run({
+            channel_id,
+            oldest_id_seen,
+            newest_id_seen,
+            status,
+            added: added || 0,
+            last_run_at: Date.now(),
+            last_error,
+        })
+    }
+
+    setBackfillChannelStatus(channelId, status, lastError = null) {
+        this.setBackfillChannelStatusStmt.run(status, lastError, Date.now(), channelId)
+    }
+
+    getBackfillWorker() {
+        return this.selectBackfillWorker.get() || { status: "paused", priority_channel_id: null }
+    }
+
+    setBackfillWorkerStatus(status) {
+        this.setBackfillWorkerStatusStmt.run(status, Date.now())
+    }
+
+    setBackfillPriority(channelId) {
+        this.setBackfillPriorityStmt.run(channelId, Date.now())
+    }
+
+    setCompileProgress({ channel_id = null, period_key = null, period_type = null } = {}) {
+        this.setCompileProgressStmt.run(channel_id, period_key, period_type, Date.now())
+    }
+
+    listChannelMonthCounts() {
+        return this.selectChannelMonthCounts.all()
+    }
+
+    listChannelWeekCounts(channelId, startAt, endAt) {
+        return this.selectChannelWeekCounts.all(channelId, startAt, endAt)
+    }
+
+    listMessagesInRange(channelId, startAt, endAt) {
+        return this.selectMessagesInRange.all(channelId, startAt, endAt)
+    }
+
+    getTranscriptExport(channelId, periodType, periodKey) {
+        return this.selectTranscriptExport.get(channelId, periodType, periodKey) || null
+    }
+
+    upsertTranscriptExport(row) {
+        this.upsertTranscriptExportStmt.run(row)
+    }
+
+    listTranscriptWeeksForMonth(channelId, monthKey) {
+        return this.selectTranscriptWeeksForMonth.all(channelId, `${monthKey}-W%`)
+    }
+
+    deleteTranscriptWeeksForMonth(channelId, monthKey) {
+        this.deleteTranscriptWeeksForMonthStmt.run(channelId, `${monthKey}-W%`)
+    }
+
+    getTranscriptSummary() {
+        return this.selectTranscriptSummary.get()
+    }
+
+    hasBackfillCrawlWork() {
+        return Boolean(this.getNextBackfillChannel(''))
     }
 
     top500Words() {
