@@ -1,4 +1,13 @@
-// modules/prompt_components/capabilities.js
-module.exports = `If you need to include an image, use the text "Processing image of" or "Generating image of" \
-to indicate where the image should be and what "prompt" should be used for it. Be very descriptive in your prompt. It will be generated with post-processing. \
-Feel free to use Grounding with Google Search to help you answer questions.`;
+module.exports = (tools = []) => {
+  const parts = [
+    `If you need to include an image, use the text "Processing image of" or "Generating image of" \
+to indicate where the image should be and what "prompt" should be used for it. Be very descriptive in your prompt. It will be generated with post-processing.`,
+  ];
+  if (tools.some((tool) => tool.googleSearch)) {
+    parts.push(`Use Grounding with Google Search to help you answer questions.`);
+  }
+  if (tools.some((tool) => tool.fileSearch)) {
+    parts.push(`Use File Search for older server history, events, and in-jokes that are not in the recent turns.`);
+  }
+  return parts.join(" ");
+};

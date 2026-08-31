@@ -1,6 +1,7 @@
 const { ChannelType, PermissionsBitField } = require("discord.js");
 const { isArchivableMessage, toChatMessageRow } = require("./chatArchive.js");
 const { createChatTranscripts } = require("./chatTranscripts.js");
+const { createChatFileSearch } = require("./chatFileSearch.js");
 
 const PAGE_SIZE = 100;
 const PAGE_DELAY_MS = 2000;
@@ -9,6 +10,9 @@ const YIELD_MS = 100;
 const BOOT_DELAY_MS = 30_000;
 const CRASH_BACKOFF_MS = 10_000;
 const MAX_BACKOFF_MS = 15 * 60 * 1000;
+const TICK_MS = 24 * 60 * 60 * 1000;
+const WATCH_POLL_MS = 60_000;
+const ACTIVE_STATUSES = new Set(["running", "watching"]);
 const SKIP_API_CODES = new Set([10003, 10004, 50001, 50013, 50007]);
 const THREAD_TYPES = new Set(
   [ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread].filter((type) => type != null)
@@ -69,14 +73,16 @@ class ChatBackfill {
   constructor(client) {
     this.client = client;
     this.transcripts = createChatTranscripts(client);
+    this.fileSearch = createChatFileSearch(client);
     this.loopActive = false;
     this.extraBackoffMs = 0;
+    this.tickActive = new Set();
   }
 
   onReady() {
     const shouldRun = this.client.guilds.cache.some((guild) => {
       try {
-        return this.client.getDatabase(guild.id).getBackfillWorker().status === "running";
+        return ACTIVE_STATUSES.has(this.client.getDatabase(guild.id).getBackfillWorker().status);
       } catch (e) {
         this.client.logger.log(e, "error");
         return false;
@@ -97,7 +103,7 @@ class ChatBackfill {
       })
       .then((result) => {
         this.loopActive = false;
-        if (result === "crash" && this.anyGuildRunning()) {
+        if (result === "crash" && this.anyGuildActive()) {
           this.client.logger.log(`backfill loop crashed; restarting in ${CRASH_BACKOFF_MS / 1000}s`, "warn");
           this.client.wait(CRASH_BACKOFF_MS).then(() => this.ensureLoop());
         }
@@ -121,20 +127,33 @@ class ChatBackfill {
       }
 
       if (!job) {
-        if (!this.anyGuildRunning()) return;
-        await this.client.wait(IDLE_DELAY_MS);
+        if (!this.anyGuildActive()) return;
+        await this.client.wait(WATCH_POLL_MS);
         continue;
       }
 
       let usedApi = false;
       try {
-        usedApi = job.type === "compile" ? await this.processCompileJob(job) : await this.processOnePage(job);
+        if (job.type === "compile") {
+          usedApi = await this.processCompileJob(job);
+        } else if (job.type === "upload") {
+          usedApi = await this.processUploadJob(job);
+        } else {
+          usedApi = await this.processOnePage(job);
+        }
       } catch (e) {
         this.client.logger.log(e, "error");
         usedApi = true;
         if (job.type === "compile") {
           try {
             job.db.setCompileProgress({});
+          } catch (inner) {
+            this.client.logger.log(inner, "error");
+          }
+        } else if (job.type === "upload") {
+          try {
+            job.db.setLastUploadError(e.message || String(e));
+            job.db.setUploadProgress({});
           } catch (inner) {
             this.client.logger.log(inner, "error");
           }
@@ -158,10 +177,10 @@ class ChatBackfill {
     }
   }
 
-  anyGuildRunning() {
+  anyGuildActive() {
     for (const guild of this.client.guilds.cache.values()) {
       try {
-        if (this.client.getDatabase(guild.id).getBackfillWorker().status === "running") {
+        if (ACTIVE_STATUSES.has(this.client.getDatabase(guild.id).getBackfillWorker().status)) {
           return true;
         }
       } catch (e) {
@@ -169,6 +188,20 @@ class ChatBackfill {
       }
     }
     return false;
+  }
+
+  tickDue(worker) {
+    return Date.now() - (worker.last_tick_at || 0) >= TICK_MS;
+  }
+
+  shouldUpload(worker, db, guild) {
+    const pending = db.getPendingTranscriptUpload();
+    const needsStore = !db.getFileSearchStore();
+    if (!pending && !needsStore) return false;
+    if (worker.last_upload_error && !this.tickDue(worker) && worker.status === "watching" && !this.tickActive.has(guild.id)) {
+      return false;
+    }
+    return true;
   }
 
   pickNextJob() {
@@ -181,13 +214,47 @@ class ChatBackfill {
         continue;
       }
       const worker = db.getBackfillWorker();
-      if (worker.status !== "running") continue;
-      const state = db.getNextBackfillChannel(worker.priority_channel_id);
-      if (state) {
-        if (worker.priority_channel_id && state.channel_id === worker.priority_channel_id) {
-          db.setBackfillPriority(null);
+      if (!ACTIVE_STATUSES.has(worker.status)) continue;
+
+      if (worker.status === "running") {
+        const state = db.getNextBackfillChannel(worker.priority_channel_id);
+        if (state) {
+          if (worker.priority_channel_id && state.channel_id === worker.priority_channel_id) {
+            db.setBackfillPriority(null);
+          }
+          return { type: "crawl", guild, db, state };
         }
-        return { type: "crawl", guild, db, state };
+
+        const compile = this.transcripts.pickNextJob(guild, db);
+        if (compile) {
+          return { type: "compile", guild, db, item: compile };
+        }
+
+        if (this.shouldUpload(worker, db, guild)) {
+          return { type: "upload", guild, db };
+        }
+
+        db.setCompileProgress({});
+        db.setUploadProgress({});
+        db.setLastTickAt(Date.now());
+        db.setBackfillWorkerStatus("watching");
+        this.tickActive.delete(guild.id);
+        this.client.logger.log(
+          `backfill, transcripts, and file search upload finished in ${guild.name}; watching for weekly updates`,
+          "log"
+        );
+        continue;
+      }
+
+      const tickOpen =
+        this.tickActive.has(guild.id) ||
+        this.tickDue(worker) ||
+        (Boolean(db.getPendingTranscriptUpload()) && !worker.last_upload_error);
+      if (!tickOpen) continue;
+
+      this.tickActive.add(guild.id);
+      if (this.tickDue(worker)) {
+        this.transcripts.invalidate(guild.id);
       }
 
       const compile = this.transcripts.pickNextJob(guild, db);
@@ -195,18 +262,32 @@ class ChatBackfill {
         return { type: "compile", guild, db, item: compile };
       }
 
+      if (this.shouldUpload(worker, db, guild)) {
+        return { type: "upload", guild, db };
+      }
+
+      this.tickActive.delete(guild.id);
       db.setCompileProgress({});
-      db.setBackfillWorkerStatus("paused");
-      this.client.logger.log(
-        `backfill and transcripts finished in ${guild.name}; pausing`,
-        "log"
-      );
+      db.setUploadProgress({});
+      db.setLastTickAt(Date.now());
     }
     return null;
   }
 
   async processCompileJob(job) {
-    return this.transcripts.processJob(job.guild, job.db, job.item);
+    let weeklies = [];
+    if (job.item.period_type === "month") {
+      weeklies = job.db.listTranscriptWeeksForMonth(job.item.channel_id, job.item.period_key);
+    }
+    const fetched = await this.transcripts.processJob(job.guild, job.db, job.item);
+    if (weeklies.length) {
+      await this.fileSearch.deleteDocuments(job.db, weeklies);
+    }
+    return fetched;
+  }
+
+  async processUploadJob(job) {
+    return this.fileSearch.processUploadJob(job.guild, job.db);
   }
 
   async startGuild(guild) {
@@ -215,11 +296,14 @@ class ChatBackfill {
     await this.syncChannels(guild);
     db.resetBackfillErrors();
     db.setCompileProgress({});
+    db.setUploadProgress({});
+    db.setLastUploadError(null);
     db.setBackfillWorkerStatus("running");
     this.ensureLoop();
   }
 
   pauseGuild(guild) {
+    this.tickActive.delete(guild.id);
     this.client.getDatabase(guild.id).setBackfillWorkerStatus("paused");
   }
 

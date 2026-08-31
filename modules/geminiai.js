@@ -1,6 +1,31 @@
-const { GoogleGenAI, HarmCategory, HarmBlockThreshold } = require("@google/genai");
+const { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } = require("@google/genai");
 const { AttachmentBuilder } = require("discord.js");
 const { liveMessageText } = require("./chatArchive.js");
+
+const GROUNDING_FILE_SEARCH = "file_search";
+const GROUNDING_GOOGLE_SEARCH = "google_search";
+const GROUNDING_NONE = "none";
+const GOOGLE_SEARCH_TOOLS = [{ googleSearch: {} }];
+const GROUNDING_CHOICES = new Set([
+  GROUNDING_FILE_SEARCH,
+  GROUNDING_GOOGLE_SEARCH,
+  GROUNDING_NONE,
+]);
+
+function describeError(error) {
+  const parts = [error?.message || String(error)];
+  const cause = error?.cause;
+  if (cause) {
+    const detail = [cause.code, cause.syscall, cause.hostname, cause.message].filter(Boolean).join(" ");
+    if (detail) parts.push(`cause: ${detail}`);
+  }
+  return parts.join(" | ");
+}
+
+function isNetworkFetchError(error) {
+  const message = `${error?.message || ""} ${error?.cause?.message || ""}`;
+  return /fetch failed|HeadersTimeoutError|UND_ERR|ECONNRESET|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|certificate/i.test(message);
+}
 
 const createGeminiAI = (client) => {
     return new GeminiAI(client)
@@ -13,42 +38,161 @@ class GeminiAI {
         
     }
 
+    chatSafetySettings() {
+      return [
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        },
+      ];
+    }
+
+    fileSearchReady(message) {
+      if (!message.guild) return false;
+      try {
+        return this.client.getDatabase(message.guild.id).hasFileSearchReady();
+      } catch (error) {
+        this.client.logger.log(error, "warn");
+        return false;
+      }
+    }
+
+    chatTools(message, grounding = GROUNDING_GOOGLE_SEARCH) {
+      if (grounding === GROUNDING_NONE) return [];
+      if (grounding === GROUNDING_FILE_SEARCH && message.guild) {
+        try {
+          const store = this.client.getDatabase(message.guild.id).getFileSearchStore();
+          if (store) return [{ fileSearch: { fileSearchStoreNames: [store] } }];
+        } catch (error) {
+          this.client.logger.log(error, "warn");
+        }
+      }
+      return GOOGLE_SEARCH_TOOLS;
+    }
+
     async generateContent(contents, message) {
+        const grounding = this.fileSearchReady(message)
+          ? await this.chooseGrounding(contents)
+          : GROUNDING_GOOGLE_SEARCH;
+        const tools = this.chatTools(message, grounding);
+        try {
+          return await this.generateContentWithTools(contents, message, tools);
+        } catch (error) {
+          const hasFileSearch = tools.some((tool) => tool.fileSearch);
+          if (hasFileSearch && !isNetworkFetchError(error)) {
+            this.client.logger.log(
+              `Gemini File Search request failed (${describeError(error)}); retrying without File Search`,
+              "warn"
+            );
+            return await this.generateContentWithTools(contents, message, GOOGLE_SEARCH_TOOLS);
+          }
+          throw new Error(`Gemini request failed: ${describeError(error)}`, { cause: error });
+        }
+    }
+
+    async chooseGrounding(contents) {
+      try {
         const result = await this.AI2.models.generateContent({
           model: "gemini-flash-latest",
           contents,
           config: {
-            tools: [
-              {
-                googleSearch: {}
+            temperature: 0,
+            maxOutputTokens: 128,
+            thinkingConfig: { thinkingBudget: 0 },
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                grounding: {
+                  type: Type.STRING,
+                  enum: [GROUNDING_FILE_SEARCH, GROUNDING_GOOGLE_SEARCH, GROUNDING_NONE],
+                  description: "Which grounding to use for the reply.",
+                },
               },
-            ],
-            safetySettings: [
-              {
-                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-            ],
-            systemInstruction: this.getSystemInstructions(message)
-           }
+              required: ["grounding"],
+            },
+            safetySettings: this.chatSafetySettings(),
+            systemInstruction: require("./prompt_components/grounding_router.js"),
+          },
+        });
+        const raw = this.routerResponsePreview(result);
+        const choice = this.parseGroundingChoice(raw.text);
+        if (choice) {
+          this.client.logger.log(`grounding router chose ${choice}`, "log");
+          return choice;
+        }
+        this.client.logger.log(
+          `grounding router returned an invalid choice; defaulting to google_search. response: ${raw.preview}`,
+          "warn"
+        );
+      } catch (error) {
+        this.client.logger.log(
+          `grounding router failed (${describeError(error)}); defaulting to google_search`,
+          "warn"
+        );
+      }
+      return GROUNDING_GOOGLE_SEARCH;
+    }
+
+    routerResponseText(result) {
+      if (typeof result?.text === "string" && result.text.trim()) return result.text.trim();
+      const parts = result?.candidates?.[0]?.content?.parts || [];
+      return parts.map((part) => part.text).filter(Boolean).join("").trim();
+    }
+
+    routerResponsePreview(result) {
+      const text = this.routerResponseText(result);
+      const candidate = result?.candidates?.[0];
+      const preview = text
+        ? text.slice(0, 500)
+        : JSON.stringify({
+            finishReason: candidate?.finishReason,
+            blockReason: result?.promptFeedback?.blockReason,
+            partKeys: candidate?.content?.parts?.map((part) => Object.keys(part)),
+          });
+      return { text, preview };
+    }
+
+    parseGroundingChoice(text) {
+      if (!text) return null;
+      const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || text;
+      try {
+        const parsed = JSON.parse(jsonText);
+        const value = String(parsed?.grounding || "").trim();
+        return GROUNDING_CHOICES.has(value) ? value : null;
+      } catch {
+        return null;
+      }
+    }
+
+    async generateContentWithTools(contents, message, tools) {
+        const config = {
+          safetySettings: this.chatSafetySettings(),
+          systemInstruction: this.getSystemInstructions(message, tools),
+        };
+        if (tools.length > 0) config.tools = tools;
+        const result = await this.AI2.models.generateContent({
+          model: "gemini-flash-latest",
+          contents,
+          config,
         })
         let botname = message.guild.members.cache.get(this.client.user.id).displayName
         return await this.processResponse(result, botname)
     }
 
-    getSystemInstructions(message) {
+    getSystemInstructions(message, tools = []) {
       const botname = message.guild.members.cache.get(this.client.user.id).displayName;
       const clientId = this.client.user.id;
 
@@ -96,9 +240,9 @@ class GeminiAI {
       }
       // End of new block
       const identity = require('./prompt_components/identity.js')(botname, clientId, this.buildPeopleRoster(message));
-      const chatInstructions = require('./prompt_components/chat_instructions.js');
+      const chatInstructions = require('./prompt_components/chat_instructions.js')(tools);
       const formattingInstructions = require('./prompt_components/formatting_instructions.js');
-      const capabilities = require('./prompt_components/capabilities.js');
+      const capabilities = require('./prompt_components/capabilities.js')(tools);
 
       // Construct the full instruction string, joining components with a space.
       const instructions = [
@@ -468,6 +612,21 @@ class GeminiAI {
       }
     }
 
+    formatGroundingSource(chunk) {
+      if (chunk?.web?.uri) {
+        return `[${chunk.web.title || chunk.web.uri}](<${chunk.web.uri}>)`;
+      }
+      const ctx = chunk?.retrievedContext;
+      if (!ctx) return null;
+      const meta = Object.fromEntries(
+        (ctx.customMetadata || []).map((item) => [item.key, item.stringValue ?? item.numericValue])
+      );
+      if (meta.channel_id && meta.period_key) {
+        return `<#${meta.channel_id}> ${meta.period_key}`;
+      }
+      return ctx.title || null;
+    }
+
     async processResponse(result, botname) {
   let responseText = "Error: Could not extract AI response text."; // Default error message
   let candidate = null;
@@ -542,18 +701,22 @@ class GeminiAI {
 
   let finalResponseText = responseText;
 
-  // Grounding metadata processing - appends to finalResponseText
-  // Check if candidate was found before trying to access its groundingMetadata
-  if (candidate && candidate.groundingMetadata?.groundingChunks) {
-    if (!finalResponseText.includes("||SEPARATE||Sources:") && !finalResponseText.startsWith("Error:")) {
-        finalResponseText += "||SEPARATE||Sources: ";
-    } else if (!finalResponseText.startsWith("Error:") && !finalResponseText.endsWith(" ")) {
-        finalResponseText += " ";
+  if (candidate && candidate.groundingMetadata?.groundingChunks && !finalResponseText.startsWith("Error:")) {
+    const sources = [];
+    const seen = new Set();
+    for (const chunk of candidate.groundingMetadata.groundingChunks) {
+      const source = this.formatGroundingSource(chunk);
+      if (!source || seen.has(source)) continue;
+      seen.add(source);
+      sources.push(source);
     }
-    if (!finalResponseText.startsWith("Error:")) {
-        candidate.groundingMetadata.groundingChunks.forEach(chunk => {
-          finalResponseText += `[${chunk.web.title}](<${chunk.web.uri}>) `;
-        });
+    if (sources.length > 0) {
+      if (!finalResponseText.includes("||SEPARATE||Sources:")) {
+        finalResponseText += "||SEPARATE||Sources: ";
+      } else if (!finalResponseText.endsWith(" ")) {
+        finalResponseText += " ";
+      }
+      finalResponseText += sources.join(" ");
     }
   }
 
