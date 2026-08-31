@@ -11,6 +11,7 @@ const GROUNDING_CHOICES = new Set([
   GROUNDING_GOOGLE_SEARCH,
   GROUNDING_NONE,
 ]);
+const NON_SEQUITUR_PREFIX = "Please try to include an idea from this group of random thoughts:";
 
 function describeError(error) {
   const parts = [error?.message || String(error)];
@@ -84,7 +85,7 @@ class GeminiAI {
 
     async generateContent(contents, message) {
         const grounding = this.fileSearchReady(message)
-          ? await this.chooseGrounding(contents)
+          ? await this.chooseGrounding(this.routerContents(contents))
           : GROUNDING_GOOGLE_SEARCH;
         const tools = this.chatTools(message, grounding);
         try {
@@ -100,6 +101,15 @@ class GeminiAI {
           }
           throw new Error(`Gemini request failed: ${describeError(error)}`, { cause: error });
         }
+    }
+
+    routerContents(contents) {
+      return contents.map((turn) => {
+        const text = turn?.parts?.[0]?.text;
+        if (turn.role !== "user" || !text || !text.includes(NON_SEQUITUR_PREFIX)) return turn;
+        const stripped = text.split(`\n\n${NON_SEQUITUR_PREFIX}`)[0];
+        return { ...turn, parts: [{ ...turn.parts[0], text: stripped }] };
+      });
     }
 
     async chooseGrounding(contents) {
@@ -320,7 +330,7 @@ class GeminiAI {
 
     attachNonSequitur(turns, nonSequitur) {
       if (!nonSequitur) return;
-      const spice = `Please try to include an idea from this group of random thoughts: "${nonSequitur}"`;
+      const spice = `${NON_SEQUITUR_PREFIX} "${nonSequitur}"`;
       for (let i = turns.length - 1; i >= 0; i--) {
         if (turns[i].role === "user") {
           turns[i].parts[0].text += `\n\n${spice}`;

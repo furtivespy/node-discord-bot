@@ -104,6 +104,7 @@ class Database {
             "ALTER TABLE transcript_exports ADD COLUMN file_search_document_id TEXT",
             "ALTER TABLE transcript_exports ADD COLUMN uploaded_at INTEGER",
             "ALTER TABLE transcript_exports ADD COLUMN uploaded_message_count INTEGER",
+            "ALTER TABLE transcript_exports ADD COLUMN file_search_operation TEXT",
         ]) {
             try { this.db.prepare(sql).run() } catch {}
         }
@@ -328,24 +329,35 @@ class Database {
         `)
         this.selectPendingTranscriptUpload = this.db.prepare(`
             SELECT * FROM transcript_exports
-            WHERE file_search_document_id IS NULL
-               OR file_search_document_id = ''
-               OR uploaded_message_count IS NULL
-               OR uploaded_message_count != message_count
+            WHERE path IS NOT NULL AND path != ''
+              AND (
+                (file_search_operation IS NOT NULL AND file_search_operation != '')
+                OR IFNULL(uploaded_message_count, -1) != message_count
+                OR (
+                  (file_search_document_id IS NULL OR file_search_document_id = '')
+                  AND uploaded_at IS NULL
+                )
+              )
             ORDER BY period_key, channel_id
             LIMIT 1
         `)
         this.markTranscriptUploadedStmt = this.db.prepare(`
             UPDATE transcript_exports SET
               file_search_document_id = ?,
+              file_search_operation = NULL,
               uploaded_at = ?,
               uploaded_message_count = message_count
+            WHERE channel_id = ? AND period_type = ? AND period_key = ?
+        `)
+        this.setTranscriptUploadOperationStmt = this.db.prepare(`
+            UPDATE transcript_exports SET file_search_operation = ?
             WHERE channel_id = ? AND period_type = ? AND period_key = ?
         `)
         this.markTranscriptUploadSkippedStmt = this.db.prepare(`
             UPDATE transcript_exports SET
               uploaded_at = ?,
-              uploaded_message_count = message_count
+              uploaded_message_count = message_count,
+              file_search_operation = NULL
             WHERE channel_id = ? AND period_type = ? AND period_key = ?
         `)
         this.setFileSearchStoreStmt = this.db.prepare(
@@ -743,6 +755,10 @@ class Database {
 
     markTranscriptUploaded(channelId, periodType, periodKey, documentId) {
         this.markTranscriptUploadedStmt.run(documentId, Date.now(), channelId, periodType, periodKey)
+    }
+
+    setTranscriptUploadOperation(channelId, periodType, periodKey, operationName) {
+        this.setTranscriptUploadOperationStmt.run(operationName, channelId, periodType, periodKey)
     }
 
     markTranscriptUploadSkipped(channelId, periodType, periodKey) {

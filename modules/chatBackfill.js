@@ -154,6 +154,7 @@ class ChatBackfill {
           try {
             job.db.setLastUploadError(e.message || String(e));
             job.db.setUploadProgress({});
+            this.tickActive.delete(job.guild.id);
           } catch (inner) {
             this.client.logger.log(inner, "error");
           }
@@ -194,12 +195,14 @@ class ChatBackfill {
     return Date.now() - (worker.last_tick_at || 0) >= TICK_MS;
   }
 
-  shouldUpload(worker, db, guild) {
+  shouldUpload(worker, db) {
     const pending = db.getPendingTranscriptUpload();
     const needsStore = !db.getFileSearchStore();
     if (!pending && !needsStore) return false;
-    if (worker.last_upload_error && !this.tickDue(worker) && worker.status === "watching" && !this.tickActive.has(guild.id)) {
-      return false;
+    if (worker.last_upload_error) {
+      const elapsed = Date.now() - (worker.updated_at || 0);
+      const cooldown = worker.status === "watching" ? TICK_MS : Math.min(MAX_BACKOFF_MS, 60_000);
+      if (elapsed < cooldown) return false;
     }
     return true;
   }
@@ -230,7 +233,7 @@ class ChatBackfill {
           return { type: "compile", guild, db, item: compile };
         }
 
-        if (this.shouldUpload(worker, db, guild)) {
+        if (this.shouldUpload(worker, db)) {
           return { type: "upload", guild, db };
         }
 
@@ -262,7 +265,7 @@ class ChatBackfill {
         return { type: "compile", guild, db, item: compile };
       }
 
-      if (this.shouldUpload(worker, db, guild)) {
+      if (this.shouldUpload(worker, db)) {
         return { type: "upload", guild, db };
       }
 
@@ -287,7 +290,16 @@ class ChatBackfill {
   }
 
   async processUploadJob(job) {
-    return this.fileSearch.processUploadJob(job.guild, job.db);
+    try {
+      const usedApi = await this.fileSearch.processUploadJob(job.guild, job.db);
+      if (job.db.getBackfillWorker().last_upload_error) {
+        this.tickActive.delete(job.guild.id);
+      }
+      return usedApi;
+    } catch (error) {
+      this.tickActive.delete(job.guild.id);
+      throw error;
+    }
   }
 
   async startGuild(guild) {

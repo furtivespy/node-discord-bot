@@ -82,6 +82,17 @@ class ChatFileSearch {
       period_type: row.period_type,
     });
 
+    if (row.file_search_operation) {
+      const documentName = await this.finishUpload(row, row.file_search_operation, db);
+      db.markTranscriptUploaded(row.channel_id, row.period_type, row.period_key, documentName);
+      db.setLastUploadError(null);
+      this.client.logger.log(
+        `file search uploaded ${row.channel_name || row.channel_id} ${row.period_key}`,
+        "log"
+      );
+      return true;
+    }
+
     const absolutePath = path.join(transcriptsRoot(guild.id), ...String(row.path).split("/"));
     if (!fs.existsSync(absolutePath)) {
       this.client.logger.log(
@@ -96,7 +107,7 @@ class ChatFileSearch {
       await this.deleteDocument(store, row.file_search_document_id);
     }
 
-    const documentName = await this.uploadFile(store, absolutePath, row, guild.id);
+    const documentName = await this.uploadFile(store, absolutePath, row, guild.id, db);
     db.markTranscriptUploaded(row.channel_id, row.period_type, row.period_key, documentName);
     db.setLastUploadError(null);
     this.client.logger.log(
@@ -106,8 +117,8 @@ class ChatFileSearch {
     return true;
   }
 
-  async uploadFile(store, absolutePath, row, guildId) {
-    let operation = await this.ai().fileSearchStores.uploadToFileSearchStore({
+  async uploadFile(store, absolutePath, row, guildId, db) {
+    const operation = await this.ai().fileSearchStores.uploadToFileSearchStore({
       fileSearchStoreName: store,
       file: absolutePath,
       config: {
@@ -122,16 +133,46 @@ class ChatFileSearch {
         },
       },
     });
+    if (operation?.name) {
+      db.setTranscriptUploadOperation(row.channel_id, row.period_type, row.period_key, operation.name);
+    }
+    return this.pollUpload(operation, row, db);
+  }
 
+  async finishUpload(row, operationName, db) {
+    let operation;
+    try {
+      operation = await this.ai().operations.get({ operation: { name: operationName } });
+    } catch (error) {
+      const message = error.message || String(error);
+      if (/NOT_FOUND|404|not found/i.test(message)) {
+        db.setTranscriptUploadOperation(row.channel_id, row.period_type, row.period_key, null);
+        throw new Error(`File Search operation ${operationName} was lost; will retry upload`);
+      }
+      throw error;
+    }
+    return this.pollUpload(operation, row, db);
+  }
+
+  async pollUpload(operation, row, db) {
     for (let i = 0; i < MAX_POLLS && !operation.done; i++) {
       await this.client.wait(POLL_MS);
       operation = await this.ai().operations.get({ operation });
+      if (operation?.name && db) {
+        db.setTranscriptUploadOperation(row.channel_id, row.period_type, row.period_key, operation.name);
+      }
     }
 
     if (!operation.done) {
+      if (operation?.name && db) {
+        db.setTranscriptUploadOperation(row.channel_id, row.period_type, row.period_key, operation.name);
+      }
       throw new Error(`File Search upload timed out for ${row.period_key}`);
     }
     if (operation.error) {
+      if (db) {
+        db.setTranscriptUploadOperation(row.channel_id, row.period_type, row.period_key, null);
+      }
       const detail = operation.error.message || JSON.stringify(operation.error);
       throw new Error(`File Search upload failed: ${detail}`);
     }
@@ -161,7 +202,7 @@ class ChatFileSearch {
     } catch (error) {
       const message = error.message || String(error);
       if (/NOT_FOUND|404|not found/i.test(message)) return;
-      this.client.logger.log(error, "warn");
+      throw error;
     }
   }
 }

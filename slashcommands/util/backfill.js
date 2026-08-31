@@ -160,7 +160,7 @@ class Backfill extends SlashCommand {
     await this.client.chatBackfill.startGuild(interaction.guild);
     await interaction.editReply({
       content:
-        "Backfill is running. After crawl it writes transcript files, creates a File Search store if needed, and uploads history. Then it watches daily for current-month weekly updates. Use `/backfill status` to watch, `/backfill pause` to stop.",
+        "Backfill is running. After crawl it writes transcript files, creates a File Search store if needed, and uploads history. Then it watches daily for current-month weekly updates. Skip-list and NSFW channels are not crawled or indexed. Use `/backfill status` to watch, `/backfill pause` to stop.",
     });
   }
 
