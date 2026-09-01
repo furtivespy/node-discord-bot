@@ -88,7 +88,7 @@ class Backfill extends SlashCommand {
 
     const lines = [
       `Worker: **${worker.status}**`,
-      `Pace: crawl one channel/thread page (~2s), then after crawl write monthly transcript files (weekly files for the current month).`,
+      `Pace: crawl → monthly transcript files → File Search upload. Watching refreshes current-month weeklies about once a day.`,
     ];
 
     if (worker.priority_channel_id) {
@@ -115,8 +115,23 @@ class Backfill extends SlashCommand {
 
     if (transcripts) {
       lines.push(
-        `Transcripts: **${transcripts.months}** monthly files, **${transcripts.weeks}** current-month weeklies`
+        `Transcripts: **${transcripts.months}** monthly files, **${transcripts.weeks}** current-month weeklies, **${transcripts.uploaded || 0}** uploaded to File Search`
       );
+    }
+    if (worker.file_search_store) {
+      lines.push(`File Search: store ready`);
+    } else {
+      lines.push(`File Search: store not created yet`);
+    }
+    if (worker.last_tick_at) {
+      lines.push(`Last watch tick: ${new Date(worker.last_tick_at).toISOString()}`);
+    }
+    if (worker.last_upload_error) {
+      lines.push(`Upload error: ${worker.last_upload_error}`);
+    }
+    if (worker.upload_period_key) {
+      const mention = worker.upload_channel_id ? `<#${worker.upload_channel_id}>` : "a channel";
+      lines.push(`Uploading: ${mention} — ${worker.upload_period_type || "file"} ${worker.upload_period_key}`);
     }
     if (worker.compile_period_key) {
       const mention = worker.compile_channel_id ? `<#${worker.compile_channel_id}>` : "a channel";
@@ -145,14 +160,14 @@ class Backfill extends SlashCommand {
     await this.client.chatBackfill.startGuild(interaction.guild);
     await interaction.editReply({
       content:
-        "Backfill is running. After every channel is caught up (or if this server already is), it writes monthly transcript files under `/data/transcripts`. The current month gets weekly files until the month closes. Use `/backfill status` to watch, `/backfill pause` to stop.",
+        "Backfill is running. After crawl it writes transcript files, creates a File Search store if needed, and uploads history. Then it watches daily for current-month weekly updates. Skip-list and NSFW channels are not crawled or indexed. Use `/backfill status` to watch, `/backfill pause` to stop.",
     });
   }
 
   async pause(interaction) {
     this.client.chatBackfill.pauseGuild(interaction.guild);
     await interaction.reply({
-      content: "Backfill will pause after the current page. Progress is saved.",
+      content: "Backfill and File Search watching will pause after the current page. Progress is saved.",
       ephemeral: true,
     });
   }

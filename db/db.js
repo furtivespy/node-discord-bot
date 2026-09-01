@@ -75,6 +75,12 @@ class Database {
             "ALTER TABLE backfill_worker ADD COLUMN compile_channel_id TEXT",
             "ALTER TABLE backfill_worker ADD COLUMN compile_period_key TEXT",
             "ALTER TABLE backfill_worker ADD COLUMN compile_period_type TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN file_search_store TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN last_tick_at INTEGER",
+            "ALTER TABLE backfill_worker ADD COLUMN last_upload_error TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN upload_channel_id TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN upload_period_key TEXT",
+            "ALTER TABLE backfill_worker ADD COLUMN upload_period_type TEXT",
         ]) {
             try { this.db.prepare(sql).run() } catch {}
         }
@@ -94,6 +100,14 @@ class Database {
           PRIMARY KEY (channel_id, period_type, period_key)
         )`).run()
         this.db.prepare('CREATE INDEX IF NOT EXISTS idx_transcript_exports_period ON transcript_exports (period_type, period_key)').run()
+        for (const sql of [
+            "ALTER TABLE transcript_exports ADD COLUMN file_search_document_id TEXT",
+            "ALTER TABLE transcript_exports ADD COLUMN uploaded_at INTEGER",
+            "ALTER TABLE transcript_exports ADD COLUMN uploaded_message_count INTEGER",
+            "ALTER TABLE transcript_exports ADD COLUMN file_search_operation TEXT",
+        ]) {
+            try { this.db.prepare(sql).run() } catch {}
+        }
 
         try {
             this.db.prepare('INSERT INTO wordcount VALUES (1,0)').run()
@@ -309,9 +323,55 @@ class Database {
             SELECT
               COALESCE(SUM(CASE WHEN period_type = 'month' THEN 1 ELSE 0 END), 0) as months,
               COALESCE(SUM(CASE WHEN period_type = 'week' THEN 1 ELSE 0 END), 0) as weeks,
-              COALESCE(SUM(message_count), 0) as messages
+              COALESCE(SUM(message_count), 0) as messages,
+              COALESCE(SUM(CASE WHEN file_search_document_id IS NOT NULL AND file_search_document_id != '' THEN 1 ELSE 0 END), 0) as uploaded
             FROM transcript_exports
         `)
+        this.selectPendingTranscriptUpload = this.db.prepare(`
+            SELECT * FROM transcript_exports
+            WHERE path IS NOT NULL AND path != ''
+              AND (
+                (file_search_operation IS NOT NULL AND file_search_operation != '')
+                OR IFNULL(uploaded_message_count, -1) != message_count
+                OR (
+                  (file_search_document_id IS NULL OR file_search_document_id = '')
+                  AND uploaded_at IS NULL
+                )
+              )
+            ORDER BY period_key, channel_id
+            LIMIT 1
+        `)
+        this.markTranscriptUploadedStmt = this.db.prepare(`
+            UPDATE transcript_exports SET
+              file_search_document_id = ?,
+              file_search_operation = NULL,
+              uploaded_at = ?,
+              uploaded_message_count = message_count
+            WHERE channel_id = ? AND period_type = ? AND period_key = ?
+        `)
+        this.setTranscriptUploadOperationStmt = this.db.prepare(`
+            UPDATE transcript_exports SET file_search_operation = ?
+            WHERE channel_id = ? AND period_type = ? AND period_key = ?
+        `)
+        this.markTranscriptUploadSkippedStmt = this.db.prepare(`
+            UPDATE transcript_exports SET
+              uploaded_at = ?,
+              uploaded_message_count = message_count,
+              file_search_operation = NULL
+            WHERE channel_id = ? AND period_type = ? AND period_key = ?
+        `)
+        this.setFileSearchStoreStmt = this.db.prepare(
+            "UPDATE backfill_worker SET file_search_store = ?, updated_at = ? WHERE id = 1"
+        )
+        this.setLastTickAtStmt = this.db.prepare(
+            "UPDATE backfill_worker SET last_tick_at = ?, updated_at = ? WHERE id = 1"
+        )
+        this.setLastUploadErrorStmt = this.db.prepare(
+            "UPDATE backfill_worker SET last_upload_error = ?, updated_at = ? WHERE id = 1"
+        )
+        this.setUploadProgressStmt = this.db.prepare(
+            "UPDATE backfill_worker SET upload_channel_id = ?, upload_period_key = ?, upload_period_type = ?, updated_at = ? WHERE id = 1"
+        )
     }
 
     makeSentence(ngramLength, startWithWord){
@@ -687,6 +747,49 @@ class Database {
 
     getTranscriptSummary() {
         return this.selectTranscriptSummary.get()
+    }
+
+    getPendingTranscriptUpload() {
+        return this.selectPendingTranscriptUpload.get() || null
+    }
+
+    markTranscriptUploaded(channelId, periodType, periodKey, documentId) {
+        this.markTranscriptUploadedStmt.run(documentId, Date.now(), channelId, periodType, periodKey)
+    }
+
+    setTranscriptUploadOperation(channelId, periodType, periodKey, operationName) {
+        this.setTranscriptUploadOperationStmt.run(operationName, channelId, periodType, periodKey)
+    }
+
+    markTranscriptUploadSkipped(channelId, periodType, periodKey) {
+        this.markTranscriptUploadSkippedStmt.run(Date.now(), channelId, periodType, periodKey)
+    }
+
+    getFileSearchStore() {
+        return this.getBackfillWorker().file_search_store || null
+    }
+
+    setFileSearchStore(name) {
+        this.setFileSearchStoreStmt.run(name, Date.now())
+    }
+
+    setLastTickAt(ms) {
+        this.setLastTickAtStmt.run(ms, Date.now())
+    }
+
+    setLastUploadError(message) {
+        this.setLastUploadErrorStmt.run(message, Date.now())
+    }
+
+    setUploadProgress({ channel_id = null, period_key = null, period_type = null } = {}) {
+        this.setUploadProgressStmt.run(channel_id, period_key, period_type, Date.now())
+    }
+
+    hasFileSearchReady() {
+        const store = this.getFileSearchStore()
+        if (!store) return false
+        const summary = this.getTranscriptSummary()
+        return Boolean(summary && summary.uploaded > 0)
     }
 
     hasBackfillCrawlWork() {
