@@ -9,7 +9,7 @@
   },
   "packageManager": "npm@11.19.0",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/bggXmlParser.test.js",
     "start": "node BenderBot.js"
   },
   "repository": {
@@ -37,7 +37,7 @@
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.5",
     "enmap": "^5.9.10",
-    "fast-xml-parser": "^4.5.7",
+    "fast-xml-parser": "^5.11.1",
     "flip": "^1.0.0",
     "fuse.js": "^6.4.3",
     "he": "^1.2.0",
