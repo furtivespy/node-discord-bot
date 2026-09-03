@@ -10,7 +10,8 @@
   "packageManager": "npm@11.19.0",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node BenderBot.js"
+    "start": "node BenderBot.js",
+    "smoke": "node scripts/smoke-startup.js"
   },
   "repository": {
     "type": "git",

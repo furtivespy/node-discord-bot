@@ -22,15 +22,20 @@ class Markov extends SlashCommand {
     }
 
     async execute(interaction) {
+        const raw = interaction.options.getString('word') || ''
+        const word = raw.trim().split(/\s+/)[0].toLowerCase()
+        const db = this.client.getDatabase(interaction.guild?.id)
+        const settings = this.client.getSettings(interaction.guild)
+        let words = ''
         try {
-            const word = interaction.options.getString('word')
-            const db = this.client.getDatabase(interaction.guild?.id)
-            const settings = this.client.getSettings(interaction.guild)
-            const words = db.makeSentence(settings.markovLevel, word)
-            await interaction.reply({ content: words })
+            words = db.makeSentence(settings.markovLevel, word)
         } catch (e) {
             this.client.logger.log(e,'error')
         }
+        const content = (typeof words === 'string' && words.trim())
+            ? words
+            : "I haven't learned enough words yet."
+        await interaction.reply({ content })
     }
 }
 
