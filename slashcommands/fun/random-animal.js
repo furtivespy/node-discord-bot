@@ -8,7 +8,7 @@ import { EmbedBuilder } from "discord.js";
 
 import RandomColor from "randomcolor";
 
-import { sample } from 'lodash';
+import sample from 'lodash/sample.js';
 class Wiki extends SlashCommand {
   constructor(client) {
     super(client, {

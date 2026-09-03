@@ -7,7 +7,7 @@ function Lunicode() {
       init: function() {
                 
         // invert the map
-        for (i in this.map) {
+        for (var i in this.map) {
           this.map[this.map[i]] = i;
         }
         
@@ -189,7 +189,7 @@ function Lunicode() {
       init: function() {
                 
         // invert the map
-        for (i in this.map) {
+        for (var i in this.map) {
           this.map[this.map[i]] = i;
         }
         
@@ -458,7 +458,7 @@ function Lunicode() {
         var newText = '',
             charCode;
             
-        for (i in text) {
+        for (var i in text) {
           charCode = text[i].charCodeAt(0);
           if (charCode < 768 || charCode > 865) {
             newText += text[i];
@@ -506,7 +506,7 @@ function Lunicode() {
         }
                 
         // invert the map
-        for (i in this.map) {
+        for (var i in this.map) {
           this.mapInverse[this.map[i]] = i;
         }
         
@@ -543,12 +543,12 @@ function Lunicode() {
             ch,
             newRet = '';
             
-        for (i in text) {
+        for (var i in text) {
           ch = this.mapInverse[text[i]];
           ret += ((typeof(ch) == "undefined") ? text[i] : ch);
         }
         
-        for (i in ret) {
+        for (var i in ret) {
           ch = ret[i].charCodeAt(0);
           if (ch != 160 && ch != 8239 && ch != 8413) {
             newRet += ret[i];
@@ -573,7 +573,7 @@ function Lunicode() {
             ch,
             first = true;
             
-        for (i in text) {
+        for (var i in text) {
           if (text[i].charCodeAt(0) >= 33) {
             ch = text[i] + String.fromCharCode(8414);
             if (!first) {
@@ -593,7 +593,7 @@ function Lunicode() {
         var ret = "",
             ch;
             
-        for (i in text) {
+        for (var i in text) {
           ch = text[i].charCodeAt(0);
           if (ch != 160 && ch != 8239 && ch != 8414) {
             ret += text[i];
@@ -614,7 +614,7 @@ function Lunicode() {
             ch,
             first = true;
             
-        for (i in text) {
+        for (var i in text) {
           if (text[i].charCodeAt(0) >= 33) {
             ch = text[i] + String.fromCharCode(8419);
             if (!first) {
@@ -634,7 +634,7 @@ function Lunicode() {
         var ret = "",
             ch;
             
-        for (i in text) {
+        for (var i in text) {
           ch = text[i].charCodeAt(0);
           if (ch != 160 && ch != 8239 && ch != 8419) {
             ret += text[i];
@@ -651,7 +651,7 @@ function Lunicode() {
       init: function() {
 
         // invert the map
-        for (i in this.map) {
+        for (var i in this.map) {
           this.map[this.map[i]] = i;
         }
 
@@ -799,7 +799,7 @@ function Lunicode() {
       init: function() {
 
         // invert the map
-        for (i in this.map) {
+        for (var i in this.map) {
           this.map[this.map[i]] = i;
         }
 
@@ -877,7 +877,7 @@ function Lunicode() {
 
   
   // init
-  for (i in this.tools) {
+  for (var i in this.tools) {
     this.tools[i].init();
   }
   

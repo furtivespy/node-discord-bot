@@ -4,7 +4,9 @@ import fetch from "node-fetch";
 
 import { XMLParser } from "fast-xml-parser";
 
-import { find, cloneDeep, take } from "lodash";
+import find from "lodash/find.js";
+import cloneDeep from "lodash/cloneDeep.js";
+import take from "lodash/take.js";
 
 import { createCanvas, Image, loadImage } from "canvas";
 
