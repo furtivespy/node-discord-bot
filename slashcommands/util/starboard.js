@@ -24,6 +24,7 @@ class Starboard extends SlashCommand {
       .setName(this.help.name)
       .setDescription(this.help.description)
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+      .setDMPermission(false)
       .addChannelOption((option) =>
         option
           .setName("channel")
@@ -116,11 +117,12 @@ class Starboard extends SlashCommand {
       }
 
       if (emoji != null) {
-        if (!emoji.trim()) {
+        const trimmedEmoji = emoji.trim();
+        if (!trimmedEmoji) {
           errors.push("Emoji cannot be empty");
-        } else if (starboardData.starEmoji !== emoji) {
-          changes.push(`emoji: ${starboardData.starEmoji} → ${emoji}`);
-          starboardData.starEmoji = emoji;
+        } else if (starboardData.starEmoji !== trimmedEmoji) {
+          changes.push(`emoji: ${starboardData.starEmoji} → ${trimmedEmoji}`);
+          starboardData.starEmoji = trimmedEmoji;
         }
       }
 
