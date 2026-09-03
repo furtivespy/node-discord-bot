@@ -1,4 +1,4 @@
-module.exports = (tools = []) => {
+export default (tools = []) => {
   const fileSearchLine = tools.some((tool) => tool.fileSearch)
     ? `If someone asks about older server history, use File Search. `
     : "";

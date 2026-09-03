@@ -1,8 +1,7 @@
-const Command = require('../../base/Command.js')
-const Pull = require('lodash/pull')
-var AsciiTable = require('ascii-table')
-var wrap = require('word-wrap')
-
+import Command from '../../base/Command.js';
+import Pull from 'lodash/pull.js';
+import AsciiTable from 'ascii-table';
+import wrap from 'word-wrap';
 class Oversee extends Command {
     constructor(client){
         super(client, {
@@ -66,4 +65,4 @@ class Oversee extends Command {
       }
     }
 
-module.exports = Oversee
+export default Oversee

@@ -1,6 +1,6 @@
-const { PermissionsBitField } = require('discord.js');
-const Command = require('../../base/Command.js')
+import { PermissionsBitField } from 'discord.js';
 
+import Command from '../../base/Command.js';
 const EmptyStarboardData = {
     starboardChannel: undefined,
     starboardChannelId: undefined,
@@ -81,4 +81,4 @@ class Starboard extends Command {
     }
 }
 
-module.exports = Starboard
+export default Starboard

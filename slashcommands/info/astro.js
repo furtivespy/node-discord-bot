@@ -1,7 +1,11 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
-const { EmbedBuilder } = require("discord.js");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
+import { EmbedBuilder } from "discord.js";
+
 
 class Astro extends SlashCommand {
   constructor(client) {
@@ -52,4 +56,4 @@ class Astro extends SlashCommand {
   }
 }
 
-module.exports = Astro;
+export default Astro;

@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PermissionsBitField } = require("discord.js");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import { PermissionsBitField } from "discord.js";
+
 
 const personalityChoices = [
   { name: "Bender (Default)", value: "bender" },
@@ -122,4 +125,4 @@ class SetPersonality extends SlashCommand {
   }
 }
 
-module.exports = SetPersonality;
+export default SetPersonality;

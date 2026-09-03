@@ -1,5 +1,7 @@
-const fetch = require('node-fetch');
-const _ = require('lodash');
+import fetch from 'node-fetch';
+
+import _ from 'lodash';
+
 const BASE_URL = 'https://api.urbandictionary.com/v0';
 
 class UrbanDictionary {
@@ -45,4 +47,4 @@ class UrbanDictionary {
     }
 }
 
-module.exports = UrbanDictionary
+export default UrbanDictionary

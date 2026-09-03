@@ -1,7 +1,7 @@
-const Command = require('../../base/Command.js')
-const _ = require('lodash');
-var AsciiTable = require('ascii-table')
+import Command from '../../base/Command.js';
+import _ from 'lodash';
 
+import AsciiTable from 'ascii-table';
 const EmptyBringoData = {
     wordlist: [],
     isGameActive: false,
@@ -281,4 +281,4 @@ class Bringo extends Command {
     }
 }
 
-module.exports = Bringo
+export default Bringo

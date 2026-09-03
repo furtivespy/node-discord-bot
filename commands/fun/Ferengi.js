@@ -1,7 +1,5 @@
-const Command = require('../../base/Command.js')
-const _ = require('lodash')
-
-
+import Command from '../../base/Command.js';
+import _ from 'lodash';
 const rules = [
     { Num: 1, Rule: "Once you have their money, you never give it back."},
     { Num: 2, Rule: "The best deal is the one that brings the most profit."},
@@ -134,4 +132,4 @@ class Ferengi extends Command {
     }
 }
 
-module.exports = Ferengi
+export default Ferengi

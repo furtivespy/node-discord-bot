@@ -1,7 +1,8 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("discord.js");
-const BoardGameGeek = require('../../modules/boardgamegeek')
+import SlashCommand from "../../base/SlashCommand.js";
 
+import { SlashCommandBuilder } from "discord.js";
+
+import BoardGameGeek from '../../modules/boardgamegeek.js';
 class BGG extends SlashCommand {
   constructor(client) {
     super(client, {
@@ -80,4 +81,4 @@ class BGG extends SlashCommand {
   }
 }
 
-module.exports = BGG;
+export default BGG;

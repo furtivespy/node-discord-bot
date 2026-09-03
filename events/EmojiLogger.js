@@ -1,6 +1,5 @@
-const Event = require('../base/Event.js')
-const EventTypes = require('../base/EventTypes.js')
-
+import Event from '../base/Event.js';
+import EventTypes from '../base/EventTypes.js';
 class EmojiLogger extends Event {
     constructor(client){
         super(client, {
@@ -22,4 +21,4 @@ class EmojiLogger extends Event {
     }
 }
   
-module.exports = EmojiLogger;
+export default EmojiLogger;

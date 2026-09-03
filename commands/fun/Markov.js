@@ -1,5 +1,4 @@
-const Command = require('../../base/Command.js')
-
+import Command from '../../base/Command.js';
 class Markov extends Command {
     constructor(client){
         super(client, {
@@ -45,4 +44,4 @@ class Markov extends Command {
     }
 }
 
-module.exports = Markov
+export default Markov

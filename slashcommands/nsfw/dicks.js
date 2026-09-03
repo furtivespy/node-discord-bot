@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const RedditImageFetcher = require("reddit-image-fetcher");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import RedditImageFetcher from "reddit-image-fetcher";
+
 
 class Dicks extends SlashCommand {
   constructor(client) {
@@ -65,4 +68,4 @@ class Dicks extends SlashCommand {
   }
 }
 
-module.exports = Dicks;
+export default Dicks;

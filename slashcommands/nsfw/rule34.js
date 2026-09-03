@@ -1,7 +1,11 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
-const _ = require("lodash");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
+import _ from "lodash";
+
 
 class Rule34 extends SlashCommand {
   constructor(client) {
@@ -75,4 +79,4 @@ class Rule34 extends SlashCommand {
   }
 }
 
-module.exports = Rule34;
+export default Rule34;

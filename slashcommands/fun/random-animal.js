@@ -1,10 +1,14 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
-const { EmbedBuilder } = require("discord.js");
-const RandomColor = require("randomcolor");
-const { sample } = require('lodash')
+import SlashCommand from "../../base/SlashCommand.js";
 
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
+import { EmbedBuilder } from "discord.js";
+
+import RandomColor from "randomcolor";
+
+import { sample } from 'lodash';
 class Wiki extends SlashCommand {
   constructor(client) {
     super(client, {
@@ -139,4 +143,4 @@ const otterfacts = [
   "A group of resting otters is called a raft. Otters love to rest in groups. Researchers have seen concentrations of over 1,000 otters floating together. To keep from drifting away from each other, sea otters will wrap themselves up in seaweed, forming something that resembles a raft."
 ]
 
-module.exports = Wiki;
+export default Wiki;

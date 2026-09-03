@@ -1,7 +1,8 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const urban = require('../../modules/UrbanDictionary.js')
+import SlashCommand from "../../base/SlashCommand.js";
 
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+
+import urban from '../../modules/UrbanDictionary.js';
 class Urban extends SlashCommand {
   constructor(client) {
     super(client, {
@@ -92,4 +93,4 @@ class Urban extends SlashCommand {
   }
 }
 
-module.exports = Urban;
+export default Urban;

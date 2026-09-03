@@ -1,9 +1,8 @@
-const sqlite = require('better-sqlite3')
-const {v1: uuid} = require('uuid')
-const natural = require('natural')
-const _ = require('lodash')
-var weighted = require('weighted')
-
+import sqlite from 'better-sqlite3';
+import {v1 as uuid} from 'uuid';
+import natural from 'natural';
+import _ from 'lodash';
+import weighted from 'weighted';
 const startWord = String.fromCharCode(0x0002)
 const endWord = String.fromCharCode(0x0003)
 
@@ -875,4 +874,4 @@ class Database {
 
 }
 
-module.exports = Database;
+export default Database;

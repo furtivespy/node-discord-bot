@@ -1,4 +1,3 @@
-module.exports = new Lunicode();
 function Lunicode() {
   this.tools = {
   
@@ -946,3 +945,5 @@ function Lunicode() {
     return html;
   }  
 }
+
+export default new Lunicode();

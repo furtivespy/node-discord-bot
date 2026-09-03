@@ -1,4 +1,4 @@
-const Command = require('../../base/Command.js')
+import Command from '../../base/Command.js';
 class Chatbot extends Command {
     constructor(client){
         super(client, {
@@ -93,4 +93,4 @@ function mentionOptions(text, allowUserPings) {
     return { parse: [], users }
 }
 
-module.exports = Chatbot
+export default Chatbot

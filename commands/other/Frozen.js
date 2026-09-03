@@ -1,5 +1,6 @@
-const Command = require('../../base/Command.js')
-const _ = require('lodash');
+import Command from '../../base/Command.js';
+import _ from 'lodash';
+
 
 class Frozen extends Command {
     constructor(client){
@@ -32,4 +33,4 @@ class Frozen extends Command {
     }
 }
 
-module.exports = Frozen
+export default Frozen
