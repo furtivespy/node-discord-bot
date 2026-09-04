@@ -1,5 +1,6 @@
 import Command from '../../base/Command.js';
-import _ from 'lodash';
+import intersection from 'lodash/intersection.js';
+import sample from 'lodash/sample.js';
 const rules = [
     { Num: 1, Rule: "Once you have their money, you never give it back."},
     { Num: 2, Rule: "The best deal is the one that brings the most profit."},
@@ -116,10 +117,10 @@ class Ferengi extends Command {
         try {
             if (!message.command) {
                 var words = message.content.trim().toLowerCase().split(/ +/g)
-                if(_.intersection(keywords, words).length === 0) return
+                if(intersection(keywords, words).length === 0) return
             }
-            var randoRule = _.sample(rules)
-            var ferengiImage = _.sample(await super.getGoogleImg("ferengi"))
+            var randoRule = sample(rules)
+            var ferengiImage = sample(await super.getGoogleImg("ferengi"))
             message.channel.send({embeds: [{
                 title: `Ferengi Rule of Acquisition #${randoRule.Num}`,
                 description: randoRule.Rule,

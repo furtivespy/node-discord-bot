@@ -1,4 +1,3 @@
-import _ from 'lodash';
 class EmojiAssistant {
     static IndexToEmoji(number) {
         switch (number) {

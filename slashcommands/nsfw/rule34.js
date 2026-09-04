@@ -4,7 +4,7 @@ import { SlashCommandBuilder } from "@discordjs/builders";
 
 import fetch from "node-fetch";
 
-import _ from "lodash";
+import sample from "lodash/sample.js";
 
 
 class Rule34 extends SlashCommand {
@@ -48,7 +48,7 @@ class Rule34 extends SlashCommand {
       );
       try {
         const data = await response.json();
-        post = _.sample(data);
+        post = sample(data);
       } catch (e) {
         return interaction.editReply("No results found.");
       }

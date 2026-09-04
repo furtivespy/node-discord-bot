@@ -1,5 +1,5 @@
 import Command from '../../base/Command.js';
-import _ from 'lodash';
+import includes from 'lodash/includes.js';
 
 
 class Frozen extends Command {
@@ -22,7 +22,7 @@ class Frozen extends Command {
         try {
             var messageText = message.content.trim().toLowerCase()
             if((message.command && (message.command == "frozen" || message.command == "freeze"))
-             || (_.includes(messageText, "frozen") || _.includes(messageText, "freeze") || _.includes(messageText, "froze"))) {
+             || (includes(messageText, "frozen") || includes(messageText, "freeze") || includes(messageText, "froze"))) {
                  await message.react("⛄")
                  await message.react("🍦") 
                  message.react("👸")                  

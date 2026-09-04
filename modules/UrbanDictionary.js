@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
-
-import _ from 'lodash';
+import filter from 'lodash/filter.js';
+import sample from 'lodash/sample.js';
 
 const BASE_URL = 'https://api.urbandictionary.com/v0';
 
@@ -12,7 +12,7 @@ class UrbanDictionary {
             var res = await fetch(`${BASE_URL}/define?${query.toString()}`);
             var searchResults = await res.json();
             if (searchResults.list.length === 0) return [];
-            var exactMatches = _.filter(searchResults.list, d => d.word.toLowerCase() === searchTerm.toLowerCase());
+            var exactMatches = filter(searchResults.list, d => d.word.toLowerCase() === searchTerm.toLowerCase());
             if (exactMatches.length === 0) return searchResults.list;
             return exactMatches;
          } catch (error) {
@@ -42,7 +42,7 @@ class UrbanDictionary {
             return randos[0];
         } else {
             var results = await this.search(searchTerm);
-            return _.sample(results);
+            return sample(results);
         }
     }
 }
