@@ -1,6 +1,6 @@
 const SlashCommand = require("../../base/SlashCommand.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PermissionsBitField, ChannelType } = require("discord.js");
+const { PermissionsBitField } = require("discord.js");
 
 const EmptyStarboardData = {
   starboardChannel: undefined,
@@ -17,7 +17,6 @@ class Starboard extends SlashCommand {
       description: "Configure the starboard for this server",
       usage: "/starboard  |  /starboard channel:#starboard emoji:⭐ minimum:3",
       enabled: true,
-      guildOnly: true,
       permLevel: "Administrator",
     });
     this.data = new SlashCommandBuilder()
@@ -29,7 +28,6 @@ class Starboard extends SlashCommand {
         option
           .setName("channel")
           .setDescription("Channel where starred messages are posted")
-          .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
           .setRequired(false)
       )
       .addStringOption((option) =>
@@ -103,7 +101,7 @@ class Starboard extends SlashCommand {
           ? channel.permissionsFor(this.client.user)
           : null;
         if (!perms || !perms.has(PermissionsBitField.Flags.SendMessages)) {
-          errors.push("I can't find or post in that channel");
+          errors.push("channel: I can't find or post in that channel");
         } else if (
           starboardData.starboardChannelId !== channel.id ||
           starboardData.starboardChannel !== channel.name
@@ -119,7 +117,7 @@ class Starboard extends SlashCommand {
       if (emoji != null) {
         const trimmedEmoji = emoji.trim();
         if (!trimmedEmoji) {
-          errors.push("Emoji cannot be empty");
+          errors.push("emoji: Emoji cannot be empty");
         } else if (starboardData.starEmoji !== trimmedEmoji) {
           changes.push(`emoji: ${starboardData.starEmoji} → ${trimmedEmoji}`);
           starboardData.starEmoji = trimmedEmoji;
@@ -133,7 +131,7 @@ class Starboard extends SlashCommand {
 
       if (minimum != null) {
         if (!Number.isInteger(minimum) || minimum < 1) {
-          errors.push("Minimum must be a positive integer");
+          errors.push("minimum: Minimum must be a positive integer");
         } else if (starboardData.minimumStarCount !== minimum) {
           changes.push(
             `minimum: ${starboardData.minimumStarCount} → ${minimum}`
@@ -142,25 +140,30 @@ class Starboard extends SlashCommand {
         }
       }
 
-      if (errors.length) {
-        await interaction.reply({
-          content: errors.join("\n"),
-          ephemeral: true,
-        });
-        return;
-      }
-
       if (changes.length) {
         this.client.setGameData(interaction.guild, "STARBOARD", starboardData);
       }
 
-      const summary =
-        changes.length > 0
-          ? `Updated starboard settings:\n${changes.join("\n")}`
-          : "No changes — values already match current settings.";
+      const parts = [];
+      if (changes.length) {
+        parts.push(`Updated starboard settings:\n${changes.join("\n")}`);
+      }
+      if (errors.length) {
+        parts.push(
+          changes.length
+            ? `Could not apply:\n${errors.join("\n")}`
+            : errors.join("\n")
+        );
+      }
+      if (!changes.length && !errors.length) {
+        parts.push("No changes — values already match current settings.");
+      }
+      if (changes.length || !errors.length) {
+        parts.push(this.formatSettings(starboardData));
+      }
 
       await interaction.reply({
-        content: `${summary}\n\n${this.formatSettings(starboardData)}`,
+        content: parts.join("\n\n"),
         ephemeral: true,
       });
     } catch (e) {
