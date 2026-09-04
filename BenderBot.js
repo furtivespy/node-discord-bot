@@ -4,9 +4,9 @@ import {
   Partials,
   GatewayIntentBits,
   PermissionsBitField,
+  REST,
+  Routes,
 } from "discord.js";
-import { REST } from "@discordjs/rest";
-import { Routes } from "discord-api-types/v9";
 import Enmap from "./modules/enmap.js";
 import klaw from "klaw";
 import path from "node:path";
@@ -374,7 +374,7 @@ const init = async () => {
       //Register Slash Commands
       const cmds = client.slashcommands.map((sc) => sc.data.toJSON());
       const rest = new REST({
-        version: "9",
+        version: "10",
       }).setToken(client.config.token);
 
       if (client.config.clientId == "548570412959662080") {

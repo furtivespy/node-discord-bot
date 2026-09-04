@@ -2,7 +2,7 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import RedditImageFetcher from "reddit-image-fetcher";
+import * as RedditImageFetcher from "../../modules/redditImageFetcher.js";
 
 
 class Dicks extends SlashCommand {
@@ -22,7 +22,7 @@ class Dicks extends SlashCommand {
 
   async execute(interaction) {
     try {
-      interaction.deferReply();
+      await interaction.deferReply();
 
       var subreddits = [
         "PenisPics",

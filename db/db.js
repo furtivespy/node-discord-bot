@@ -474,6 +474,7 @@ class Database {
         } else {
             randomStart = this.RandoSelect.get()
         }
+        if (randomStart === undefined) return ''
         var newSentence = [randomStart.word1, randomStart.word2, randomStart.word3]
         if (randomStart.word4) newSentence.push(randomStart.word4)
         if (randomStart.word5) newSentence.push(randomStart.word5)

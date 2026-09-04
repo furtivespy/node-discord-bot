@@ -2,11 +2,10 @@ import { EmbedBuilder, AttachmentBuilder } from "discord.js";
 
 import fetch from "node-fetch";
 
-import { XMLParser } from "fast-xml-parser";
-
 import find from "lodash/find.js";
-import cloneDeep from "lodash/cloneDeep.js";
 import take from "lodash/take.js";
+
+import { parseBggSearchXml, parseBggDetailsXml } from "./bggXmlParser.js";
 
 import { createCanvas, Image, loadImage } from "canvas";
 
@@ -44,13 +43,7 @@ class BoardGameGeek {
     if (!resp.ok || text.trimStart().startsWith("<!DOCTYPE") || text.trimStart().startsWith("<html")) {
       return [];
     }
-    const parser = new XMLParser({
-      attributeNamePrefix: "",
-      ignoreAttributes: false,
-      ignoreNameSpace: true,
-      allowBooleanAttributes: true,
-    });
-    const parsed = parser.parse(text);
+    const parsed = parseBggSearchXml(text);
     let items = parsed.items?.item || [];
     if (!Array.isArray(items)) items = [items];
 
@@ -98,14 +91,7 @@ class BoardGameGeek {
       { headers }
     );
     const text = await gameInfoResp.text();
-    const parser = new XMLParser({
-      attributeNamePrefix: "",
-      textNodeName: "text",
-      ignoreAttributes: false,
-      ignoreNameSpace: true,
-      allowBooleanAttributes: true,
-    });
-    this.gameInfo = parser.parse(text).boardgames.boardgame;
+    this.gameInfo = parseBggDetailsXml(text).boardgames.boardgame;
 
     const gameName = Array.isArray(this.gameInfo.name)
       ? find(this.gameInfo.name, { primary: "true" }).text
