@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<boardgames termsofuse="https://boardgamegeek.com/xmlapi/termsofuse">
+  <boardgame objectid="13">
+    <yearpublished>1995</yearpublished>
+    <minplayers>3</minplayers>
+    <maxplayers>4</maxplayers>
+    <playingtime>90</playingtime>
+    <minplaytime>60</minplaytime>
+    <maxplaytime>120</maxplaytime>
+    <age>10</age>
+    <name primary="true">Catan</name>
+    <name>Die Siedler von Catan</name>
+    <description>In CATAN players try to be the dominant force.&amp;#10;&amp;#10;Setup uses &amp;amp; tokens.</description>
+    <thumbnail>https://example.com/thumb.jpg</thumbnail>
+    <image>https://example.com/image.jpg</image>
+    <boardgamepublisher objectid="37">Kosmos</boardgamepublisher>
+    <boardgamepublisher objectid="10">Mayfair Games</boardgamepublisher>
+    <boardgamedesigner objectid="11">Klaus Teuber</boardgamedesigner>
+    <boardgamemechanic objectid="2081">Dice Rolling</boardgamemechanic>
+    <boardgamemechanic objectid="2008">Trading</boardgamemechanic>
+    <boardgameexpansion objectid="926">Catan: Cities &amp; Knights</boardgameexpansion>
+    <boardgamehonor objectid="8652">1996 Spiel des Jahres Winner</boardgamehonor>
+    <boardgamehonor objectid="1">1995 Origins Award</boardgamehonor>
+    <poll name="suggested_numplayers" title="User Suggested Number of Players" totalvotes="10">
+      <results numplayers="1">
+        <result value="Best" numvotes="1"/>
+        <result value="Recommended" numvotes="2"/>
+        <result value="Not Recommended" numvotes="7"/>
+      </results>
+      <results numplayers="4">
+        <result value="Best" numvotes="8"/>
+        <result value="Recommended" numvotes="1"/>
+        <result value="Not Recommended" numvotes="0"/>
+      </results>
+    </poll>
+    <poll name="language_dependence" title="Language Dependence" totalvotes="1">
+      <results>
+        <result level="1" value="No necessary in-game text" numvotes="1"/>
+      </results>
+    </poll>
+    <statistics page="1">
+      <ratings>
+        <usersrated>120000</usersrated>
+        <average>7.21</average>
+        <bayesaverage>7.10</bayesaverage>
+        <ranks>
+          <rank type="subtype" id="1" name="boardgame" friendlyname="Board Game Rank" value="400" bayesaverage="7.10"/>
+          <rank type="family" id="5499" name="familygames" friendlyname="Family Game Rank" value="50" bayesaverage="7.10"/>
+        </ranks>
+        <averageweight>2.33</averageweight>
+      </ratings>
+    </statistics>
+  </boardgame>
+</boardgames>

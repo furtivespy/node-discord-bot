@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<boardgames termsofuse="https://boardgamegeek.com/xmlapi/termsofuse">
+  <boardgame objectid="999">
+    <yearpublished>2020</yearpublished>
+    <minplayers>2</minplayers>
+    <maxplayers>2</maxplayers>
+    <minplaytime>30</minplaytime>
+    <maxplaytime>30</maxplaytime>
+    <age>8</age>
+    <name primary="true">Solo Title</name>
+    <description>A tiny game.</description>
+    <image>https://example.com/solo.jpg</image>
+    <boardgamepublisher objectid="1">One Pub</boardgamepublisher>
+    <statistics page="1">
+      <ratings>
+        <average>6.5</average>
+        <averageweight>1.2</averageweight>
+        <ranks>
+          <rank type="subtype" id="1" name="boardgame" friendlyname="Board Game Rank" value="Not Ranked" bayesaverage="Not Ranked"/>
+        </ranks>
+      </ratings>
+    </statistics>
+  </boardgame>
+</boardgames>
