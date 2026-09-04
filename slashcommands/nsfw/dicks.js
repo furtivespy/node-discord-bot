@@ -1,6 +1,6 @@
 const SlashCommand = require("../../base/SlashCommand.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
-const RedditImageFetcher = require("reddit-image-fetcher");
+const RedditImageFetcher = require("../../modules/redditImageFetcher");
 
 class Dicks extends SlashCommand {
   constructor(client) {
@@ -19,7 +19,7 @@ class Dicks extends SlashCommand {
 
   async execute(interaction) {
     try {
-      interaction.deferReply();
+      await interaction.deferReply();
 
       var subreddits = [
         "PenisPics",
