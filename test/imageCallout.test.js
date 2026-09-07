@@ -61,8 +61,36 @@ describe("extractImageCallout", () => {
     assert.equal(imagePrompt, null);
   });
 
+  it("does not strip trailing commas or and/also from text-only replies", () => {
+    const cases = [
+      "Hello meatbag,",
+      "I went to the store and then also",
+      "Wait, also",
+      "Sure meatbag: ",
+    ];
+    for (const reply of cases) {
+      const { text, imagePrompt } = extractImageCallout(reply);
+      assert.equal(text, reply, `rewrote text-only reply: ${JSON.stringify(reply)}`);
+      assert.equal(imagePrompt, null);
+    }
+  });
+
   it("does not treat casual 'image of' talk as a callout", () => {
     const reply = "That's a nice image of a sunset you posted.";
+    const { text, imagePrompt } = extractImageCallout(reply);
+    assert.equal(text, reply);
+    assert.equal(imagePrompt, null);
+  });
+
+  it("does not treat conversational 'create an image of' as a callout", () => {
+    const reply = "You can create an image of a sunset if you want.";
+    const { text, imagePrompt } = extractImageCallout(reply);
+    assert.equal(text, reply);
+    assert.equal(imagePrompt, null);
+  });
+
+  it("does not match 'create' inside 'recreate an image of'", () => {
+    const reply = "recreate an image of the 90s";
     const { text, imagePrompt } = extractImageCallout(reply);
     assert.equal(text, reply);
     assert.equal(imagePrompt, null);
@@ -115,6 +143,39 @@ describe("extractImageCallout", () => {
     assert.equal(text, "");
     assert.equal(imagePrompt, "a cat");
   });
+
+  it("strips more than five markers instead of leaving leftovers in Discord text", () => {
+    const reply = [
+      "Generating image of a",
+      "Generating image of b",
+      "Generating image of c",
+      "Generating image of d",
+      "Generating image of e",
+      "Generating image of f",
+      "Generating image of g",
+      "thanks",
+    ].join("\n");
+    const { text, imagePrompt } = extractImageCallout(reply);
+    assert.equal(text, "thanks");
+    assert.equal(imagePrompt, "a");
+    assert.equal(/generating image of/i.test(text), false);
+  });
+
+  it("does not leave no-text-no-image when the marker has no prompt", () => {
+    for (const reply of ["Generating image of", "Generating image of..."]) {
+      const { text, imagePrompt } = extractImageCallout(reply);
+      assert.equal(text, reply);
+      assert.equal(imagePrompt, null);
+    }
+  });
+
+  it("strips an empty marker when other text remains, without generating", () => {
+    const { text, imagePrompt } = extractImageCallout(
+      "Hello meatbag.\nGenerating image of"
+    );
+    assert.equal(text, "Hello meatbag.");
+    assert.equal(imagePrompt, null);
+  });
 });
 
 describe("processResponse image callouts", () => {
@@ -144,5 +205,31 @@ describe("processResponse image callouts", () => {
     assert.equal(response, "Just chatting, meatbag.");
     assert.equal(imageResponse, null);
     assert.equal(generated, false);
+  });
+
+  it("does not generate from conversational 'create an image of'", async () => {
+    const ai = stubGemini();
+    let generated = false;
+    ai.generateImageNew = async () => {
+      generated = true;
+      return { prompt: "should not run" };
+    };
+    const reply = "You can create an image of a sunset if you want.";
+    const { response, imageResponse } = await ai.processResponse({
+      candidates: [{ content: { parts: [{ text: reply }] } }],
+    }, "Bender");
+    assert.equal(response, reply);
+    assert.equal(imageResponse, null);
+    assert.equal(generated, false);
+  });
+
+  it("does not rewrite trailing punctuation on a text-only reply", async () => {
+    const ai = stubGemini();
+    const reply = "Hello meatbag,";
+    const { response, imageResponse } = await ai.processResponse({
+      candidates: [{ content: { parts: [{ text: reply }] } }],
+    }, "Bender");
+    assert.equal(response, reply);
+    assert.equal(imageResponse, null);
   });
 });
