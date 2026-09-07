@@ -1,6 +1,7 @@
 const { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } = require("@google/genai");
 const { AttachmentBuilder } = require("discord.js");
 const { liveMessageText } = require("./chatArchive.js");
+const { createContextPackService } = require("./contextPacks.js");
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
@@ -36,7 +37,7 @@ class GeminiAI {
     constructor(client) {
         this.client = client
         this.AI2 = new GoogleGenAI({apiKey: this.client.config.geminiKey})
-        
+        this.contextPacks = createContextPackService({ logger: this.client.logger })
     }
 
     chatSafetySettings() {
@@ -84,12 +85,15 @@ class GeminiAI {
     }
 
     async generateContent(contents, message) {
+        // Grounding stays XOR (google_search OR file_search OR none). Guild CSV
+        // packs are ordinary prompt text, attached after the router chooses.
         const grounding = this.fileSearchReady(message)
           ? await this.chooseGrounding(this.routerContents(contents))
           : GROUNDING_GOOGLE_SEARCH;
         const tools = this.chatTools(message, grounding);
+        const packed = await this.attachGuildContextPacks(contents, message);
         try {
-          return await this.generateContentWithTools(contents, message, tools);
+          return await this.generateContentWithTools(packed.contents, message, tools, packed.note);
         } catch (error) {
           const hasFileSearch = tools.some((tool) => tool.fileSearch);
           if (hasFileSearch && !isNetworkFetchError(error)) {
@@ -97,10 +101,19 @@ class GeminiAI {
               `Gemini File Search request failed (${describeError(error)}); retrying without File Search`,
               "warn"
             );
-            return await this.generateContentWithTools(contents, message, GOOGLE_SEARCH_TOOLS);
+            return await this.generateContentWithTools(packed.contents, message, GOOGLE_SEARCH_TOOLS, packed.note);
           }
           throw new Error(`Gemini request failed: ${describeError(error)}`, { cause: error });
         }
+    }
+
+    async attachGuildContextPacks(contents, message) {
+      try {
+        return await this.contextPacks.attachIfNeeded(contents, message);
+      } catch (error) {
+        this.client.logger.log(error, "warn");
+        return { contents, attached: [], note: "" };
+      }
     }
 
     routerContents(contents) {
@@ -187,10 +200,10 @@ class GeminiAI {
       }
     }
 
-    async generateContentWithTools(contents, message, tools) {
+    async generateContentWithTools(contents, message, tools, extraInstruction = "") {
         const config = {
           safetySettings: this.chatSafetySettings(),
-          systemInstruction: this.getSystemInstructions(message, tools),
+          systemInstruction: this.getSystemInstructions(message, tools, extraInstruction),
         };
         if (tools.length > 0) config.tools = tools;
         const result = await this.AI2.models.generateContent({
@@ -202,7 +215,7 @@ class GeminiAI {
         return await this.processResponse(result, botname)
     }
 
-    getSystemInstructions(message, tools = []) {
+    getSystemInstructions(message, tools = [], extraInstruction = "") {
       const botname = message.guild.members.cache.get(this.client.user.id).displayName;
       const clientId = this.client.user.id;
 
@@ -260,8 +273,9 @@ class GeminiAI {
         identity,
         chatInstructions,
         capabilities,
-        formattingInstructions
-      ].join(' ');
+        formattingInstructions,
+        extraInstruction,
+      ].filter(Boolean).join(' ');
 
       return instructions;
     }
