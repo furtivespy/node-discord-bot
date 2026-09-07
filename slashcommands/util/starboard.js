@@ -16,6 +16,7 @@ class Starboard extends SlashCommand {
       name: "starboard",
       description: "Configure the starboard for this server",
       usage: "/starboard  |  /starboard channel:#starboard emoji:⭐ minimum:3",
+      category: "admin",
       enabled: true,
       permLevel: "Administrator",
     });

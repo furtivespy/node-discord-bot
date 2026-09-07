@@ -111,6 +111,10 @@ class BenderBot extends Client {
         this
       );
       this.logger.log(`Loading Slash Command: ${props.help.name}. 👌`, "log");
+      props.conf.location = commandPath;
+      if (!props.help.category) {
+        props.help.category = path.basename(commandPath);
+      }
       this.slashcommands.set(props.help.name, props);
       return false;
     } catch (e) {
@@ -405,10 +409,10 @@ const init = async () => {
     const settings = client.getSettings(message.guild);
     message.settings = settings;
 
-    // Checks if the bot was mentioned, with no message after it, returns the prefix.
+    // Bare @Bender mention: point people at slash help, not the old prefix.
     const prefixMention = new RegExp(`^<@!?${client.user.id}>( |)$`);
     if (message.content.match(prefixMention)) {
-      return message.reply(`My prefix on this guild is \`${settings.prefix}\``);
+      return message.reply("Use `/help` to see what I can do. Mention me in a message to chat.");
     }
     // Also good practice to ignore any message that does not start with our prefix,
     // which is set in the configuration file.
@@ -598,8 +602,26 @@ client.on("messageReactionRemove", async (reaction, user) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    const command = client.slashcommands.get(interaction.commandName);
+    if (!command) return;
+    try {
+      if (typeof command.autocomplete === "function") {
+        await command.autocomplete(interaction);
+      } else {
+        await command.execute(interaction);
+      }
+    } catch (error) {
+      client.logger.log(error, "error");
+      if (!interaction.responded) {
+        await interaction.respond([]).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  if (!interaction.isChatInputCommand()) return;
   client.logger.log(`Slash Command ${interaction.commandName}`);
-  if (!interaction.isCommand() && !interaction.isAutocomplete()) return;
   const command = client.slashcommands.get(interaction.commandName);
 
   if (!command) return;

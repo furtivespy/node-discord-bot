@@ -7,7 +7,7 @@ class Rule34 extends SlashCommand {
   constructor(client) {
     super(client, {
       name: "rule34",
-      description: "Rule34",
+      description: "Random Rule 34 image",
       usage: "Use this command to get rule34",
       enabled: true,
       permLevel: "User",

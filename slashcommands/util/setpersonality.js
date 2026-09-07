@@ -21,6 +21,7 @@ class SetPersonality extends SlashCommand {
     super(client, {
       name: "setpersonality",
       description: "Manage the bot's AI personality.",
+      category: "chat",
       guildOnly: true
     });
     this.data = new SlashCommandBuilder()

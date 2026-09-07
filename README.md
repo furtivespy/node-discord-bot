@@ -1,15 +1,13 @@
 # Furtivespy's discord.js bot
 
-This discord.js bot has some heavy influence from [An Idiots Guide bot](https://github.com/AnIdiotsGuide/guidebot). 
+This discord.js bot has some heavy influence from [An Idiots Guide bot](https://github.com/AnIdiotsGuide/guidebot).
 
 ## Introduction
 
-This project is a bot I created for a discord chat with friends and to better learn node
+A bot for friend Discord servers, originally written to learn Node.
 
-# What this bot does? 
+## What this bot does
 
-Check out the commands folder for a list of commands
+Use `/help` in Discord. It lists the live slash commands (chat, fun, games, lookups, admin). Mention Bender in a message to chat.
 
-
-
-
+Slash commands live under `slashcommands/` and register on startup.

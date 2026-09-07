@@ -10,6 +10,7 @@ class People extends SlashCommand {
       description: "Map Discord users to real names for chat understanding (bot owner only)",
       usage: "/people set user:@Shane name:Shane",
       enabled: true,
+      hidden: true,
       permLevel: "Bot Owner",
     });
     this.data = new SlashCommandBuilder()

@@ -7,7 +7,7 @@ class Cy extends SlashCommand {
     constructor(client){
         super(client, {
             name: "cy",
-            description: "Shitty inspriation like 'cychology' spouted by Cy Wakeman",
+            description: "A Cy Wakeman-style inspirational quote",
             usage: "Get's an AI generated inspirational image & quote",
             enabled: true,
             permLevel: "User"

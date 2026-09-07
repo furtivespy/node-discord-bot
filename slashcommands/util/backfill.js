@@ -8,6 +8,7 @@ class Backfill extends SlashCommand {
       name: "backfill",
       description: "Control Discord history crawl for chat memory",
       usage: "/backfill status",
+      category: "chat",
       enabled: true,
       permLevel: "User",
     });

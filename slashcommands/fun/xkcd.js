@@ -6,7 +6,7 @@ class Xkcd extends SlashCommand {
   constructor(client) {
     super(client, {
       name: "xkcd",
-      description: "xkcd comic",
+      description: "Show an xkcd comic",
     });
     this.data = new SlashCommandBuilder()
       .setName(this.help.name)

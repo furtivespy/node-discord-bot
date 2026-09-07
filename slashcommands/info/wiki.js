@@ -10,7 +10,7 @@ class Wiki extends SlashCommand {
     super(client, {
       name: "wiki",
       description: "Look up a wikipedia article",
-      usage: "Use this command to find a wikipedia article",
+      usage: "/wiki page:Discord",
       enabled: true,
       permLevel: "User",
     });
