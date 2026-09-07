@@ -323,7 +323,7 @@ const init = async () => {
     client.levelCache[thisLevel.name] = thisLevel.level;
   }
 
-  client.on("ready", async () => {
+  client.on("clientReady", async () => {
     try {
       //nice to wait a sec before really being ready
       await client.wait(1000);
