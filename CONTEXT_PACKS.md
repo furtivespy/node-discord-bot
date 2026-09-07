@@ -67,8 +67,8 @@ Keep it to a size that can fit in a prompt (hundreds of rows is usually fine). I
 ## 4. How chat uses it
 
 1. Someone **mentions** Bender.
-2. A heuristic looks at the recent turns. Ordinary chat (“high”, “how’s it going”) does **not** fetch.
-3. Games/stats (or a matching general-pack question) → HTTPS GET the published URL.
+2. A heuristic looks at **this turn’s** user message (not earlier history). Ordinary chat (“high”, “how’s it going”) does **not** fetch.
+3. Games/stats (or a matching general-pack question) → HTTPS GET the published URL. The fetch refuses private/loopback/link-local hosts, IPv6-mapped aliases, and redirects to those targets.
 4. Cache the body for **10 minutes**.
 5. Attach the table to **that turn’s** prompt. The grounding router has already chosen google / file search / none and is unchanged.
 

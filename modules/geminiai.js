@@ -1,7 +1,7 @@
 const { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } = require("@google/genai");
 const { AttachmentBuilder } = require("discord.js");
 const { liveMessageText } = require("./chatArchive.js");
-const { createContextPackService } = require("./contextPacks.js");
+const { createContextPackService, scrubErrorMessage } = require("./contextPacks.js");
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
@@ -111,7 +111,7 @@ class GeminiAI {
       try {
         return await this.contextPacks.attachIfNeeded(contents, message);
       } catch (error) {
-        this.client.logger.log(error, "warn");
+        this.client.logger.log(`context pack attach failed (${scrubErrorMessage(error)})`, "warn");
         return { contents, attached: [], note: "" };
       }
     }

@@ -47,6 +47,7 @@ describe("GeminiAI grounding XOR + context packs", () => {
           return "Date,Game,Winner\n2026-01-04,Azul,Shane";
         },
       }),
+      lookup: async () => ["93.184.216.34"],
       logger: { log() {} },
     });
 

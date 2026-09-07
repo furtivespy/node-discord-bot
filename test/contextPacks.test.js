@@ -5,6 +5,8 @@ const {
   MAX_PACKS_PER_GUILD,
   redactUrl,
   scrubErrorMessage,
+  isBlockedAddress,
+  isBlockedHostname,
   validateContextUrl,
   validatePackName,
   normalizePack,
@@ -31,10 +33,11 @@ const PLAYS_CSV = [
 const SECRET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vThisIsASecretToken/pub?gid=0&single=true&output=csv";
 
-function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {} } = {}) {
+function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {}, url } = {}) {
   return {
     ok,
     status,
+    url,
     headers: {
       get(name) {
         return headers[String(name).toLowerCase()] ?? headers[name] ?? null;
@@ -44,6 +47,16 @@ function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {} 
       return text;
     },
   };
+}
+
+const publicLookup = async () => ["93.184.216.34"];
+
+function testService(overrides = {}) {
+  return createContextPackService({
+    lookup: publicLookup,
+    logger: { log() {} },
+    ...overrides,
+  });
 }
 
 describe("context pack URL secrecy", () => {
@@ -60,6 +73,14 @@ describe("context pack URL secrecy", () => {
     const scrubbed = scrubErrorMessage(error, SECRET_URL);
     assert.doesNotMatch(scrubbed, /2PACX/);
     assert.match(scrubbed, /docs\.google\.com\/…/);
+  });
+
+  it("scrubs redirect and metadata URLs that are not the original pack URL", () => {
+    const error = new Error("request to http://169.254.169.254/computeMetadata/v1/ failed");
+    const scrubbed = scrubErrorMessage(error, SECRET_URL);
+    assert.doesNotMatch(scrubbed, /169\.254/);
+    assert.doesNotMatch(scrubbed, /computeMetadata/);
+    assert.doesNotMatch(scrubbed, /2PACX/);
   });
 });
 
@@ -80,6 +101,26 @@ describe("validateContextUrl", () => {
     assert.match(validateContextUrl("https://192.168.1.9/plays.csv").error, /not allowed/);
     assert.match(validateContextUrl("https://10.0.0.5/plays.csv").error, /not allowed/);
     assert.match(validateContextUrl("file:///tmp/plays.csv").error, /https/);
+  });
+
+  it("rejects IPv6-mapped loopback and link-local metadata hosts", () => {
+    assert.equal(isBlockedAddress("::ffff:169.254.169.254"), true);
+    assert.equal(isBlockedAddress("::ffff:a9fe:a9fe"), true);
+    assert.equal(isBlockedAddress("::ffff:7f00:1"), true);
+    assert.equal(isBlockedAddress("::ffff:127.0.0.1"), true);
+    assert.equal(isBlockedHostname("[::ffff:169.254.169.254]"), true);
+    assert.equal(isBlockedHostname("[::ffff:7f00:1]"), true);
+    assert.match(validateContextUrl("https://[::ffff:169.254.169.254]/latest/meta-data/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[::ffff:127.0.0.1]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[::ffff:a9fe:a9fe]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[fe80::1]/").error, /not allowed/);
+  });
+
+  it("rejects DNS-rebinding style hostnames that encode a private IP", () => {
+    assert.match(validateContextUrl("https://127.0.0.1.nip.io/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://169.254.169.254.sslip.io/").error, /not allowed/);
+    assert.match(validateContextUrl("https://127-0-0-1.nip.io/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://app.flycast/secret").error, /not allowed/);
   });
 });
 
@@ -211,13 +252,17 @@ describe("prompt attachment", () => {
     assert.ok(selected.text.length <= 400);
   });
 
-  it("reads recent user text from the triggering message and last turns", () => {
+  it("uses only the current user message, not earlier history", () => {
     const text = recentUserText(
-      [{ role: "user", parts: [{ text: "older" }] }],
-      { content: "Who won Catan?" }
+      [
+        { role: "user", parts: [{ text: "who won Catan last week?" }] },
+        { role: "model", parts: [{ text: "Will" }] },
+        { role: "user", parts: [{ text: "thanks" }] },
+      ],
+      { content: "thanks" }
     );
-    assert.match(text, /Who won Catan/);
-    assert.match(text, /older/);
+    assert.equal(text, "thanks");
+    assert.doesNotMatch(text, /Catan/);
   });
 });
 
@@ -230,11 +275,10 @@ describe("fetch + cache", () => {
       return mockResponse();
     };
     let current = 1_000;
-    const service = createContextPackService({
+    const service = testService({
       fetch,
       now: () => current,
       ttlMs: 10 * 60 * 1000,
-      logger: { log() {} },
     });
     const message = {
       content: "Who has the most wins?",
@@ -254,12 +298,11 @@ describe("fetch + cache", () => {
 
   it("does not fetch on ordinary chat even when a pack is configured", async () => {
     let calls = 0;
-    const service = createContextPackService({
+    const service = testService({
       fetch: async () => {
         calls += 1;
         return mockResponse();
       },
-      logger: { log() {} },
     });
     const result = await service.attachIfNeeded(
       [{ role: "user", parts: [{ text: "high five" }] }],
@@ -282,7 +325,7 @@ describe("fetch + cache", () => {
       throw new Error(`request to ${SECRET_URL} failed`);
     };
     const logs = [];
-    const service = createContextPackService({
+    const service = testService({
       fetch,
       now: () => current,
       ttlMs: 10 * 60 * 1000,
@@ -309,9 +352,8 @@ describe("fetch + cache", () => {
   });
 
   it("skips HTML bodies so a login page is not injected", async () => {
-    const service = createContextPackService({
+    const service = testService({
       fetch: async () => mockResponse({ text: "<!DOCTYPE html><html>login</html>" }),
-      logger: { log() {} },
     });
     const result = await service.attachIfNeeded(
       [{ role: "user", parts: [{ text: "who won Catan?" }] }],
@@ -322,5 +364,153 @@ describe("fetch + cache", () => {
     );
     assert.deepEqual(result.attached, []);
     assert.equal(result.contents[0].parts[0].text, "who won Catan?");
+  });
+
+  it("skips HTML even when the body starts with a BOM", async () => {
+    const service = testService({
+      fetch: async () => mockResponse({ text: "\uFEFF<!DOCTYPE html><html>login</html>" }),
+    });
+    const result = await service.attachIfNeeded(
+      [{ role: "user", parts: [{ text: "who won Catan?" }] }],
+      {
+        content: "who won Catan?",
+        settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+      }
+    );
+    assert.deepEqual(result.attached, []);
+  });
+
+  it("does not attach from earlier history on a non-games follow-up", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.attachIfNeeded(
+      [
+        { role: "user", parts: [{ text: "who won Catan last week?" }] },
+        { role: "model", parts: [{ text: "Will" }] },
+        { role: "user", parts: [{ text: "thanks" }] },
+      ],
+      {
+        content: "thanks",
+        settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+      }
+    );
+    assert.equal(calls, 0);
+    assert.deepEqual(result.attached, []);
+    assert.equal(result.contents[2].parts[0].text, "thanks");
+  });
+});
+
+describe("SSRF protections on fetch", () => {
+  it("does not follow a redirect to a private or metadata URL", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url) === "https://evil.example/r") {
+          return mockResponse({
+            ok: false,
+            status: 302,
+            text: "stolen",
+            headers: { location: "http://169.254.169.254/computeMetadata/v1/" },
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    });
+    const result = await service.fetchUrl("https://evil.example/r");
+    assert.equal(result.ok, false);
+    assert.deepEqual(requested, ["https://evil.example/r"]);
+    assert.doesNotMatch(result.error || "", /169\.254/);
+    assert.doesNotMatch(result.error || "", /computeMetadata/);
+  });
+
+  it("does not follow a redirect to an IPv6-mapped metadata host", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        return mockResponse({
+          ok: false,
+          status: 302,
+          headers: { location: "https://[::ffff:169.254.169.254]/latest/meta-data/" },
+        });
+      },
+    });
+    const result = await service.fetchUrl("https://evil.example/mapped");
+    assert.equal(result.ok, false);
+    assert.deepEqual(requested, ["https://evil.example/mapped"]);
+    assert.doesNotMatch(result.error || "", /169\.254/);
+    assert.doesNotMatch(result.error || "", /meta-data/);
+  });
+
+  it("does not fetch when DNS resolves to a private address", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+      lookup: async () => ["169.254.169.254"],
+    });
+    const result = await service.fetchUrl("https://public-looking.example/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /not allowed/);
+    assert.equal(calls, 0);
+  });
+
+  it("does not fetch a stored private URL even if Enmap already has it", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.fetchUrl("http://127.0.0.1/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /https|not allowed/);
+    assert.equal(calls, 0);
+  });
+
+  it("follows a same-policy https redirect to a public host", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url) === "https://docs.google.com/spreadsheets/pub") {
+          return mockResponse({
+            ok: false,
+            status: 302,
+            headers: { location: `${SECRET_URL}` },
+          });
+        }
+        assert.equal(String(url), SECRET_URL);
+        return mockResponse();
+      },
+    });
+    const result = await service.fetchUrl("https://docs.google.com/spreadsheets/pub");
+    assert.equal(result.ok, true);
+    assert.deepEqual(requested, ["https://docs.google.com/spreadsheets/pub", SECRET_URL]);
+    assert.match(result.text, /Azul/);
+  });
+
+  it("does not fetch DNS-rebinding style hosts that encode loopback", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+      lookup: async () => ["127.0.0.1"],
+    });
+    const result = await service.fetchUrl("https://127.0.0.1.nip.io/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /not allowed/);
+    assert.equal(calls, 0);
   });
 });

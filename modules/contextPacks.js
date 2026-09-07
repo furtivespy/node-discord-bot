@@ -1,11 +1,30 @@
+const net = require("net");
+const https = require("https");
+
 const DEFAULT_FETCH = (...args) => require("node-fetch")(...args);
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes (within the 5–15 min target)
 const MAX_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 24_000;
 const FETCH_TIMEOUT_MS = 8000;
+const MAX_REDIRECTS = 3;
 const MAX_PACKS_PER_GUILD = 8;
 const MAX_NAME_LENGTH = 32;
+const REDACTED_URL_RE = /https?:\/\/[^\s)'"<>]+/gi;
+
+const PRIVATE_BLOCKLIST = new net.BlockList();
+PRIVATE_BLOCKLIST.addSubnet("0.0.0.0", 8, "ipv4");
+PRIVATE_BLOCKLIST.addSubnet("10.0.0.0", 8, "ipv4");
+PRIVATE_BLOCKLIST.addSubnet("100.64.0.0", 10, "ipv4");
+PRIVATE_BLOCKLIST.addSubnet("127.0.0.0", 8, "ipv4");
+PRIVATE_BLOCKLIST.addSubnet("169.254.0.0", 16, "ipv4");
+PRIVATE_BLOCKLIST.addSubnet("172.16.0.0", 12, "ipv4");
+PRIVATE_BLOCKLIST.addSubnet("192.168.0.0", 16, "ipv4");
+PRIVATE_BLOCKLIST.addAddress("::", "ipv6");
+PRIVATE_BLOCKLIST.addAddress("::1", "ipv6");
+PRIVATE_BLOCKLIST.addSubnet("fc00::", 7, "ipv6");
+PRIVATE_BLOCKLIST.addSubnet("fe80::", 10, "ipv6");
+PRIVATE_BLOCKLIST.addSubnet("ff00::", 8, "ipv6");
 
 const PACK_KINDS = ["plays", "general"];
 
@@ -24,6 +43,7 @@ function redactUrl(url) {
   if (!url || typeof url !== "string") return "(no url)";
   try {
     const parsed = new URL(url);
+    if (isBlockedHostname(parsed.hostname)) return "(blocked url)";
     return `${parsed.protocol}//${parsed.host}/…`;
   } catch {
     return "(invalid url)";
@@ -32,42 +52,112 @@ function redactUrl(url) {
 
 function scrubErrorMessage(error, url) {
   let message = error?.message || String(error);
-  if (url && message.includes(url)) {
-    message = message.split(url).join(redactUrl(url));
+  if (url) {
+    const redacted = redactUrl(url);
+    message = message.split(url).join(redacted);
+    try {
+      const parsed = new URL(url);
+      if (parsed.host) message = message.split(parsed.host).join(redacted);
+      if (parsed.hostname && parsed.hostname !== parsed.host) {
+        message = message.split(parsed.hostname).join(redacted);
+      }
+    } catch {
+      // ignore
+    }
   }
-  return message;
+  return message.replace(REDACTED_URL_RE, (match) => redactUrl(match));
 }
 
-function isBlockedHostname(hostname) {
-  const host = String(hostname || "")
+function normalizeHostname(hostname) {
+  return String(hostname || "")
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
     .replace(/\.$/, "");
+}
+
+function parseIpv4Octets(text) {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(text)) return null;
+  const parts = text.split(".").map(Number);
+  if (parts.some((part) => part > 255)) return null;
+  return parts;
+}
+
+function isBlockedAddress(address) {
+  const host = normalizeHostname(address);
+  if (!host) return true;
+  const kind = net.isIP(host);
+  if (kind === 4) return PRIVATE_BLOCKLIST.check(host, "ipv4");
+  if (kind === 6) return PRIVATE_BLOCKLIST.check(host, "ipv6");
+  return false;
+}
+
+function hostnameEmbedsBlockedIpv4(host) {
+  const labels = host.split(".");
+  for (let i = 0; i <= labels.length - 4; i++) {
+    const candidate = labels.slice(i, i + 4).join(".");
+    const octets = parseIpv4Octets(candidate);
+    if (octets && isBlockedAddress(octets.join("."))) return true;
+  }
+  for (const label of labels) {
+    const hyphen = /^(\d{1,3})-(\d{1,3})-(\d{1,3})-(\d{1,3})$/.exec(label);
+    if (!hyphen) continue;
+    const octets = parseIpv4Octets(hyphen.slice(1, 5).join("."));
+    if (octets && isBlockedAddress(octets.join("."))) return true;
+  }
+  return false;
+}
+
+function isBlockedHostname(hostname) {
+  const host = normalizeHostname(hostname);
   if (!host) return true;
   if (
     host === "localhost" ||
     host.endsWith(".localhost") ||
     host === "metadata.google.internal" ||
     host.endsWith(".internal") ||
-    host === "::1" ||
-    host === "0.0.0.0"
+    host.endsWith(".local") ||
+    host.endsWith(".flycast")
   ) {
     return true;
   }
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
-    const parts = host.split(".").map(Number);
-    if (parts.some((part) => part > 255)) return true;
-    if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return true;
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  }
-  if (host.includes(":")) {
-    if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) {
-      return true;
-    }
-  }
+  if (isBlockedAddress(host)) return true;
+  if (hostnameEmbedsBlockedIpv4(host)) return true;
   return false;
+}
+
+function isRedirectStatus(status) {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+async function defaultLookup(hostname) {
+  const { promises: dns } = require("dns");
+  try {
+    const results = await dns.lookup(hostname, { all: true, verbatim: true });
+    return results.map((row) => row.address);
+  } catch (error) {
+    const err = new Error("URL host could not be resolved.");
+    err.cause = error;
+    throw err;
+  }
+}
+
+function createPinnedHttpsAgent(addresses) {
+  const pinned = (addresses || []).filter((addr) => !isBlockedAddress(addr));
+  return new https.Agent({
+    lookup(_hostname, options, callback) {
+      const wantFamily = options?.family;
+      const match =
+        (wantFamily === 6 && pinned.find((addr) => net.isIP(addr) === 6)) ||
+        (wantFamily === 4 && pinned.find((addr) => net.isIP(addr) === 4)) ||
+        pinned.find((addr) => net.isIP(addr) === 4) ||
+        pinned.find((addr) => net.isIP(addr) === 6);
+      if (!match) {
+        callback(new Error("URL host is not allowed."));
+        return;
+      }
+      callback(null, match, net.isIP(match));
+    },
+  });
 }
 
 function validateContextUrl(rawUrl) {
@@ -197,16 +287,15 @@ function selectPacksForTurn(packs, text) {
 }
 
 function recentUserText(contents, message) {
-  const parts = [];
-  if (message?.content) parts.push(String(message.content));
+  if (message?.content) return String(message.content);
   const turns = Array.isArray(contents) ? contents : [];
-  for (let i = turns.length - 1; i >= 0 && parts.length < 4; i--) {
+  for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn?.role !== "user") continue;
     const text = turn.parts?.[0]?.text;
-    if (text) parts.push(String(text));
+    if (text) return String(text);
   }
-  return parts.join("\n");
+  return "";
 }
 
 function tokenizeQuery(text) {
@@ -230,6 +319,14 @@ function selectRelevantCsv(csvText, queryText, maxChars = MAX_PROMPT_CHARS) {
 
   const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
   const header = lines[0] || "";
+  if (header.length >= maxChars) {
+    return {
+      text: header.slice(0, maxChars),
+      truncated: true,
+      rowsUsed: 0,
+      rowsTotal: Math.max(0, lines.length - 1),
+    };
+  }
   const rows = lines.slice(1);
   const tokens = tokenizeQuery(queryText);
   const scored = rows.map((row, index) => {
@@ -316,6 +413,7 @@ function contextPackSystemNote(attachedPacks) {
 
 function createContextPackService(options = {}) {
   const fetchImpl = options.fetch || DEFAULT_FETCH;
+  const lookupImpl = options.lookup || defaultLookup;
   const cache = options.cache || new Map();
   const ttlMs = options.ttlMs || CACHE_TTL_MS;
   const now = options.now || (() => Date.now());
@@ -344,41 +442,93 @@ function createContextPackService(options = {}) {
     cache.delete(cacheKey(url));
   }
 
-  async function fetchUrl(url) {
-    const cached = readCache(url);
-    if (cached && !cached.stale && cached.ok) {
-      return cached;
+  async function assertSafeFetchTarget(rawUrl) {
+    const validated = validateContextUrl(rawUrl);
+    if (validated.error) {
+      throw new Error(validated.error);
     }
-    try {
-      const response = await fetchImpl(url, {
+    const parsed = new URL(validated.url);
+    const host = normalizeHostname(parsed.hostname);
+    let addresses = [];
+    if (net.isIP(host)) {
+      addresses = [host];
+    } else {
+      addresses = await lookupImpl(host);
+    }
+    if (!Array.isArray(addresses) || addresses.length === 0) {
+      throw new Error("URL host could not be resolved.");
+    }
+    if (addresses.some((addr) => isBlockedAddress(addr))) {
+      throw new Error("URL host is not allowed.");
+    }
+    return { url: validated.url, agent: createPinnedHttpsAgent(addresses) };
+  }
+
+  async function fetchFollowingSafeRedirects(startUrl) {
+    let currentUrl = startUrl;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const safe = await assertSafeFetchTarget(currentUrl);
+      const response = await fetchImpl(safe.url, {
         method: "GET",
-        redirect: "follow",
-        follow: 3,
+        redirect: "manual",
+        follow: 0,
         timeout: FETCH_TIMEOUT_MS,
         size: MAX_BYTES,
+        agent: safe.agent,
         headers: {
           Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
           "User-Agent": "BenderBot-context-packs",
         },
       });
-      const bytes = Number(response.headers?.get?.("content-length")) || 0;
+      const finalUrl = response.url || safe.url;
+      if (finalUrl && finalUrl !== safe.url) {
+        await assertSafeFetchTarget(finalUrl);
+      }
+      if (isRedirectStatus(response.status)) {
+        const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
+        if (!location) {
+          throw new Error("redirect without location");
+        }
+        currentUrl = new URL(location, safe.url).href;
+        continue;
+      }
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
+      const bytes = Number(response.headers?.get?.("content-length")) || 0;
       const text = await response.text();
-      if (!text || !text.trim()) {
+      return { text, bytes };
+    }
+    throw new Error("too many redirects");
+  }
+
+  async function fetchUrl(url) {
+    const rejected = validateContextUrl(url);
+    if (rejected.error) {
+      logger.log(`context pack fetch rejected ${redactUrl(url)} (${rejected.error})`, "warn");
+      return { ok: false, error: rejected.error, stale: false };
+    }
+
+    const cached = readCache(url);
+    if (cached && !cached.stale && cached.ok) {
+      return cached;
+    }
+    try {
+      const { text, bytes } = await fetchFollowingSafeRedirects(url);
+      const body = String(text || "").replace(/^\uFEFF/, "");
+      if (!body.trim()) {
         throw new Error("empty body");
       }
-      if (/^\s*<(!DOCTYPE html|html)/i.test(text)) {
+      if (/^\s*<(!DOCTYPE html|html)/i.test(body)) {
         throw new Error("HTML instead of CSV/text");
       }
-      if (Buffer.byteLength(text, "utf8") > MAX_BYTES) {
+      if (Buffer.byteLength(body, "utf8") > MAX_BYTES) {
         throw new Error("body too large");
       }
       const entry = {
         ok: true,
-        text,
-        bytes: Buffer.byteLength(text, "utf8") || bytes,
+        text: body,
+        bytes: Buffer.byteLength(body, "utf8") || bytes,
       };
       writeCache(url, entry);
       logger.log(`context pack fetched ${redactUrl(url)} (${entry.bytes} bytes)`, "log");
@@ -445,8 +595,11 @@ module.exports = {
   MAX_PACKS_PER_GUILD,
   PACK_KINDS,
   PLAYS_HEURISTIC,
+  MAX_REDIRECTS,
   redactUrl,
   scrubErrorMessage,
+  isBlockedAddress,
+  isBlockedHostname,
   validateContextUrl,
   validatePackName,
   validatePackKind,

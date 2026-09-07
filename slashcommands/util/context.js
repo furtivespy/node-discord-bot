@@ -111,7 +111,7 @@ class Context extends SlashCommand {
           await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
       }
     } catch (e) {
-      this.client.logger.log(e, "error");
+      this.client.logger.log(e?.message || String(e), "error");
       const payload = {
         content: "Something went wrong with that context command.",
         ephemeral: true,
