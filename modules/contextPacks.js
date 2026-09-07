@@ -95,12 +95,86 @@ function parseIpv4Octets(text) {
   return parts;
 }
 
+function parseIpv6Hextets(address) {
+  const host = normalizeHostname(address);
+  if (net.isIP(host) !== 6) return null;
+
+  let text = host;
+  const lastColon = text.lastIndexOf(":");
+  const maybeIpv4 = text.slice(lastColon + 1);
+  if (maybeIpv4.includes(".")) {
+    const octets = parseIpv4Octets(maybeIpv4);
+    if (!octets) return null;
+    const hi = ((octets[0] << 8) | octets[1]).toString(16);
+    const lo = ((octets[2] << 8) | octets[3]).toString(16);
+    text = `${text.slice(0, lastColon + 1)}${hi}:${lo}`;
+  }
+
+  const sides = text.split("::");
+  if (sides.length > 2) return null;
+  const parseSide = (side) => (side ? side.split(":").filter(Boolean) : []);
+  let parts;
+  if (sides.length === 1) {
+    parts = parseSide(sides[0]);
+    if (parts.length !== 8) return null;
+  } else {
+    const left = parseSide(sides[0]);
+    const right = parseSide(sides[1]);
+    const missing = 8 - left.length - right.length;
+    if (missing < 0) return null;
+    parts = [...left, ...Array(missing).fill("0"), ...right];
+  }
+  const hextets = parts.map((part) => Number.parseInt(part, 16));
+  if (hextets.some((part) => !Number.isFinite(part) || part < 0 || part > 0xffff)) return null;
+  return hextets;
+}
+
+function hextetsToIpv4(hi, lo) {
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
+function embeddedIpv4FromHextets(hextets) {
+  if (!hextets || hextets.length !== 8) return null;
+  const [h0, h1, h2, h3, h4, h5, h6, h7] = hextets;
+  // IPv4-mapped ::ffff:0:0/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
+    return hextetsToIpv4(h6, h7);
+  }
+  // IPv4-translated / SIIT ::ffff:0:0:0/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0xffff && h5 === 0) {
+    return hextetsToIpv4(h6, h7);
+  }
+  // Deprecated IPv4-compatible ::/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
+    return hextetsToIpv4(h6, h7);
+  }
+  // NAT64 well-known prefix 64:ff9b::/96
+  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
+    return hextetsToIpv4(h6, h7);
+  }
+  // NAT64 local-use 64:ff9b:1::/96
+  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0x1 && h3 === 0 && h4 === 0 && h5 === 0) {
+    return hextetsToIpv4(h6, h7);
+  }
+  // 6to4 2002::/16 (IPv4 in bits 16–47)
+  if (h0 === 0x2002) {
+    return hextetsToIpv4(h1, h2);
+  }
+  return null;
+}
+
 function isBlockedAddress(address) {
   const host = normalizeHostname(address);
   if (!host) return true;
   const kind = net.isIP(host);
   if (kind === 4) return PRIVATE_BLOCKLIST.check(host, "ipv4");
-  if (kind === 6) return PRIVATE_BLOCKLIST.check(host, "ipv6");
+  if (kind === 6) {
+    if (PRIVATE_BLOCKLIST.check(host, "ipv6")) return true;
+    const hextets = parseIpv6Hextets(host);
+    if (!hextets) return true;
+    const embedded = embeddedIpv4FromHextets(hextets);
+    return Boolean(embedded && isBlockedAddress(embedded));
+  }
   return false;
 }
 
@@ -154,22 +228,48 @@ async function defaultLookup(hostname) {
   }
 }
 
+function normalizeLookupArgs(optionsOrFamily, maybeCallback) {
+  if (typeof optionsOrFamily === "function") {
+    return { options: {}, callback: optionsOrFamily };
+  }
+  if (typeof optionsOrFamily === "number") {
+    return { options: { family: optionsOrFamily }, callback: maybeCallback };
+  }
+  return { options: optionsOrFamily || {}, callback: maybeCallback };
+}
+
+function createPinnedLookup(addresses) {
+  const pinned = (addresses || []).filter((addr) => net.isIP(addr));
+  return function pinnedLookup(_hostname, optionsOrFamily, maybeCallback) {
+    const { options, callback } = normalizeLookupArgs(optionsOrFamily, maybeCallback);
+    const wantFamily = options.family;
+    const matches = pinned.filter((addr) => {
+      const family = net.isIP(addr);
+      if (wantFamily === 4 || wantFamily === 6) return family === wantFamily;
+      return Boolean(family);
+    });
+    if (matches.length === 0) {
+      callback(new Error("URL host is not allowed."));
+      return;
+    }
+    // Node Happy Eyeballs (https.request) calls lookup with { all: true } and
+    // expects callback(null, [{ address, family }, ...]). The single-address
+    // callback(null, address, family) shape yields "Invalid IP address: undefined".
+    if (options.all) {
+      callback(
+        null,
+        matches.map((address) => ({ address, family: net.isIP(address) }))
+      );
+      return;
+    }
+    const match = matches[0];
+    callback(null, match, net.isIP(match));
+  };
+}
+
 function createPinnedHttpsAgent(addresses) {
-  const pinned = (addresses || []).filter((addr) => !isBlockedAddress(addr));
   return new https.Agent({
-    lookup(_hostname, options, callback) {
-      const wantFamily = options?.family;
-      const match =
-        (wantFamily === 6 && pinned.find((addr) => net.isIP(addr) === 6)) ||
-        (wantFamily === 4 && pinned.find((addr) => net.isIP(addr) === 4)) ||
-        pinned.find((addr) => net.isIP(addr) === 4) ||
-        pinned.find((addr) => net.isIP(addr) === 6);
-      if (!match) {
-        callback(new Error("URL host is not allowed."));
-        return;
-      }
-      callback(null, match, net.isIP(match));
-    },
+    lookup: createPinnedLookup((addresses || []).filter((addr) => !isBlockedAddress(addr))),
   });
 }
 
@@ -424,6 +524,12 @@ function contextPackSystemNote(attachedPacks) {
   return `This turn includes guild context pack(s) ${names} as ordinary prompt text (not a grounding tool). Use that table for this server's data. Grounding remains a single choice of google_search, file_search, or none.`;
 }
 
+function contextPackLoadFailureNote(failedPacks) {
+  if (!failedPacks?.length) return "";
+  const names = failedPacks.map((pack) => `"${pack.name}"`).join(", ");
+  return `Guild context pack(s) ${names} could not be loaded (blocked, invalid, or fetch failed). Do not invent this server's play/tracker data to fill the gap. Grounding remains a single choice of google_search, file_search, or none.`;
+}
+
 function createContextPackService(options = {}) {
   const fetchImpl = options.fetch || DEFAULT_FETCH;
   const lookupImpl = options.lookup || defaultLookup;
@@ -479,7 +585,7 @@ function createContextPackService(options = {}) {
 
   async function fetchFollowingSafeRedirects(startUrl) {
     let currentUrl = startUrl;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
       const safe = await assertSafeFetchTarget(currentUrl);
       const response = await fetchImpl(safe.url, {
         method: "GET",
@@ -568,17 +674,25 @@ function createContextPackService(options = {}) {
 
     const blocks = [];
     const attached = [];
+    const failed = [];
     for (const pack of wanted) {
       const fetched = await fetchUrl(pack.url);
-      if (!fetched.ok || !fetched.text) continue;
+      if (!fetched.ok || !fetched.text) {
+        failed.push({ name: pack.name, kind: pack.kind });
+        continue;
+      }
       const block = formatPackBlock(pack, fetched.text, queryText);
       if (!block) continue;
       blocks.push(block);
       attached.push({ name: pack.name, kind: pack.kind, bytes: fetched.bytes, stale: fetched.stale });
     }
 
+    const note = [contextPackSystemNote(attached), contextPackLoadFailureNote(failed)]
+      .filter(Boolean)
+      .join(" ");
+
     if (blocks.length === 0) {
-      return { contents, attached: [], note: "" };
+      return { contents, attached: [], note };
     }
 
     logger.log(
@@ -588,7 +702,7 @@ function createContextPackService(options = {}) {
     return {
       contents: attachPacksToContents(contents, blocks.join("\n\n")),
       attached,
-      note: contextPackSystemNote(attached),
+      note,
     };
   }
 
@@ -627,5 +741,8 @@ module.exports = {
   formatPackBlock,
   attachPacksToContents,
   contextPackSystemNote,
+  contextPackLoadFailureNote,
+  createPinnedLookup,
+  createPinnedHttpsAgent,
   createContextPackService,
 };

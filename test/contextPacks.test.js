@@ -1,8 +1,11 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const http = require("http");
+const https = require("https");
 const {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
+  MAX_REDIRECTS,
   redactUrl,
   scrubErrorMessage,
   isBlockedAddress,
@@ -20,6 +23,8 @@ const {
   formatPackBlock,
   attachPacksToContents,
   contextPackSystemNote,
+  createPinnedLookup,
+  createPinnedHttpsAgent,
   createContextPackService,
 } = require("../modules/contextPacks");
 
@@ -121,6 +126,30 @@ describe("validateContextUrl", () => {
     assert.match(validateContextUrl("https://[::ffff:127.0.0.1]/").error, /not allowed/);
     assert.match(validateContextUrl("https://[::ffff:a9fe:a9fe]/").error, /not allowed/);
     assert.match(validateContextUrl("https://[fe80::1]/").error, /not allowed/);
+  });
+
+  it("rejects IPv4-translated, NAT64, SIIT-compatible, and 6to4 embeddings of blocked IPv4", () => {
+    const blocked = [
+      "::ffff:0:169.254.169.254",
+      "::ffff:0:a9fe:a9fe",
+      "::ffff:0:127.0.0.1",
+      "64:ff9b::a9fe:a9fe",
+      "64:ff9b::169.254.169.254",
+      "64:ff9b:1::a9fe:a9fe",
+      "::a9fe:a9fe",
+      "::169.254.169.254",
+      "2002:a9fe:a9fe::",
+      "2002:7f00:1::",
+    ];
+    for (const address of blocked) {
+      assert.equal(isBlockedAddress(address), true, address);
+      assert.equal(isBlockedHostname(`[${address}]`), true, address);
+      assert.match(validateContextUrl(`https://[${address}]/`).error, /not allowed/, address);
+    }
+    assert.match(validateContextUrl("https://[::ffff:0:169.254.169.254]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[64:ff9b::a9fe:a9fe]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[::a9fe:a9fe]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[2002:a9fe:a9fe::]/").error, /not allowed/);
   });
 
   it("rejects DNS-rebinding style hostnames that encode a private IP", () => {
@@ -519,5 +548,188 @@ describe("SSRF protections on fetch", () => {
     assert.equal(result.ok, false);
     assert.match(result.error, /not allowed/);
     assert.equal(calls, 0);
+  });
+
+  it("does not fetch DNS that returns IPv4-translated / NAT64 / 6to4 private embeddings", async () => {
+    for (const resolved of [
+      ["::ffff:0:169.254.169.254"],
+      ["64:ff9b::a9fe:a9fe"],
+      ["::a9fe:a9fe"],
+      ["2002:a9fe:a9fe::"],
+      ["93.184.216.34", "::ffff:0:169.254.169.254"],
+    ]) {
+      let calls = 0;
+      const service = testService({
+        fetch: async () => {
+          calls += 1;
+          return mockResponse();
+        },
+        lookup: async () => resolved,
+      });
+      const result = await service.fetchUrl("https://public-looking.example/plays.csv");
+      assert.equal(result.ok, false, String(resolved));
+      assert.match(result.error, /not allowed/, String(resolved));
+      assert.equal(calls, 0, String(resolved));
+    }
+  });
+
+  it("does not follow a redirect to a translated-mapped or NAT64 metadata host", async () => {
+    const locations = [
+      "https://[::ffff:0:169.254.169.254]/latest/meta-data/",
+      "https://[64:ff9b::a9fe:a9fe]/",
+      "https://[::a9fe:a9fe]/",
+      "https://[2002:a9fe:a9fe::]/",
+    ];
+    for (const location of locations) {
+      const requested = [];
+      const service = testService({
+        fetch: async (url) => {
+          requested.push(String(url));
+          return mockResponse({
+            ok: false,
+            status: 302,
+            headers: { location },
+          });
+        },
+      });
+      const result = await service.fetchUrl("https://evil.example/translated");
+      assert.equal(result.ok, false, location);
+      assert.deepEqual(requested, ["https://evil.example/translated"], location);
+      assert.doesNotMatch(result.error || "", /169\.254|a9fe|meta-data|ff9b|2002/, location);
+    }
+  });
+
+  it("performs at most 3 fetches when following redirects", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse({
+          ok: false,
+          status: 302,
+          headers: { location: `https://example.com/hop${calls}` },
+        });
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/start");
+    assert.equal(result.ok, false);
+    assert.equal(MAX_REDIRECTS, 3);
+    assert.equal(calls, 3);
+    assert.match(result.error, /too many redirects/);
+  });
+
+  it("tells the model when a stored private URL cannot be fetched instead of silently continuing", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.attachIfNeeded(
+      [{ role: "user", parts: [{ text: "who won Catan?" }] }],
+      {
+        content: "who won Catan?",
+        settings: {
+          context_packs: [{ name: "plays", kind: "plays", url: "http://127.0.0.1/plays.csv" }],
+        },
+      }
+    );
+    assert.equal(calls, 0);
+    assert.deepEqual(result.attached, []);
+    assert.equal(result.contents[0].parts[0].text, "who won Catan?");
+    assert.match(result.note, /could not be loaded/);
+    assert.match(result.note, /plays/);
+    assert.doesNotMatch(result.note, /127\.0\.0\.1/);
+  });
+});
+
+describe("pinned HTTPS agent lookup", () => {
+  function lookupAsync(lookup, hostname, options) {
+    return new Promise((resolve, reject) => {
+      lookup(hostname, options, (error, addresses, family) => {
+        if (error) reject(error);
+        else resolve({ addresses, family });
+      });
+    });
+  }
+
+  it("returns address objects when Node calls lookup with {all:true}", async () => {
+    const lookup = createPinnedLookup(["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"]);
+    const { addresses, family } = await lookupAsync(lookup, "docs.google.com", {
+      all: true,
+      verbatim: true,
+      hints: 32,
+    });
+    assert.equal(family, undefined);
+    assert.ok(Array.isArray(addresses));
+    assert.equal(typeof addresses[0], "object");
+    assert.equal(addresses[0].address, "93.184.216.34");
+    assert.equal(addresses[0].family, 4);
+    assert.equal(addresses[1].address, "2606:2800:220:1:248:1893:25c8:1946");
+    assert.equal(addresses[1].family, 6);
+    assert.notEqual(addresses[0].address, undefined);
+  });
+
+  it("https.request with the pinned agent does not throw Invalid IP address on Happy Eyeballs", async () => {
+    const agent = createPinnedHttpsAgent(["93.184.216.34"]);
+    const fromAgent = await lookupAsync(agent.options.lookup, "docs.google.com", { all: true, hints: 32 });
+    assert.deepEqual(fromAgent.addresses, [{ address: "93.184.216.34", family: 4 }]);
+
+    // Drive the real Node HTTP stack (it calls lookup with {all:true}). Connecting
+    // to 127.0.0.1:1 fails immediately; the broken callback threw first.
+    const liveAgent = new https.Agent({ lookup: createPinnedLookup(["127.0.0.1"]) });
+    const error = await new Promise((resolve) => {
+      const req = https.request(
+        {
+          hostname: "docs.google.com",
+          port: 1,
+          path: "/",
+          method: "GET",
+          agent: liveAgent,
+        },
+        (res) => {
+          res.resume();
+          resolve(new Error(`unexpected response ${res.statusCode}`));
+        }
+      );
+      req.on("error", resolve);
+      req.end();
+    });
+    assert.doesNotMatch(error.message, /Invalid IP address/);
+    assert.notEqual(error.message, "Invalid IP address: undefined");
+  });
+
+  it("pins TCP to the resolved address even when the URL hostname would rebind", async () => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end(`pinned-ok ${req.headers.host}`);
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    try {
+      const lookup = createPinnedLookup(["127.0.0.1"]);
+      const body = await new Promise((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: "docs.google.com",
+            port,
+            path: "/plays.csv",
+            method: "GET",
+            agent: new http.Agent({ lookup }),
+          },
+          (res) => {
+            const chunks = [];
+            res.on("data", (chunk) => chunks.push(chunk));
+            res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+          }
+        );
+        req.on("error", reject);
+        req.end();
+      });
+      assert.match(body, /pinned-ok/);
+    } finally {
+      server.close();
+    }
   });
 });
