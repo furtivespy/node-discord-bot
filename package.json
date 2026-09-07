@@ -9,7 +9,7 @@
   },
   "packageManager": "npm@11.19.0",
   "scripts": {
-    "test": "node --test test/bggXmlParser.test.js",
+    "test": "node --test test/bggXmlParser.test.js test/guildConfigOverview.test.js",
     "start": "node BenderBot.js",
     "smoke": "node scripts/smoke-startup.js"
   },

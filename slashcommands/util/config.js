@@ -2,6 +2,13 @@ const SlashCommand = require("../../base/SlashCommand.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { PermissionsBitField } = require("discord.js");
 const Pull = require('lodash/pull')
+const {
+  isBotAdmin,
+  collectAllGuildOverviews,
+  formatOverviewText,
+  formatOverviewJson,
+  splitDiscordMessages,
+} = require("../../modules/guildConfigOverview")
 
 const configsThatMatter = [
   {
@@ -133,6 +140,27 @@ class Config extends SlashCommand {
           .setName("unskipchannel")
           .setDescription("remove the current channel from being skipped from the markov chain db")
       )
+      .addSubcommand((option) =>
+        option
+          .setName("overview")
+          .setDescription("Bot owner/admin only: key config for every joined server")
+          .addStringOption((option) =>
+            option
+              .setName("format")
+              .setDescription("Reply format (always redacted)")
+              .setRequired(false)
+              .addChoices(
+                { name: "text", value: "text" },
+                { name: "json", value: "json" }
+              )
+          )
+          .addBooleanOption((option) =>
+            option
+              .setName("log")
+              .setDescription("Also write the redacted report to bot logs")
+              .setRequired(false)
+          )
+      )
   }
 
   async execute(interaction) {
@@ -162,9 +190,56 @@ class Config extends SlashCommand {
         case "unskipchannel":
           await this.unskipChannel(interaction);
           break;
+        case "overview":
+          await this.overview(interaction);
+          break;
       }
     } catch (e) {
       this.client.logger.log(e, "error");
+    }
+  }
+
+  async overview(interaction) {
+    if (!isBotAdmin(this.client, interaction.user.id)) {
+      await interaction.reply({
+        content: "This overview is only for the bot owner or configured admin IDs.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      await this.client.guilds.fetch();
+    } catch (e) {
+      this.client.logger.log(e, "warn");
+    }
+
+    const snapshots = collectAllGuildOverviews(
+      this.client,
+      this.client.guilds.cache.values()
+    );
+    const format = interaction.options.getString("format") || "text";
+    const report =
+      format === "json"
+        ? formatOverviewJson(snapshots)
+        : formatOverviewText(snapshots);
+    const chunks =
+      format === "json"
+        ? splitDiscordMessages(report).map((chunk) => `\`\`\`json\n${chunk}\n\`\`\``)
+        : splitDiscordMessages(report);
+
+    if (interaction.options.getBoolean("log")) {
+      this.client.logger.log(
+        `config overview requested by ${interaction.user.id}\n${report}`,
+        "log"
+      );
+    }
+
+    await interaction.editReply({ content: chunks[0] });
+    for (const chunk of chunks.slice(1)) {
+      await interaction.followUp({ content: chunk, ephemeral: true });
     }
   }
 
