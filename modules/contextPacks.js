@@ -52,20 +52,33 @@ function redactUrl(url) {
 
 function scrubErrorMessage(error, url) {
   let message = error?.message || String(error);
+  const urls = [];
+  if (url) urls.push(url);
+  for (const match of message.match(REDACTED_URL_RE) || []) {
+    urls.push(match);
+  }
+  urls.sort((a, b) => b.length - a.length);
+  const seen = new Set();
+  for (const item of urls) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    message = message.split(item).join(redactUrl(item));
+  }
   if (url) {
-    const redacted = redactUrl(url);
-    message = message.split(url).join(redacted);
     try {
       const parsed = new URL(url);
-      if (parsed.host) message = message.split(parsed.host).join(redacted);
-      if (parsed.hostname && parsed.hostname !== parsed.host) {
+      const redacted = redactUrl(url);
+      const alreadyRedacted =
+        message.includes(redacted) ||
+        message.includes(`${parsed.protocol}//${parsed.host}/…`);
+      if (!alreadyRedacted && parsed.hostname && message.includes(parsed.hostname)) {
         message = message.split(parsed.hostname).join(redacted);
       }
     } catch {
       // ignore
     }
   }
-  return message.replace(REDACTED_URL_RE, (match) => redactUrl(match));
+  return message;
 }
 
 function normalizeHostname(hostname) {

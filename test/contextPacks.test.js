@@ -72,7 +72,14 @@ describe("context pack URL secrecy", () => {
     const error = new Error(`request to ${SECRET_URL} failed`);
     const scrubbed = scrubErrorMessage(error, SECRET_URL);
     assert.doesNotMatch(scrubbed, /2PACX/);
-    assert.match(scrubbed, /docs\.google\.com\/…/);
+    assert.match(scrubbed, /https:\/\/docs\.google\.com\/…/);
+  });
+
+  it("scrubs a bare hostname from resolver errors", () => {
+    const error = new Error("getaddrinfo ENOTFOUND docs.google.com");
+    const scrubbed = scrubErrorMessage(error, SECRET_URL);
+    assert.doesNotMatch(scrubbed, /2PACX/);
+    assert.match(scrubbed, /https:\/\/docs\.google\.com\/…/);
   });
 
   it("scrubs redirect and metadata URLs that are not the original pack URL", () => {
