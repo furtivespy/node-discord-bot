@@ -196,6 +196,17 @@ class Config extends SlashCommand {
       }
     } catch (e) {
       this.client.logger.log(e, "error");
+      const payload = {
+        content: "Something went wrong with that config command.",
+        ephemeral: true,
+      };
+      if (interaction.deferred) {
+        await interaction.editReply(payload).catch(() => {});
+      } else if (interaction.replied) {
+        await interaction.followUp(payload).catch(() => {});
+      } else {
+        await interaction.reply(payload).catch(() => {});
+      }
     }
   }
 
@@ -210,10 +221,15 @@ class Config extends SlashCommand {
 
     await interaction.deferReply({ ephemeral: true });
 
+    let guildListIncomplete = false;
     try {
       await this.client.guilds.fetch();
     } catch (e) {
-      this.client.logger.log(e, "warn");
+      guildListIncomplete = true;
+      this.client.logger.log(
+        `config overview: guilds.fetch failed, using cache (${this.client.guilds.cache.size} guilds): ${e}`,
+        "warn"
+      );
     }
 
     const snapshots = collectAllGuildOverviews(
@@ -221,10 +237,18 @@ class Config extends SlashCommand {
       this.client.guilds.cache.values()
     );
     const format = interaction.options.getString("format") || "text";
-    const report =
+    const fetchWarning =
+      "Warning: could not refresh the guild list from Discord; showing cached guilds only.";
+    let report =
       format === "json"
         ? formatOverviewJson(snapshots)
         : formatOverviewText(snapshots);
+    if (guildListIncomplete) {
+      report =
+        format === "json"
+          ? JSON.stringify({ warning: fetchWarning, ...JSON.parse(report) }, null, 2)
+          : `${fetchWarning}\n\n${report}`;
+    }
     const chunks =
       format === "json"
         ? splitDiscordMessages(report).map((chunk) => `\`\`\`json\n${chunk}\n\`\`\``)

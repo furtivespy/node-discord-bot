@@ -72,8 +72,10 @@ const DISPLAYED_SETTING_KEYS = new Set([
 
 const SECRET_KEY_RE =
   /token|secret|password|passwd|api[_-]?key|(^|_)key$|gemini|bugsnag|auth|credential|bearer|cxid/i;
+const SECRET_VALUE_RE =
+  /^(sk-|ghp_|github_pat_|gho_|xox[baprs]-|AIza|ya29\.|EAA[A-Za-z0-9]|AKIA[0-9A-Z]{16}|Bearer\s+)/i;
 const CONTEXT_PACK_KEY_RE = /context.?pack|published.?csv|csv.?url|context.?url|extra.?context/i;
-const URL_VALUE_RE = /^https?:\/\//i;
+const URL_VALUE_RE = /^(https?|ftp|sftp|ftps|s3|gs):\/\//i;
 
 function asPlainObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -106,6 +108,14 @@ function looksLikeUrl(value) {
   return typeof value === "string" && URL_VALUE_RE.test(value.trim());
 }
 
+function looksLikeSecretValue(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (looksLikeUrl(trimmed) || SECRET_VALUE_RE.test(trimmed)) return true;
+  return trimmed.length >= 32 && /^[A-Za-z0-9+/=._-]{32,}$/.test(trimmed);
+}
+
 function isSecretKey(key) {
   return SECRET_KEY_RE.test(String(key));
 }
@@ -113,10 +123,6 @@ function isSecretKey(key) {
 function isContextPackKey(key) {
   const name = String(key);
   return CONTEXT_PACK_KEYS.includes(name) || CONTEXT_PACK_KEY_RE.test(name);
-}
-
-function isMentionCooldownKey(key) {
-  return MENTION_COOLDOWN_KEYS.includes(String(key));
 }
 
 function hasOwn(object, key) {
@@ -129,11 +135,29 @@ function isEmptySetting(value) {
 
 function redactSettingValue(key, value) {
   if (isEmptySetting(value)) return null;
-  if (isSecretKey(key) || isContextPackKey(key) || looksLikeUrl(value)) {
+  if (
+    isSecretKey(key) ||
+    isContextPackKey(key) ||
+    looksLikeUrl(value) ||
+    looksLikeSecretValue(value)
+  ) {
     return "configured";
   }
   if (typeof value === "object") return "configured";
   return String(value);
+}
+
+function settingField(merged, overrides, key) {
+  if (isEmptySetting(merged[key])) {
+    return {
+      value: "unset",
+      source: hasOwn(overrides, key) ? "override" : "default",
+    };
+  }
+  return {
+    value: redactSettingValue(key, merged[key]),
+    source: settingSource(overrides, key),
+  };
 }
 
 function settingSource(overrides, key) {
@@ -234,18 +258,12 @@ function buildGuildSnapshot({
     id: String(guildId),
     name: guildName || "(unknown guild)",
     personality,
-    prefix: {
-      value: isEmptySetting(merged.prefix) ? "unset" : String(merged.prefix),
-      source: hasOwn(guildOverrides, "prefix") ? "override" : "default",
-    },
-    randRspPct: {
-      value: isEmptySetting(merged.randRspPct) ? "unset" : String(merged.randRspPct),
-      source: hasOwn(guildOverrides, "randRspPct") ? "override" : "default",
-    },
-    markovLevel: {
-      value: isEmptySetting(merged.markovLevel) ? "unset" : String(merged.markovLevel),
-      source: hasOwn(guildOverrides, "markovLevel") ? "override" : "default",
-    },
+    prefix: settingField(merged, guildOverrides, "prefix"),
+    randRspPct: settingField(merged, guildOverrides, "randRspPct"),
+    markovLevel: settingField(merged, guildOverrides, "markovLevel"),
+    adminRole: settingField(merged, guildOverrides, "adminRole"),
+    modRole: settingField(merged, guildOverrides, "modRole"),
+    systemNotice: settingField(merged, guildOverrides, "systemNotice"),
     mentionCooldown,
     contextPack,
     fileSearch: {
@@ -366,6 +384,7 @@ function formatGuildSection(snapshot) {
     `**${snapshot.name}** — \`${snapshot.id}\``,
     `Personality: ${personality}`,
     `Chat: prefix \`${marked(snapshot.prefix)}\` · randRsp ${randRsp} · markov ${marked(snapshot.markovLevel)} · mention cooldown ${snapshot.mentionCooldown.display}`,
+    `Roles: admin ${marked(snapshot.adminRole)} · mod ${marked(snapshot.modRole)} · systemNotice ${marked(snapshot.systemNotice)}`,
     `Context pack: ${snapshot.contextPack.configured ? "yes" : "no"}`,
     `File Search: ${fileSearch} · backfill ${snapshot.backfillStatus} · people ${snapshot.peopleCount}${dbNote}`,
     `Starboard: ${starboard} · Bringo: ${bringo}`,
@@ -414,6 +433,7 @@ module.exports = {
   isBotAdmin,
   redactSettingValue,
   looksLikeUrl,
+  looksLikeSecretValue,
   isSecretKey,
   isContextPackKey,
   buildGuildSnapshot,

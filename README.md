@@ -33,8 +33,14 @@ parent `/config` command is Discord-admin-visible) but get a permission error.
 3. Optional: `format: json` for a redacted JSON dump.
 4. Optional: `log: True` to also write the same redacted report to bot logs.
 
-Tokens, API keys, and full published CSV / context-pack URLs are never printed.
-Missing or default values are labeled `(default)` or `unset`.
+Each guild section includes personality, chat knobs, `adminRole` / `modRole` /
+`systemNotice`, context-pack yes/no, File Search, backfill, people, starboard,
+bringo, disabled commands, skip-channel count, and any other overrides.
+
+Tokens, API keys, and full published CSV / context-pack URLs are never printed
+(including secret-looking values on unexpected keys). Missing or default values
+are labeled `(default)` or `unset`. If Discord’s guild list cannot be refreshed,
+the report warns that it is using the cached guilds only.
 
 
 
