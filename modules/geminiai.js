@@ -1,6 +1,7 @@
 const { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } = require("@google/genai");
 const { AttachmentBuilder } = require("discord.js");
 const { liveMessageText } = require("./chatArchive.js");
+const { extractImageCallout } = require("./imageCallout.js");
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
@@ -679,16 +680,11 @@ class GeminiAI {
   // Note: Regex-based reasoning stripping is intentionally removed.
 
   let image = null;
-  // Image prompt extraction - operates on the extracted responseText
-  if (responseText.startsWith("Error:")) {
-    // Do not attempt image prompt extraction if responseText is an error message
-  } else if (responseText.includes("Processing image of") || responseText.includes("Generating image of")) {
-    const keyword = responseText.includes("Processing image of") ? "Processing image of" : "Generating image of";
-    const keywordParts = responseText.split(keyword);
-    if (keywordParts.length > 1 && keywordParts[1]) {
-        const imagePartCandidate = keywordParts[1].split("\n")[0];
-        image = imagePartCandidate.trim();
-    }
+  // Image prompt extraction - also strips the callout from user-visible text.
+  if (!responseText.startsWith("Error:")) {
+    const extracted = extractImageCallout(responseText);
+    responseText = extracted.text;
+    image = extracted.imagePrompt;
   }
 
   // Standard cleanup - operates on the extracted responseText

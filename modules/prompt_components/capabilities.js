@@ -1,7 +1,7 @@
 module.exports = (tools = []) => {
   const parts = [
-    `If you need to include an image, use the text "Processing image of" or "Generating image of" \
-to indicate where the image should be and what "prompt" should be used for it. Be very descriptive in your prompt. It will be generated with post-processing.`,
+    `If you need to include an image, put "Generating image of" or "Processing image of" followed by a very descriptive prompt on its own line at the end of your reply. \
+Do not announce, narrate, or describe that you are generating an image in the conversational text. The image is attached separately and the marker line is stripped before users see the reply.`,
   ];
   if (tools.some((tool) => tool.googleSearch)) {
     parts.push(`Use Grounding with Google Search to help you answer questions.`);
