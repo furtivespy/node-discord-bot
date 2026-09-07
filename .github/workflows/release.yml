@@ -1,0 +1,35 @@
+# SemVer git tags + GitHub Releases on merge to master, driven by PR labels.
+# Mirrors Game Bot (furtivespy/games-discord-bot) using K-Phoen/semver-release-action.
+#
+# Label the PR with exactly one of: major | minor | patch
+# Unlabeled merges are skipped (no tag). First tag starts from v0.0.0.
+
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Tag
+        id: tag
+        uses: K-Phoen/semver-release-action@master
+        with:
+          release_branch: master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
