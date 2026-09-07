@@ -2,6 +2,11 @@ const SlashCommand = require("../../base/SlashCommand.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { PermissionsBitField } = require("discord.js");
 const Pull = require('lodash/pull')
+const {
+  isConfigAdmin,
+  buildOverviewReport,
+  splitDiscordMessages,
+} = require("../../modules/configOverview");
 
 const configsThatMatter = [
   {
@@ -49,6 +54,11 @@ class Config extends SlashCommand {
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
       .addSubcommand((option) =>
         option.setName("list").setDescription("List all config options")
+      )
+      .addSubcommand((option) =>
+        option
+          .setName("overview")
+          .setDescription("Owner/admin: key settings for every joined server (ephemeral)")
       )
       .addSubcommand((option) =>
         option
@@ -141,6 +151,9 @@ class Config extends SlashCommand {
         case "list":
           await this.list(interaction);
           break;
+        case "overview":
+          await this.overview(interaction);
+          break;
         case "botprefix":
           await this.botPrefix(interaction);
           break;
@@ -168,6 +181,30 @@ class Config extends SlashCommand {
     }
   }
 
+  async overview(interaction) {
+    if (!isConfigAdmin(interaction.user.id, this.client.config)) {
+      await interaction.reply({
+        content:
+          "This overview lists every server Bender is in. Only the bot owner (`botOwnerId`) or IDs in `adminIds` / `admins` can use `/config overview`.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const { text } = buildOverviewReport(this.client);
+    this.client.logger.log(
+      `config overview requested by ${interaction.user.id}\n${text}`,
+      "log"
+    );
+
+    const chunks = splitDiscordMessages(text);
+    await interaction.editReply({ content: chunks[0] });
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ content: chunks[i], ephemeral: true });
+    }
+  }
+
   async list(interaction) {
     const settings = this.client.getSettings(interaction.guild);
     let listMessage = configsThatMatter
@@ -186,6 +223,8 @@ class Config extends SlashCommand {
       })
       .join("\n");
     listMessage = `\`\`\`asciidoc\n= Config Commands =\n${listMessage}\`\`\``;
+    listMessage +=
+      "\nOwner/admin: `/config overview` lists key settings for every joined server (ephemeral).";
     await interaction.reply({ content: listMessage, ephemeral: true });
   }
 

@@ -93,6 +93,10 @@ async function main() {
     assert(wordOpt, 'missing required word option')
     assert(wordOpt.required, 'word option must be required')
     assert(!(markov.data.options || []).some((o) => o.name === 'train' || (o.options || []).some((s) => s.name === 'train')), 'train subcommand must not exist')
+    const configCmd = slash.loaded.find((c) => c.name === 'config')
+    assert(configCmd, '/config module did not load')
+    const overview = (configCmd.data.options || []).find((o) => o.name === 'overview')
+    assert(overview, '/config overview subcommand is missing')
     pass('slash command load + /markov schema')
   } catch (e) {
     fail('slash command load + /markov schema', e)
