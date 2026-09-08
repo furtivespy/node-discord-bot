@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const flip = require("flip");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import flip from "flip";
+
 
 class Flip extends SlashCommand {
   constructor(client) {
@@ -29,4 +32,4 @@ class Flip extends SlashCommand {
   }
 }
 
-module.exports = Flip;
+export default Flip;

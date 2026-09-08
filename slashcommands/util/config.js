@@ -1,14 +1,18 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PermissionsBitField } = require("discord.js");
-const Pull = require('lodash/pull')
-const {
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import { PermissionsBitField } from "discord.js";
+
+import Pull from 'lodash/pull.js';
+
+import {
   isBotAdmin,
   collectAllGuildOverviews,
   formatOverviewText,
   formatOverviewJson,
   splitDiscordMessages,
-} = require("../../modules/guildConfigOverview")
+} from "../../modules/guildConfigOverview.js";
 
 const configsThatMatter = [
   {
@@ -403,4 +407,4 @@ class Config extends SlashCommand {
   }
 }
 
-module.exports = Config;
+export default Config;

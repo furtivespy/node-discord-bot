@@ -1,6 +1,6 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import {
   isBotAdmin,
   PERSONALITY_NAMES,
   redactSettingValue,
@@ -13,7 +13,9 @@ const {
   formatOverviewText,
   formatOverviewJson,
   splitDiscordMessages,
-} = require("../modules/guildConfigOverview");
+} from "../modules/guildConfigOverview.js";
+import Config from "../slashcommands/util/config.js";
+import SetPersonality from "../slashcommands/util/setpersonality.js";
 
 function snapshot(overrides = {}) {
   return buildGuildSnapshot({
@@ -216,7 +218,6 @@ describe("collect + format", () => {
   });
 
   it("rejects non-admins and replies ephemerally for owners", async () => {
-    const Config = require("../slashcommands/util/config.js");
     const replies = [];
     const logs = [];
     const client = {
@@ -279,7 +280,6 @@ describe("collect + format", () => {
   });
 
   it("replies with an ephemeral error after deferReply instead of hanging", async () => {
-    const Config = require("../slashcommands/util/config.js");
     const replies = [];
     const logs = [];
     const client = {
@@ -329,7 +329,6 @@ describe("collect + format", () => {
   });
 
   it("warns when guilds.fetch fails and still reports the cache", async () => {
-    const Config = require("../slashcommands/util/config.js");
     const replies = [];
     const logs = [];
     const client = {
@@ -390,7 +389,6 @@ describe("collect + format", () => {
   });
 
   it("shares PERSONALITY_NAMES with /setpersonality choices", () => {
-    const SetPersonality = require("../slashcommands/util/setpersonality.js");
     const cmd = new SetPersonality({ config: {} });
     const setSub = (cmd.data.options || []).find((option) => option.name === "set");
     const personality = (setSub.options || []).find((option) => option.name === "personality");

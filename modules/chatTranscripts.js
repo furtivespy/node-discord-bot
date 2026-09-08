@@ -1,6 +1,9 @@
-const fs = require("fs");
-const path = require("path");
-const { ChannelType } = require("discord.js");
+import fs from "node:fs";
+
+import path from "node:path";
+
+import { ChannelType } from "discord.js";
+
 
 const THREAD_TYPES = new Set(
   [ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread].filter((type) => type != null)
@@ -250,13 +253,4 @@ class ChatTranscripts {
   }
 }
 
-module.exports = {
-  createChatTranscripts,
-  dataDir,
-  fileNameFor,
-  monthBounds,
-  periodBounds,
-  transcriptsRoot,
-  utcMonthKey,
-  weekBounds,
-};
+export { createChatTranscripts, dataDir, fileNameFor, monthBounds, periodBounds, transcriptsRoot, utcMonthKey, weekBounds };

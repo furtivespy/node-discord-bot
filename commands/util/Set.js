@@ -1,5 +1,4 @@
-const Command = require('../../base/Command.js')
-
+import Command from '../../base/Command.js';
 class SetCMD extends Command {
     constructor(client){
         super(client, {
@@ -87,4 +86,4 @@ class SetCMD extends Command {
       }
     }
 
-module.exports = SetCMD
+export default SetCMD

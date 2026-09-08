@@ -62,12 +62,4 @@ function archiveLiveMessage(client, message) {
   client.getDatabase(message.guild.id).insertChatMessage(toChatMessageRow(message, { includeAttachments: true }));
 }
 
-module.exports = {
-  archiveLiveMessage,
-  imagePlaceholders,
-  isArchivableMessage,
-  isImageAttachment,
-  isPrefixCommand,
-  liveMessageText,
-  toChatMessageRow,
-};
+export { archiveLiveMessage, imagePlaceholders, isArchivableMessage, isImageAttachment, isPrefixCommand, liveMessageText, toChatMessageRow };

@@ -1,7 +1,10 @@
-const SlashCommand = require('../../base/SlashCommand.js')
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const fetch = require('node-fetch');
-const { EmbedBuilder, ActionRowBuilder, SelectMenuBuilder } = require('discord.js');
+import SlashCommand from '../../base/SlashCommand.js';
+import { SlashCommandBuilder } from '@discordjs/builders';
+
+import fetch from 'node-fetch';
+
+import { EmbedBuilder, ActionRowBuilder, SelectMenuBuilder } from 'discord.js';
+
 
 class Drink extends SlashCommand {
     constructor(client){
@@ -97,4 +100,4 @@ class Drink extends SlashCommand {
     }
 }
 
-module.exports = Drink
+export default Drink

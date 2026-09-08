@@ -101,5 +101,4 @@ async function fetchImages(options = {}) {
   return shuffled.slice(0, total);
 }
 
-module.exports.fetch = fetchImages;
-module.exports.isImageUrl = isImageUrl;
+export { fetchImages as fetch, isImageUrl };

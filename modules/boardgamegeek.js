@@ -1,10 +1,18 @@
-const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
-const fetch = require("node-fetch");
-const { find, cloneDeep, take } = require("lodash");
-const { parseBggSearchXml, parseBggDetailsXml } = require("./bggXmlParser");
-const { createCanvas, Image, loadImage } = require("canvas");
-const he = require("he");
-const TurndownService = require("turndown");
+import { EmbedBuilder, AttachmentBuilder } from "discord.js";
+
+import fetch from "node-fetch";
+
+import find from "lodash/find.js";
+import take from "lodash/take.js";
+
+import { parseBggSearchXml, parseBggDetailsXml } from "./bggXmlParser.js";
+
+import { createCanvas, Image, loadImage } from "canvas";
+
+import he from "he";
+
+import TurndownService from "turndown";
+
 
 class BoardGameGeek {
   constructor(gameId, discordClient, interaction) {
@@ -234,4 +242,4 @@ class BoardGameGeek {
   }
 }
 
-module.exports = BoardGameGeek;
+export default BoardGameGeek;

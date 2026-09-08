@@ -1,6 +1,8 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PERSONALITY_NAMES } = require("../../modules/guildConfigOverview");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import { PERSONALITY_NAMES } from "../../modules/guildConfigOverview.js";
 
 const personalityChoices = Object.entries(PERSONALITY_NAMES).map(([value, label]) => ({
   name: value === "bender" ? `${label} (Default)` : label,
@@ -113,4 +115,4 @@ class SetPersonality extends SlashCommand {
   }
 }
 
-module.exports = SetPersonality;
+export default SetPersonality;

@@ -1,5 +1,5 @@
 // modules/prompt_components/identity.js
-module.exports = (botname, clientId, peopleRoster = "") => {
+export default (botname, clientId, peopleRoster = "") => {
   const rosterBlock = peopleRoster
     ? ` Known people (id never changes; nicknames do). Use this only to understand who is who when nicknames change. When you talk, use their current nickname, not the real name unless that is also their nick:\n${peopleRoster}`
     : "";

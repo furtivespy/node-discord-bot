@@ -1,7 +1,13 @@
-const Command = require('../../base/Command.js')
-const _ = require('lodash');
-var AsciiTable = require('ascii-table')
+import Command from '../../base/Command.js';
+import sampleSize from 'lodash/sampleSize.js';
+import forEach from 'lodash/forEach.js';
+import uniq from 'lodash/uniq.js';
+import concat from 'lodash/concat.js';
+import difference from 'lodash/difference.js';
+import slice from 'lodash/slice.js';
+import includes from 'lodash/includes.js';
 
+import AsciiTable from 'ascii-table';
 const EmptyBringoData = {
     wordlist: [],
     isGameActive: false,
@@ -87,10 +93,10 @@ class Bringo extends Command {
     }
 
     startBringo (BringoData) {
-        var newGame = _.sampleSize(BringoData.wordlist, 24)
+        var newGame = sampleSize(BringoData.wordlist, 24)
         newGame.splice(12,0,"BRINGO!");
         var fullGame = []
-        _.forEach(newGame, (word, ix) => {
+        forEach(newGame, (word, ix) => {
             fullGame.push({"word": word, "isFound": (ix === 12), "FoundBy": null })
         })
         BringoData.currentGame = fullGame
@@ -141,7 +147,7 @@ class Bringo extends Command {
                     } else {
                         args.shift()
                         var additives = args.join(" ").toLowerCase().split(/ *\| */g);
-                        BringoData.wordlist = _.uniq(_.concat(BringoData.wordlist,additives))
+                        BringoData.wordlist = uniq(concat(BringoData.wordlist,additives))
                         this.client.setGameData(message.guild, 'BRINGO', BringoData)
                         return message.reply(`I added ${additives.length} word${(additives.length ===  1)? '' : 's'}`)
                     }
@@ -153,7 +159,7 @@ class Bringo extends Command {
                     } else {
                         args.shift()
                         var additives = args.join(" ").toLowerCase().split(/ *\| */g);
-                        BringoData.wordlist = _.difference(BringoData.wordlist,additives)
+                        BringoData.wordlist = difference(BringoData.wordlist,additives)
                         this.client.setGameData(message.guild, 'BRINGO', BringoData)
                         return message.reply(`I removed ${additives.length} word${(additives.length ===  1)? '' : 's'}`)
                     }
@@ -208,7 +214,7 @@ class Bringo extends Command {
                     });
                     await responseMsg.edit(`calculating...`)
                     var sorted = Object.keys(wordHistogram).map(c => ({key: c, value: wordHistogram[c]})).sort((a,b) => b.value - a.value)
-                    var newlist = _.slice(sorted, 0, 200).map(c => c.key).join(" | ")
+                    var newlist = slice(sorted, 0, 200).map(c => c.key).join(" | ")
                     
                     await responseMsg.edit(`Sliding into your DMs`)
                     await message.author.send(`Recent Most Used Words: ${newlist.substring(0,1970)}`)
@@ -235,7 +241,7 @@ class Bringo extends Command {
                     var matched = []
                     var messageText = message.content.trim().toLowerCase()
                     for(let i=0;i<25;i++){
-                        if(BringoData.isGameActive && !BringoData.currentGame[i].isFound && _.includes(messageText, BringoData.currentGame[i].word)){
+                        if(BringoData.isGameActive && !BringoData.currentGame[i].isFound && includes(messageText, BringoData.currentGame[i].word)){
                             //cooldown short circuit
                             var now = new Date()
                             var UserBase = BringoData.cooldownUsers[message.author.id] || new Date(now - (BringoData.cooldown + 1000))
@@ -246,7 +252,7 @@ class Bringo extends Command {
                             BringoData.cooldownUsers[message.author.id] = now
                             this.client.setGameData(message.guild, 'BRINGO', BringoData)
                             await message.reply(`you found ${BringoData.currentGame[i].word}`)
-                            _.forEach(WinningPositions, async winner => {
+                            forEach(WinningPositions, async winner => {
                                 if(BringoData.currentGame[winner[0]].isFound && 
                                     BringoData.currentGame[winner[1]].isFound && 
                                     BringoData.currentGame[winner[2]].isFound && 
@@ -281,4 +287,4 @@ class Bringo extends Command {
     }
 }
 
-module.exports = Bringo
+export default Bringo

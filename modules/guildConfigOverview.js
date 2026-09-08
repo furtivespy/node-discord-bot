@@ -425,7 +425,7 @@ function splitDiscordMessages(text, max = 1900) {
   return chunks;
 }
 
-module.exports = {
+export {
   PERSONALITY_NAMES,
   MENTION_COOLDOWN_KEYS,
   CONTEXT_PACK_KEYS,
