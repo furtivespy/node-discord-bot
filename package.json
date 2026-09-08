@@ -10,7 +10,7 @@
   },
   "packageManager": "npm@11.19.0",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "start": "node BenderBot.js",
     "smoke": "node scripts/smoke-startup.js"
   },
