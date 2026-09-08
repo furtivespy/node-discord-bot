@@ -17,6 +17,7 @@ import identityTemplate from "./prompt_components/identity.js";
 import chatInstructionsTemplate from "./prompt_components/chat_instructions.js";
 import formattingInstructions from "./prompt_components/formatting_instructions.js";
 import capabilitiesTemplate from "./prompt_components/capabilities.js";
+import { extractImageCallout } from "./imageCallout.js";
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";

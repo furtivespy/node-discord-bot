@@ -1,7 +1,7 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const { extractImageCallout } = require("../modules/imageCallout");
-const { createGeminiAI } = require("../modules/geminiai");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { extractImageCallout } from "../modules/imageCallout.js";
+import { createGeminiAI } from "../modules/geminiai.js";
 
 function stubGemini() {
   const ai = createGeminiAI({

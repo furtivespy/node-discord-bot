@@ -86,4 +86,4 @@ function extractImageCallout(text) {
   return { text: cleaned, imagePrompt };
 }
 
-module.exports = { extractImageCallout };
+export { extractImageCallout };
