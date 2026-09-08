@@ -2,22 +2,12 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import { PermissionsBitField } from "discord.js";
+import { PERSONALITY_NAMES } from "../../modules/guildConfigOverview.js";
 
-
-const personalityChoices = [
-  { name: "Bender (Default)", value: "bender" },
-  { name: "Hardboiled AI Detective", value: "detective" },
-  { name: "Zen Master (New Jersey)", value: "zenmaster_nj" },
-  { name: "Grumpy Dwarven Craftsman", value: "dwarf_craftsman" },
-  { name: "Ship's Computer", value: "ship_computer" },
-  { name: "Enthusiastic Educator", value: "educator_joy" },
-  { name: "Reluctant Oracle", value: "oracle_sigh" },
-  { name: "Shakespearean Actor", value: "shakespeare" },
-  { name: "Pirate Quartermaster", value: "pirate_qm" },
-  { name: "Anxious Philosopher", value: "anxious_philosopher" },
-  { name: "The Chicago Pope", value: "chicago_pope" },
-];
+const personalityChoices = Object.entries(PERSONALITY_NAMES).map(([value, label]) => ({
+  name: value === "bender" ? `${label} (Default)` : label,
+  value,
+}));
 
 class SetPersonality extends SlashCommand {
   constructor(client) {
