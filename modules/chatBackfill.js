@@ -1,7 +1,11 @@
-const { ChannelType, PermissionsBitField } = require("discord.js");
-const { isArchivableMessage, toChatMessageRow } = require("./chatArchive.js");
-const { createChatTranscripts } = require("./chatTranscripts.js");
-const { createChatFileSearch } = require("./chatFileSearch.js");
+import { ChannelType, PermissionsBitField } from "discord.js";
+
+import { isArchivableMessage, toChatMessageRow } from "./chatArchive.js";
+
+import { createChatTranscripts } from "./chatTranscripts.js";
+
+import { createChatFileSearch } from "./chatFileSearch.js";
+
 
 const PAGE_SIZE = 100;
 const PAGE_DELAY_MS = 2000;
@@ -631,4 +635,4 @@ function retryAfterMs(error) {
   return Math.min(Math.ceil(ms) + 250, MAX_BACKOFF_MS);
 }
 
-module.exports = { createChatBackfill, channelKind, PAGE_DELAY_MS, PAGE_SIZE, PRIORITIZE_CHANNEL_TYPES };
+export { createChatBackfill, channelKind, PAGE_DELAY_MS, PAGE_SIZE, PRIORITIZE_CHANNEL_TYPES };

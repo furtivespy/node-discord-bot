@@ -1,5 +1,6 @@
-const SlashCommand = require('../../base/SlashCommand.js')
-const { SlashCommandBuilder } = require('@discordjs/builders');
+import SlashCommand from '../../base/SlashCommand.js';
+import { SlashCommandBuilder } from '@discordjs/builders';
+
 
 class Ping extends SlashCommand {
     constructor(client){
@@ -23,4 +24,4 @@ class Ping extends SlashCommand {
     }
 }
 
-module.exports = Ping
+export default Ping

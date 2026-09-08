@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder, EmbedBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder, EmbedBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
 
 const BASE_URL = "https://the-one-api.dev/v2";
 
@@ -91,4 +94,4 @@ class Lotr extends SlashCommand {
   }
 }
 
-module.exports = Lotr;
+export default Lotr;

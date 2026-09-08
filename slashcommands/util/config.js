@@ -1,8 +1,10 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PermissionsBitField } = require("discord.js");
-const Pull = require('lodash/pull')
+import SlashCommand from "../../base/SlashCommand.js";
 
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import { PermissionsBitField } from "discord.js";
+
+import Pull from 'lodash/pull.js';
 const configsThatMatter = [
   {
     name: "botPrefix",
@@ -304,4 +306,4 @@ class Config extends SlashCommand {
   }
 }
 
-module.exports = Config;
+export default Config;

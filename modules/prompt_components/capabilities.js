@@ -1,4 +1,4 @@
-module.exports = (tools = []) => {
+export default (tools = []) => {
   const parts = [
     `If you need to include an image, put "Generating image of" or "Processing image of" followed by a very descriptive prompt on its own line at the end of your reply. \
 Do not announce, narrate, or describe that you are generating an image in the conversational text. The image is attached separately and the marker line is stripped before users see the reply.`,

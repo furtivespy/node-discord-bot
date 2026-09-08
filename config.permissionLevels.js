@@ -1,4 +1,4 @@
-module.exports = [
+export default [
     // This is the lowest permisison level, this is for non-roled users.
     { level: 0,
       name: "User", 

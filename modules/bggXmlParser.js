@@ -1,8 +1,7 @@
-const { XMLParser } = require("fast-xml-parser");
+import { XMLParser } from "fast-xml-parser";
 
-// fast-xml-parser v5 is ESM-first (`"type": "module"`) but still ships a
-// CommonJS export (`exports.require` → lib/fxp.cjs). This module is the only
-// place the bot loads the parser so a future ESM-only drop can be isolated.
+// fast-xml-parser v5 is ESM-first (`"type": "module"`). This module is the
+// only place the bot loads the parser so a parser swap can stay isolated.
 // `ignoreNameSpace` was renamed to `removeNSPrefix` in v4; BGG XML has no
 // namespaces, so this is a no-op for current payloads.
 const sharedParserOptions = {
@@ -23,7 +22,4 @@ function parseBggDetailsXml(text) {
   }).parse(text);
 }
 
-module.exports = {
-  parseBggSearchXml,
-  parseBggDetailsXml,
-};
+export { parseBggSearchXml, parseBggDetailsXml };

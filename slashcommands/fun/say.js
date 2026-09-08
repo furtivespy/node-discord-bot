@@ -1,9 +1,10 @@
-const SlashCommand = require('../../base/SlashCommand.js')
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const leet = require('leet')
-const flip = require('flip');
-const luni = require('../../modules/lunicode')
+import SlashCommand from '../../base/SlashCommand.js';
+import { SlashCommandBuilder } from '@discordjs/builders';
 
+import leet from 'leet';
+import flip from 'flip';
+
+import luni from '../../modules/lunicode.js';
 class Say extends SlashCommand {
     constructor(client){
         super(client, {
@@ -193,4 +194,4 @@ const numberToString = (number) => {
     }
   }
 
-module.exports = Say
+export default Say

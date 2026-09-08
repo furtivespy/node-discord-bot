@@ -1,8 +1,13 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
-const { EmbedBuilder } = require("discord.js");
-const RandomColor = require("randomcolor");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
+import { EmbedBuilder } from "discord.js";
+
+import RandomColor from "randomcolor";
+
 
 class Riddle extends SlashCommand {
   constructor(client) {
@@ -179,4 +184,4 @@ class Riddle extends SlashCommand {
   }
 }
 
-module.exports = Riddle;
+export default Riddle;

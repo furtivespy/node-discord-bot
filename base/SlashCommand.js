@@ -1,4 +1,5 @@
-const fetch = require("node-fetch");
+import fetch from "node-fetch";
+
 
 class SlashCommand {
     constructor(client, {
@@ -38,4 +39,4 @@ class SlashCommand {
       return results[Math.floor(Math.random() * results.length)]
     }
   }
-  module.exports = SlashCommand;
+export default SlashCommand;
