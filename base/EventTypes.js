@@ -3,4 +3,4 @@ const EventTypes = {
 	MESSAGE_REACTION_REMOVE: 'messageReactionRemove',
 };
 
-module.exports = EventTypes;
+export default EventTypes;

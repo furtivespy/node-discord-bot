@@ -1,8 +1,9 @@
-const Bugsnag = require('@bugsnag/js')
+import Bugsnag from '@bugsnag/js'
+import Logger from "./Logger.js";
 
 class BugsnagLogger {
   constructor (apiKey, releaseStage = 'development') {
-    this.logger = require("./Logger.js");
+    this.logger = Logger;
     this.bugsnagClient = Bugsnag.start({
       apiKey: apiKey,
       releaseStage: releaseStage?.trim() || 'development'
@@ -36,4 +37,4 @@ class BugsnagLogger {
   } 
 }
 
-module.exports = (key, releaseStage) => { return new BugsnagLogger(key, releaseStage) };
+export default (key, releaseStage) => { return new BugsnagLogger(key, releaseStage) };

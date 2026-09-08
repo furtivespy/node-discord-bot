@@ -1,20 +1,22 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const { parseBggSearchXml, parseBggDetailsXml } = require("../modules/bggXmlParser");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseBggSearchXml, parseBggDetailsXml } from "../modules/bggXmlParser.js";
+import { XMLParser } from "fast-xml-parser";
 
 function findBy(arr, pred) {
   const entries = Object.entries(pred);
   return arr.find((item) => entries.every(([key, value]) => item[key] === value));
 }
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) =>
   fs.readFileSync(path.join(__dirname, "fixtures", "bgg", name), "utf8");
 
 describe("bggXmlParser", () => {
-  it("loads XMLParser via CJS require from fast-xml-parser", () => {
-    const { XMLParser } = require("fast-xml-parser");
+  it("loads XMLParser via ESM import from fast-xml-parser", () => {
     assert.equal(typeof XMLParser, "function");
   });
 

@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
 
 class Boobs extends SlashCommand {
   constructor(client) {
@@ -47,4 +50,4 @@ class Boobs extends SlashCommand {
   }
 }
 
-module.exports = Boobs;
+export default Boobs;

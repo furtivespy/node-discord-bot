@@ -1,7 +1,11 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const fetch = require("node-fetch");
-const _ = require("lodash");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import fetch from "node-fetch";
+
+import sample from "lodash/sample.js";
+
 
 class Rule34 extends SlashCommand {
   constructor(client) {
@@ -44,7 +48,7 @@ class Rule34 extends SlashCommand {
       );
       try {
         const data = await response.json();
-        post = _.sample(data);
+        post = sample(data);
       } catch (e) {
         return interaction.editReply("No results found.");
       }
@@ -75,4 +79,4 @@ class Rule34 extends SlashCommand {
   }
 }
 
-module.exports = Rule34;
+export default Rule34;
