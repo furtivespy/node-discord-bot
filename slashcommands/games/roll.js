@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const Roller = require("roll");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import Roller from "roll";
+
 const diceSides = [
   "<:die1:790027072998342666>",
   "<:die2:790028311756668960>",
@@ -80,4 +83,4 @@ class Roll extends SlashCommand {
   }
 }
 
-module.exports = Roll;
+export default Roll;

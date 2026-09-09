@@ -1,5 +1,7 @@
-const fetch = require("node-fetch");
-const { EmbedBuilder } = require("discord.js");
+import fetch from "node-fetch";
+
+import { EmbedBuilder } from "discord.js";
+
 
 async function BookSearch(terms) {
   const query = new URLSearchParams();
@@ -131,4 +133,4 @@ async function GetBookEmbed(term) {
   return embed
 }
 
-module.exports = {GetBookEmbed, GetCombinedBookInfo, BookSearch}
+export { GetBookEmbed, GetCombinedBookInfo, BookSearch };

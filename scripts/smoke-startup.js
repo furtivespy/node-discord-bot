@@ -4,41 +4,52 @@
  * Loads prefix + slash modules the same way BenderBot.js does (via klaw),
  * then exercises /markov against empty and trained SQLite DBs.
  */
-const fs = require('fs')
-const path = require('path')
-const klaw = require('klaw')
-const Database = require('../db/db.js')
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import klaw from 'klaw'
+import Database from '../db/db.js'
+import Markov from '../slashcommands/fun/markov.js'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..')
 const DATA_DIR = path.join(ROOT, 'data')
 const EMPTY_MSG = "I haven't learned enough words yet."
 
-function loadJsModules(relDir) {
+function collectJsFiles(dir) {
   return new Promise((resolve, reject) => {
-    const loaded = []
-    const errors = []
-    const mockClient = { logger: { log() {} } }
-    klaw(path.join(ROOT, relDir))
+    const files = []
+    klaw(dir)
       .on('data', (item) => {
         const cmdFile = path.parse(item.path)
         if (!cmdFile.ext || cmdFile.ext !== '.js') return
-        const filePath = path.join(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`)
-        try {
-          delete require.cache[require.resolve(filePath)]
-          const Cmd = require(filePath)
-          const props = new Cmd(mockClient)
-          loaded.push({
-            name: props.help?.name,
-            file: path.relative(ROOT, filePath),
-            data: props.data ? props.data.toJSON() : null,
-          })
-        } catch (e) {
-          errors.push(`${path.relative(ROOT, filePath)}: ${e && e.stack ? e.stack : e}`)
-        }
+        files.push(cmdFile)
       })
-      .on('end', () => resolve({ loaded, errors }))
+      .on('end', () => resolve(files))
       .on('error', reject)
   })
+}
+
+async function loadJsModules(relDir) {
+  const loaded = []
+  const errors = []
+  const mockClient = { logger: { log() {} } }
+  for (const cmdFile of await collectJsFiles(path.join(ROOT, relDir))) {
+    const filePath = path.join(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`)
+    try {
+      const mod = await import(pathToFileURL(filePath).href)
+      const Cmd = mod.default
+      const props = new Cmd(mockClient)
+      loaded.push({
+        name: props.help?.name,
+        file: path.relative(ROOT, filePath),
+        data: props.data ? props.data.toJSON() : null,
+      })
+    } catch (e) {
+      errors.push(`${path.relative(ROOT, filePath)}: ${e && e.stack ? e.stack : e}`)
+    }
+  }
+  return { loaded, errors }
 }
 
 function mockInteraction({ guild, word }) {
@@ -98,6 +109,12 @@ async function main() {
     const markov = slash.loaded.find((c) => c.name === 'markov')
     assert(markov, '/markov module did not load')
     assert(markov.data?.name === 'markov', 'slash payload name is not markov')
+    const configCmd = slash.loaded.find((c) => c.name === 'config')
+    assert(configCmd, '/config module did not load')
+    const overview = (configCmd.data.options || []).find((o) => o.name === 'overview')
+    assert(overview, '/config overview subcommand is missing')
+    assert((overview.options || []).some((o) => o.name === 'format'), 'overview format option is missing')
+    assert((overview.options || []).some((o) => o.name === 'log'), 'overview log option is missing')
     const wordOpt = (markov.data.options || []).find((o) => o.name === 'word')
     assert(wordOpt, 'missing required word option')
     assert(wordOpt.required, 'word option must be required')
@@ -120,7 +137,6 @@ async function main() {
   }
 
   fs.mkdirSync(DATA_DIR, { recursive: true })
-  const Markov = require('../slashcommands/fun/markov.js')
   const dbs = {}
   const client = {
     getDatabase(id) {

@@ -1,6 +1,6 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const SlashCommand = require('../../base/SlashCommand.js')
+import { SlashCommandBuilder } from '@discordjs/builders';
 
+import SlashCommand from '../../base/SlashCommand.js';
 class Prompt extends SlashCommand {
   constructor(client){
     super(client, {
@@ -46,4 +46,4 @@ class Prompt extends SlashCommand {
 	}
 };
 
-module.exports = Prompt
+export default Prompt

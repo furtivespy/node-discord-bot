@@ -1,18 +1,18 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const {
+import SlashCommand from "../../base/SlashCommand.js";
+import {
   SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
-} = require("discord.js");
-const {
+} from "discord.js";
+import {
   CATEGORY_META,
   OVERVIEW_ID,
   viewerFromInteraction,
   resolveHelpView,
   selectOptions,
   listHelpCommands,
-} = require("../../modules/helpCatalog.js");
+} from "../../modules/helpCatalog.js";
 
 const COLLECTOR_MS = 180_000;
 
@@ -161,4 +161,4 @@ class Help extends SlashCommand {
   }
 }
 
-module.exports = Help;
+export default Help;

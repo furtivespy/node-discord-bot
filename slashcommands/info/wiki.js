@@ -1,9 +1,10 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("discord.js");
-const fetch = require("node-fetch");
-const wtf = require("wtf_wikipedia");
-const SampleSize = require("lodash/sampleSize");
-const { isNull } = require("lodash");
+import SlashCommand from "../../base/SlashCommand.js";
+import { SlashCommandBuilder } from "discord.js";
+import fetch from "node-fetch";
+import wtf from "wtf_wikipedia";
+import SampleSize from "lodash/sampleSize.js";
+import isNull from "lodash/isNull.js";
+import wtfMarkdown from "wtf-plugin-markdown";
 
 class Wiki extends SlashCommand {
   constructor(client) {
@@ -50,7 +51,7 @@ class Wiki extends SlashCommand {
             );
           });
       } else {
-        wtf.extend(require("wtf-plugin-markdown"));
+        wtf.extend(wtfMarkdown);
         wtf.fetch(search).then((doc) => {
           if (!doc) {
             interaction.reply({
@@ -94,4 +95,4 @@ class Wiki extends SlashCommand {
   }
 }
 
-module.exports = Wiki;
+export default Wiki;

@@ -1,5 +1,5 @@
-const qs = require( 'querystring' )
-const fetch = require('node-fetch')
+import qs from 'node:querystring';
+import fetch from 'node-fetch';
 class Command {
     constructor(client, {
       name = null,
@@ -38,4 +38,4 @@ class Command {
       })
     }
   }
-  module.exports = Command;
+export default Command;

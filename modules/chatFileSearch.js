@@ -1,6 +1,11 @@
-const fs = require("fs");
-const path = require("path");
-const { transcriptsRoot } = require("./chatTranscripts.js");
+import fs from "node:fs";
+
+import path from "node:path";
+
+import { UploadToFileSearchStoreOperation } from "@google/genai";
+
+import { transcriptsRoot } from "./chatTranscripts.js";
+
 
 const POLL_MS = 3000;
 const MAX_POLLS = 80;
@@ -16,6 +21,15 @@ function storeDisplayName(guild) {
 
 function documentDisplayName(row) {
   return `${row.channel_id}-${row.period_key}.txt`.slice(0, 120);
+}
+
+function toFileSearchOperation(operationOrName) {
+  if (typeof operationOrName?._fromAPIResponse === "function") {
+    return operationOrName;
+  }
+  const operation = new UploadToFileSearchStoreOperation();
+  operation.name = typeof operationOrName === "string" ? operationOrName : operationOrName?.name;
+  return operation;
 }
 
 function metadataFor(row, guildId) {
@@ -142,7 +156,9 @@ class ChatFileSearch {
   async finishUpload(row, operationName, db) {
     let operation;
     try {
-      operation = await this.ai().operations.get({ operation: { name: operationName } });
+      operation = await this.ai().operations.get({
+        operation: toFileSearchOperation(operationName),
+      });
     } catch (error) {
       const message = error.message || String(error);
       if (/NOT_FOUND|404|not found/i.test(message)) {
@@ -157,7 +173,9 @@ class ChatFileSearch {
   async pollUpload(operation, row, db) {
     for (let i = 0; i < MAX_POLLS && !operation.done; i++) {
       await this.client.wait(POLL_MS);
-      operation = await this.ai().operations.get({ operation });
+      operation = await this.ai().operations.get({
+        operation: toFileSearchOperation(operation),
+      });
       if (operation?.name && db) {
         db.setTranscriptUploadOperation(row.channel_id, row.period_type, row.period_key, operation.name);
       }
@@ -207,4 +225,4 @@ class ChatFileSearch {
   }
 }
 
-module.exports = { createChatFileSearch };
+export { createChatFileSearch };

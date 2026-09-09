@@ -1,5 +1,5 @@
-const SlashCommand = require('../../base/SlashCommand.js')
-const { SlashCommandBuilder } = require('@discordjs/builders');
+import SlashCommand from '../../base/SlashCommand.js'
+import { SlashCommandBuilder } from '@discordjs/builders';
 
 class Markov extends SlashCommand {
     constructor(client){
@@ -40,4 +40,4 @@ class Markov extends SlashCommand {
     }
 }
 
-module.exports = Markov
+export default Markov

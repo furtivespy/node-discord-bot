@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType, PermissionsBitField } = require("discord.js");
+import { ApplicationCommandOptionType, PermissionsBitField } from "discord.js";
 
 /**
  * `/help` reads the live slash-command collection. New commands show up
@@ -329,7 +329,7 @@ function helpContainsPrefixDocs(text) {
   return /(?:^|[\s`])![a-z]/.test(String(text || ""));
 }
 
-module.exports = {
+export {
   CATEGORY_META,
   HELP_COLOR,
   OVERVIEW_ID,

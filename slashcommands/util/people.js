@@ -1,5 +1,7 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
 
 const MAX_NAME_LENGTH = 32;
 
@@ -200,4 +202,4 @@ class People extends SlashCommand {
   }
 }
 
-module.exports = People;
+export default People;

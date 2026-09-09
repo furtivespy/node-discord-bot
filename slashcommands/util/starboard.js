@@ -1,6 +1,6 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PermissionsBitField } = require("discord.js");
+import SlashCommand from "../../base/SlashCommand.js";
+import { SlashCommandBuilder } from "@discordjs/builders";
+import { PermissionsBitField } from "discord.js";
 
 const EmptyStarboardData = {
   starboardChannel: undefined,
@@ -173,4 +173,4 @@ class Starboard extends SlashCommand {
   }
 }
 
-module.exports = Starboard;
+export default Starboard;

@@ -1,6 +1,8 @@
-const SlashCommand = require('../../base/SlashCommand.js')
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { PermissionsBitField } = require('discord.js');
+import SlashCommand from '../../base/SlashCommand.js';
+import { SlashCommandBuilder } from '@discordjs/builders';
+
+import { PermissionsBitField } from 'discord.js';
+
 
 class Test extends SlashCommand {
     constructor(client){
@@ -28,4 +30,4 @@ class Test extends SlashCommand {
     }
 }
 
-module.exports = Test
+export default Test

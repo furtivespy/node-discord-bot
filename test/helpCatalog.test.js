@@ -1,48 +1,56 @@
-const { describe, it, before } = require("node:test");
-const assert = require("node:assert/strict");
-const path = require("node:path");
-const klaw = require("klaw");
-const { Collection } = require("discord.js");
-const {
+import { describe, it, before } from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import klaw from "klaw";
+import { Collection } from "discord.js";
+import {
   listHelpCommands,
   resolveHelpView,
   formatCommandDetails,
   helpContainsPrefixDocs,
   categoryIdFor,
   OVERVIEW_ID,
-} = require("../modules/helpCatalog");
+} from "../modules/helpCatalog.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const PREFIX_ERA_NAMES = ["bringo", "ferengi", "chatbot", "frozen", "oversee", "eval", "nickname"];
 
-function loadSlashCommands() {
+function collectJsFiles(dir) {
   return new Promise((resolve, reject) => {
-    const collection = new Collection();
-    const errors = [];
-    const mockClient = { logger: { log() {} }, config: { botOwnerId: "owner-1" } };
-    klaw(path.join(ROOT, "slashcommands"))
+    const files = [];
+    klaw(dir)
       .on("data", (item) => {
         const cmdFile = path.parse(item.path);
         if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-        const filePath = path.join(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
-        try {
-          delete require.cache[require.resolve(filePath)];
-          const Cmd = require(filePath);
-          const props = new Cmd(mockClient);
-          if (!props.help.category) {
-            props.help.category = path.basename(cmdFile.dir);
-          }
-          collection.set(props.help.name, props);
-        } catch (e) {
-          errors.push(`${path.relative(ROOT, filePath)}: ${e && e.stack ? e.stack : e}`);
-        }
+        files.push(cmdFile);
       })
-      .on("end", () => {
-        if (errors.length) reject(new Error(errors.join("\n")));
-        else resolve(collection);
-      })
+      .on("end", () => resolve(files))
       .on("error", reject);
   });
+}
+
+async function loadSlashCommands() {
+  const collection = new Collection();
+  const errors = [];
+  const mockClient = { logger: { log() {} }, config: { botOwnerId: "owner-1" } };
+  for (const cmdFile of await collectJsFiles(path.join(ROOT, "slashcommands"))) {
+    const filePath = path.join(cmdFile.dir, `${cmdFile.name}${cmdFile.ext}`);
+    try {
+      const mod = await import(pathToFileURL(filePath).href);
+      const Cmd = mod.default;
+      const props = new Cmd(mockClient);
+      if (!props.help.category) {
+        props.help.category = path.basename(cmdFile.dir);
+      }
+      collection.set(props.help.name, props);
+    } catch (e) {
+      errors.push(`${path.relative(ROOT, filePath)}: ${e && e.stack ? e.stack : e}`);
+    }
+  }
+  if (errors.length) throw new Error(errors.join("\n"));
+  return collection;
 }
 
 function embedText(embed) {

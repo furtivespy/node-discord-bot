@@ -1,4 +1,5 @@
-const Command = require('../../base/Command.js')
+import Command from '../../base/Command.js'
+import { exec } from 'node:child_process';
 
 const clean = text => {
     if (typeof(text) === "string")
@@ -24,7 +25,6 @@ class Eval extends Command {
     }
 
     async run (message, args, level) {
-        const { exec } = require('child_process');
         const code = args.join(" ")
         exec(code, (error, stdout, stderr) => {
         if (error) {
@@ -50,4 +50,4 @@ class Eval extends Command {
     }
 }
 
-module.exports = Eval
+export default Eval

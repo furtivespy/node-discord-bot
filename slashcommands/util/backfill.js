@@ -1,6 +1,9 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PRIORITIZE_CHANNEL_TYPES } = require("../../modules/chatBackfill.js");
+import SlashCommand from "../../base/SlashCommand.js";
+
+import { SlashCommandBuilder } from "@discordjs/builders";
+
+import { PRIORITIZE_CHANNEL_TYPES } from "../../modules/chatBackfill.js";
+
 
 class Backfill extends SlashCommand {
   constructor(client) {
@@ -198,4 +201,4 @@ class Backfill extends SlashCommand {
   }
 }
 
-module.exports = Backfill;
+export default Backfill;
