@@ -6,7 +6,8 @@ class Prompt extends SlashCommand {
     super(client, {
         name: "prompt",
         description: "Send a prompt to GeminiAI",
-        usage: "Use this command",
+        usage: "/prompt message:hello",
+        category: "chat",
         enabled: true,
         permLevel: "User"
       });

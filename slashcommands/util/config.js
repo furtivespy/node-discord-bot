@@ -52,7 +52,8 @@ class Config extends SlashCommand {
   constructor(client) {
     super(client, {
       name: "config",
-      description: "Adjust bot settings",
+      description: "Adjust bot settings for this server",
+      category: "admin",
     });
     this.data = new SlashCommandBuilder()
       .setName(this.help.name)

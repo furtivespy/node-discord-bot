@@ -7,6 +7,7 @@ class Markov extends SlashCommand {
             name: "markov",
             description: "Make Bender speak.",
             usage: "Provide a word and Bender starts a chain with that word",
+            category: "chat",
             enabled: true,
             permLevel: "User"
           })

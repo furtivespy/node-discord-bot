@@ -11,6 +11,7 @@ class Test extends SlashCommand {
             description: "Test the bot.",
             usage: "Use this command to test the bot",
             enabled: true,
+            hidden: true,
             permLevel: "User"
           })
 		  this.data = new SlashCommandBuilder()

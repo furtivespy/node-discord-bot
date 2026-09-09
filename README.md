@@ -1,14 +1,16 @@
 # Furtivespy's discord.js bot
 
-This discord.js bot has some heavy influence from [An Idiots Guide bot](https://github.com/AnIdiotsGuide/guidebot). 
+This discord.js bot has some heavy influence from [An Idiots Guide bot](https://github.com/AnIdiotsGuide/guidebot).
 
 ## Introduction
 
-This project is a bot I created for a discord chat with friends and to better learn node
+A bot for friend Discord servers, originally written to learn Node.
 
-# What this bot does? 
+## What this bot does
 
-Check out the commands folder for a list of commands
+Use `/help` in Discord. It lists the live slash commands (chat, fun, games, lookups, admin). Mention Bender in a message to chat.
+
+Slash commands live under `slashcommands/` and register on startup.
 
 ## Admin multi-server config overview
 
@@ -54,5 +56,3 @@ There are no ignore rules or private-registry secrets in the config, so updates 
 **After merge, a repo admin (Will) must confirm in GitHub:** Settings → Advanced Security → Dependabot — enable **version updates** (this config does nothing until that toggle is on). Alerts and security updates are separate and recommended. Then check the **Insights → Dependency graph → Dependabot** tab (or the first weekly PRs) for a successful run or a clear “no updates” state.
 
 This repo’s release workflow tags merges that carry a `major` / `minor` / `patch` label. Dependabot may apply those SemVer labels automatically. Remove the label before merge if you do not want a release tag.
-
-

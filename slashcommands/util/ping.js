@@ -6,7 +6,7 @@ class Ping extends SlashCommand {
     constructor(client){
         super(client, {
             name: "ping",
-            description: "Get's Bender's Ping.",
+            description: "Check that Bender is responding",
             usage: "Use this command to make sure the bot is still there and responding",
             enabled: true,
             permLevel: "User"

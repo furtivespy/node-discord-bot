@@ -6,12 +6,21 @@ class SlashCommand {
       name = null,
       description = "No description provided.",
       usage = "No usage provided.",
+      category = null,
       enabled = true,
+      hidden = false,
       permLevel = "User"
     }) {
       this.client = client;
-      this.conf = { enabled, permLevel };
-      this.help = { name, description, usage };
+      this.conf = { enabled, permLevel, hidden };
+      this.help = {
+        name,
+        description,
+        usage,
+        // Folder under slashcommands/ is the default; set category when that is wrong.
+        // `/help` lists every loaded slash command automatically.
+        category: category ? String(category).toLowerCase() : null,
+      };
     }
 
     pause(ms) {
