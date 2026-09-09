@@ -153,6 +153,29 @@ describe("buildGuildSnapshot", () => {
     assert.doesNotMatch(text, /Hardboiled AI Detective \(default\)/);
   });
 
+  it("treats FUR-62 context_packs as configured without printing the URL", () => {
+    const secret = "https://docs.google.com/spreadsheets/d/e/2PACX-secret/pub?output=csv";
+    const row = snapshot({
+      settings: {
+        context_packs: [{ name: "plays", kind: "plays", url: secret }],
+      },
+      overrides: {
+        context_packs: [{ name: "plays", kind: "plays", url: secret }],
+      },
+    });
+    assert.equal(row.contextPack.configured, true);
+    assert.ok(row.contextPack.keys.includes("context_packs"));
+    assert.equal(
+      row.extras.some((item) => item.key === "context_packs"),
+      false
+    );
+    const text = formatOverviewText([row]);
+    assert.match(text, /Context pack: yes/);
+    assert.doesNotMatch(text, /2PACX/);
+    assert.doesNotMatch(text, /docs\.google\.com/);
+    assert.equal(snapshot({ overrides: { context_packs: [] } }).contextPack.configured, false);
+  });
+
   it("reports File Search ready and starboard when configured", () => {
     const row = snapshot({
       fileSearchReady: true,

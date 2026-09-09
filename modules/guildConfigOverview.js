@@ -8,8 +8,8 @@
  *   adminRole, modRole, systemNotice,
  *   mentionCooldown / mention_cooldown / ai_mention_cooldown / mentionCooldownMs
  *     (not written by current chat code — FUR-23 is prompt-only; still shown if set via !set)
- *   contextPackUrl / publishedCsvUrl / csvUrl / contextUrl / extraContextUrl
- *     and similar keys (FUR-62 not shipped yet; yes/no only — never print the URL)
+ *   context_packs (FUR-62) plus legacy contextPackUrl / publishedCsvUrl / csvUrl
+ *     and similar keys (yes/no only — never print the URL)
  *
  * Enmap `exclusions` — disabled prefix commands
  * Enmap `skipChannels` — channels excluded from Markov ingest / backfill
@@ -46,6 +46,7 @@ const MENTION_COOLDOWN_KEYS = [
 ];
 
 const CONTEXT_PACK_KEYS = [
+  "context_packs",
   "contextPackUrl",
   "publishedCsvUrl",
   "csvUrl",
@@ -211,6 +212,7 @@ function contextPackSnapshot(settings, overrides) {
   for (const key of keys) {
     if (!isContextPackKey(key)) continue;
     const value = hasOwn(overrides, key) ? overrides[key] : settings[key];
+    if (Array.isArray(value) && value.length === 0) continue;
     if (!isEmptySetting(value)) configuredKeys.push(key);
   }
   return {

@@ -1,0 +1,861 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import https from "node:https";
+import {
+  PACK_KINDS,
+  MAX_PACKS_PER_GUILD,
+  MAX_REDIRECTS,
+  redactUrl,
+  scrubErrorMessage,
+  isBlockedAddress,
+  isBlockedHostname,
+  validateContextUrl,
+  validatePackName,
+  normalizePack,
+  listGuildPacks,
+  upsertGuildPack,
+  removeGuildPack,
+  packNeedsFetch,
+  selectPacksForTurn,
+  recentUserText,
+  selectRelevantCsv,
+  formatPackBlock,
+  attachPacksToContents,
+  contextPackSystemNote,
+  createPinnedLookup,
+  createPinnedHttpsAgent,
+  createContextPackService,
+} from "../modules/contextPacks.js";
+
+const PLAYS_CSV = [
+  "Date,Game,Players,Winner",
+  "2026-01-04,Azul,Shane/Will,Shane",
+  "2026-01-11,Catan,Shane/Will/Alex,Will",
+  "2026-02-02,Wingspan,Alex/Will,Alex",
+].join("\n");
+
+const SECRET_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vThisIsASecretToken/pub?gid=0&single=true&output=csv";
+
+// Pass-3 leftovers: embeddings of 169.254.169.254 that /96 + 6to4 tests cannot fail.
+const RFC8215_NAT64_48 = "64:ff9b:1:a9fe:00a9:fe00::";
+const TEREDO_SERVER = "2001:0:a9fe:a9fe::";
+const TEREDO_CLIENT_RAW = "2001:0::a9fe:a9fe";
+const TEREDO_CLIENT_XOR = "2001:0::5601:5601";
+const ISATAP = "::5efe:a9fe:a9fe";
+const ISATAP_PREFIXED = "2001:db8::5efe:a9fe:a9fe";
+const LEFTOVER_TRANSLATION_ADDRESSES = [
+  RFC8215_NAT64_48,
+  TEREDO_SERVER,
+  TEREDO_CLIENT_RAW,
+  TEREDO_CLIENT_XOR,
+  ISATAP,
+  ISATAP_PREFIXED,
+];
+
+function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {}, url } = {}) {
+  return {
+    ok,
+    status,
+    url,
+    headers: {
+      get(name) {
+        return headers[String(name).toLowerCase()] ?? headers[name] ?? null;
+      },
+    },
+    async text() {
+      return text;
+    },
+  };
+}
+
+const publicLookup = async () => ["93.184.216.34"];
+
+function testService(overrides = {}) {
+  return createContextPackService({
+    lookup: publicLookup,
+    logger: { log() {} },
+    ...overrides,
+  });
+}
+
+describe("context pack URL secrecy", () => {
+  it("redacts path and query so a published CSV token is not logged", () => {
+    const redacted = redactUrl(SECRET_URL);
+    assert.equal(redacted, "https://docs.google.com/…");
+    assert.doesNotMatch(redacted, /2PACX/);
+    assert.doesNotMatch(redacted, /SecretToken/);
+    assert.doesNotMatch(redacted, /pub/);
+  });
+
+  it("scrubs the full URL out of fetch error messages", () => {
+    const error = new Error(`request to ${SECRET_URL} failed`);
+    const scrubbed = scrubErrorMessage(error, SECRET_URL);
+    assert.doesNotMatch(scrubbed, /2PACX/);
+    assert.match(scrubbed, /https:\/\/docs\.google\.com\/…/);
+  });
+
+  it("scrubs a bare hostname from resolver errors", () => {
+    const error = new Error("getaddrinfo ENOTFOUND docs.google.com");
+    const scrubbed = scrubErrorMessage(error, SECRET_URL);
+    assert.doesNotMatch(scrubbed, /2PACX/);
+    assert.match(scrubbed, /https:\/\/docs\.google\.com\/…/);
+  });
+
+  it("scrubs redirect and metadata URLs that are not the original pack URL", () => {
+    const error = new Error("request to http://169.254.169.254/computeMetadata/v1/ failed");
+    const scrubbed = scrubErrorMessage(error, SECRET_URL);
+    assert.doesNotMatch(scrubbed, /169\.254/);
+    assert.doesNotMatch(scrubbed, /computeMetadata/);
+    assert.doesNotMatch(scrubbed, /2PACX/);
+  });
+});
+
+describe("validateContextUrl", () => {
+  it("accepts https published CSV URLs", () => {
+    assert.equal(validateContextUrl(SECRET_URL).url, SECRET_URL);
+    assert.equal(
+      validateContextUrl("https://my-bucket.s3.amazonaws.com/plays.csv").url,
+      "https://my-bucket.s3.amazonaws.com/plays.csv"
+    );
+  });
+
+  it("rejects http, credentials, and local/private hosts", () => {
+    assert.match(validateContextUrl("http://example.com/plays.csv").error, /https/);
+    assert.match(validateContextUrl("https://user:pass@example.com/plays.csv").error, /username/);
+    assert.match(validateContextUrl("https://localhost/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://127.0.0.1/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://192.168.1.9/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://10.0.0.5/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("file:///tmp/plays.csv").error, /https/);
+  });
+
+  it("rejects IPv6-mapped loopback and link-local metadata hosts", () => {
+    assert.equal(isBlockedAddress("::ffff:169.254.169.254"), true);
+    assert.equal(isBlockedAddress("::ffff:a9fe:a9fe"), true);
+    assert.equal(isBlockedAddress("::ffff:7f00:1"), true);
+    assert.equal(isBlockedAddress("::ffff:127.0.0.1"), true);
+    assert.equal(isBlockedHostname("[::ffff:169.254.169.254]"), true);
+    assert.equal(isBlockedHostname("[::ffff:7f00:1]"), true);
+    assert.match(validateContextUrl("https://[::ffff:169.254.169.254]/latest/meta-data/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[::ffff:127.0.0.1]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[::ffff:a9fe:a9fe]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[fe80::1]/").error, /not allowed/);
+  });
+
+  it("rejects IPv4-translated, NAT64, SIIT-compatible, and 6to4 embeddings of blocked IPv4", () => {
+    const blocked = [
+      "::ffff:0:169.254.169.254",
+      "::ffff:0:a9fe:a9fe",
+      "::ffff:0:127.0.0.1",
+      "64:ff9b::a9fe:a9fe",
+      "64:ff9b::169.254.169.254",
+      "64:ff9b:1::a9fe:a9fe",
+      "::a9fe:a9fe",
+      "::169.254.169.254",
+      "2002:a9fe:a9fe::",
+      "2002:7f00:1::",
+      RFC8215_NAT64_48,
+      TEREDO_SERVER,
+      TEREDO_CLIENT_RAW,
+      TEREDO_CLIENT_XOR,
+      ISATAP,
+      ISATAP_PREFIXED,
+    ];
+    for (const address of blocked) {
+      assert.equal(isBlockedAddress(address), true, address);
+      assert.equal(isBlockedHostname(`[${address}]`), true, address);
+      assert.match(validateContextUrl(`https://[${address}]/`).error, /not allowed/, address);
+    }
+    assert.match(validateContextUrl("https://[::ffff:0:169.254.169.254]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[64:ff9b::a9fe:a9fe]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[::a9fe:a9fe]/").error, /not allowed/);
+    assert.match(validateContextUrl("https://[2002:a9fe:a9fe::]/").error, /not allowed/);
+    assert.match(validateContextUrl(`https://[${RFC8215_NAT64_48}]/`).error, /not allowed/);
+    assert.match(validateContextUrl(`https://[${TEREDO_SERVER}]/`).error, /not allowed/);
+    assert.match(validateContextUrl(`https://[${ISATAP}]/`).error, /not allowed/);
+    // Public IPv4 inside the same translation prefixes must still be allowed.
+    assert.equal(isBlockedAddress("64:ff9b:1:5db8:d8:2200::"), false);
+    assert.equal(isBlockedAddress("2001:0:5db8:d822::"), false);
+  });
+
+  it("rejects DNS-rebinding style hostnames that encode a private IP", () => {
+    assert.match(validateContextUrl("https://127.0.0.1.nip.io/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://169.254.169.254.sslip.io/").error, /not allowed/);
+    assert.match(validateContextUrl("https://127-0-0-1.nip.io/plays.csv").error, /not allowed/);
+    assert.match(validateContextUrl("https://app.flycast/secret").error, /not allowed/);
+  });
+});
+
+describe("guild pack settings", () => {
+  it("normalizes name/kind and upserts by name", () => {
+    const first = upsertGuildPack([], { name: "Plays", url: SECRET_URL });
+    assert.equal(first.pack.name, "plays");
+    assert.equal(first.pack.kind, "plays");
+    assert.equal(first.replaced, false);
+
+    const second = upsertGuildPack(first.packs, {
+      name: "plays",
+      kind: "plays",
+      url: "https://example.com/other.csv",
+    });
+    assert.equal(second.replaced, true);
+    assert.equal(second.packs.length, 1);
+    assert.equal(second.pack.url, "https://example.com/other.csv");
+  });
+
+  it("lists only well-shaped packs from guild settings", () => {
+    assert.deepEqual(listGuildPacks({}), []);
+    assert.deepEqual(
+      listGuildPacks({
+        context_packs: [
+          { name: "plays", kind: "plays", url: SECRET_URL },
+          { name: "bad" },
+          "nope",
+        ],
+      }),
+      [{ name: "plays", kind: "plays", url: SECRET_URL }]
+    );
+  });
+
+  it("caps how many packs a guild can store", () => {
+    let packs = [];
+    for (let i = 0; i < MAX_PACKS_PER_GUILD; i++) {
+      const result = upsertGuildPack(packs, {
+        name: `pack${i}`,
+        kind: "general",
+        url: `https://example.com/${i}.csv`,
+      });
+      assert.ok(!result.error, result.error);
+      packs = result.packs;
+    }
+    const extra = upsertGuildPack(packs, {
+      name: "overflow",
+      kind: "general",
+      url: "https://example.com/overflow.csv",
+    });
+    assert.match(extra.error, /already has/);
+  });
+
+  it("removes a pack by name", () => {
+    const added = upsertGuildPack([], { name: "plays", url: SECRET_URL });
+    const removed = removeGuildPack(added.packs, "plays");
+    assert.deepEqual(removed.packs, []);
+    assert.match(removeGuildPack([], "plays").error, /No context pack/);
+  });
+
+  it("rejects invalid pack names", () => {
+    assert.match(validatePackName("").error, /empty/);
+    assert.match(validatePackName("1plays").error, /start with a letter/);
+    assert.equal(PACK_KINDS.includes("plays"), true);
+    assert.match(normalizePack({ name: "plays", kind: "sheets", url: SECRET_URL }).error, /Kind/);
+  });
+});
+
+describe("games/stats heuristic", () => {
+  const plays = { name: "plays", kind: "plays", url: SECRET_URL };
+  const notes = { name: "house-rules", kind: "general", url: "https://example.com/rules.csv" };
+
+  it("attaches plays packs for games/stats questions, not ordinary chat", () => {
+    assert.equal(packNeedsFetch(plays, "Who has the most wins in Catan?"), true);
+    assert.equal(packNeedsFetch(plays, "have we played Azul yet?"), true);
+    assert.equal(packNeedsFetch(plays, "game night stats please"), true);
+    assert.equal(packNeedsFetch(plays, "high"), false);
+    assert.equal(packNeedsFetch(plays, "how's it going"), false);
+    assert.equal(packNeedsFetch(plays, "nice, same"), false);
+  });
+
+  it("attaches general packs for notes questions or when the pack name is mentioned", () => {
+    assert.equal(packNeedsFetch(notes, "what are our house rules?"), true);
+    assert.equal(packNeedsFetch(notes, "check the house-rules pack"), true);
+    assert.equal(packNeedsFetch(notes, "who won Catan?"), false);
+  });
+
+  it("selects only matching packs for the turn", () => {
+    const selected = selectPacksForTurn([plays, notes], "Who won the most games?");
+    assert.deepEqual(
+      selected.map((pack) => pack.name),
+      ["plays"]
+    );
+  });
+});
+
+describe("prompt attachment", () => {
+  it("clones the last user turn instead of mutating contents", () => {
+    const contents = [
+      { role: "user", parts: [{ text: "hello" }] },
+      { role: "model", parts: [{ text: "hi" }] },
+      { role: "user", parts: [{ text: "Who won Azul?" }] },
+    ];
+    const next = attachPacksToContents(contents, "PACK");
+    assert.equal(contents[2].parts[0].text, "Who won Azul?");
+    assert.match(next[2].parts[0].text, /Who won Azul\?\n\nPACK/);
+    assert.equal(next[0].parts[0].text, "hello");
+  });
+
+  it("formats CSV as ordinary prompt text, not a grounding tool", () => {
+    const block = formatPackBlock({ name: "plays", kind: "plays" }, PLAYS_CSV, "Who won Azul?");
+    assert.match(block, /play tracker/);
+    assert.match(block, /not instructions/);
+    assert.match(block, /Prefer this table over Google Search/);
+    assert.match(block, /```csv/);
+    assert.match(block, /Azul/);
+    const note = contextPackSystemNote([{ name: "plays" }]);
+    assert.match(note, /not a grounding tool/);
+    assert.match(note, /google_search/);
+  });
+
+  it("truncates a large sheet to rows that match the question", () => {
+    const rows = ["Game,Winner"];
+    for (let i = 0; i < 200; i++) rows.push(`Filler${i},Nobody`);
+    rows.push("Azul,Shane");
+    const selected = selectRelevantCsv(rows.join("\n"), "Who won Azul?", 400);
+    assert.equal(selected.truncated, true);
+    assert.match(selected.text, /Azul,Shane/);
+    assert.ok(selected.text.length <= 400);
+  });
+
+  it("uses only the current user message, not earlier history", () => {
+    const text = recentUserText(
+      [
+        { role: "user", parts: [{ text: "who won Catan last week?" }] },
+        { role: "model", parts: [{ text: "Will" }] },
+        { role: "user", parts: [{ text: "thanks" }] },
+      ],
+      { content: "thanks" }
+    );
+    assert.equal(text, "thanks");
+    assert.doesNotMatch(text, /Catan/);
+  });
+
+  it("does not fall back to history when this turn's content is empty or missing", () => {
+    const history = [
+      { role: "user", parts: [{ text: "who won Catan last week?" }] },
+      { role: "model", parts: [{ text: "Will" }] },
+    ];
+    assert.equal(recentUserText(history, { content: "" }), "");
+    assert.equal(recentUserText(history, {}), "");
+    assert.equal(recentUserText(history, { content: null }), "");
+  });
+});
+
+describe("fetch + cache", () => {
+  it("fetches once inside the TTL and attaches CSV on a games question", async () => {
+    let calls = 0;
+    const fetch = async (url) => {
+      calls += 1;
+      assert.equal(url, SECRET_URL);
+      return mockResponse();
+    };
+    let current = 1_000;
+    const service = testService({
+      fetch,
+      now: () => current,
+      ttlMs: 10 * 60 * 1000,
+    });
+    const message = {
+      content: "Who has the most wins?",
+      settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+    };
+    const contents = [{ role: "user", parts: [{ text: "Who has the most wins?" }] }];
+
+    const first = await service.attachIfNeeded(contents, message);
+    const second = await service.attachIfNeeded(contents, message);
+    assert.equal(calls, 1);
+    assert.equal(first.attached[0].name, "plays");
+    assert.match(first.contents[0].parts[0].text, /Azul,Shane\/Will,Shane/);
+    assert.equal(first.contents[0].parts[0].text.includes(SECRET_URL), false);
+    assert.equal(second.attached[0].name, "plays");
+    assert.match(first.note, /ordinary prompt text/);
+  });
+
+  it("does not fetch on ordinary chat even when a pack is configured", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.attachIfNeeded(
+      [{ role: "user", parts: [{ text: "high five" }] }],
+      {
+        content: "high five",
+        settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+      }
+    );
+    assert.equal(calls, 0);
+    assert.deepEqual(result.attached, []);
+    assert.equal(result.contents[0].parts[0].text, "high five");
+  });
+
+  it("refetches after TTL and can serve stale data if the live fetch fails", async () => {
+    let calls = 0;
+    let current = 0;
+    const fetch = async () => {
+      calls += 1;
+      if (calls === 1) return mockResponse();
+      throw new Error(`request to ${SECRET_URL} failed`);
+    };
+    const logs = [];
+    const service = testService({
+      fetch,
+      now: () => current,
+      ttlMs: 10 * 60 * 1000,
+      logger: {
+        log(content) {
+          logs.push(String(content));
+        },
+      },
+    });
+    const message = {
+      content: "who won Azul?",
+      settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+    };
+    const contents = [{ role: "user", parts: [{ text: "who won Azul?" }] }];
+
+    await service.attachIfNeeded(contents, message);
+    current = 11 * 60 * 1000;
+    const stale = await service.attachIfNeeded(contents, message);
+    assert.equal(calls, 2);
+    assert.equal(stale.attached[0].stale, true);
+    assert.match(stale.contents[0].parts[0].text, /Azul/);
+    assert.ok(logs.every((line) => !line.includes("2PACX")));
+    assert.ok(logs.some((line) => line.includes("docs.google.com/…")));
+  });
+
+  it("skips HTML bodies so a login page is not injected", async () => {
+    const service = testService({
+      fetch: async () => mockResponse({ text: "<!DOCTYPE html><html>login</html>" }),
+    });
+    const result = await service.attachIfNeeded(
+      [{ role: "user", parts: [{ text: "who won Catan?" }] }],
+      {
+        content: "who won Catan?",
+        settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+      }
+    );
+    assert.deepEqual(result.attached, []);
+    assert.equal(result.contents[0].parts[0].text, "who won Catan?");
+  });
+
+  it("skips HTML even when the body starts with a BOM", async () => {
+    const service = testService({
+      fetch: async () => mockResponse({ text: "\uFEFF<!DOCTYPE html><html>login</html>" }),
+    });
+    const result = await service.attachIfNeeded(
+      [{ role: "user", parts: [{ text: "who won Catan?" }] }],
+      {
+        content: "who won Catan?",
+        settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+      }
+    );
+    assert.deepEqual(result.attached, []);
+  });
+
+  it("does not attach from earlier history on a non-games follow-up", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.attachIfNeeded(
+      [
+        { role: "user", parts: [{ text: "who won Catan last week?" }] },
+        { role: "model", parts: [{ text: "Will" }] },
+        { role: "user", parts: [{ text: "thanks" }] },
+      ],
+      {
+        content: "thanks",
+        settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+      }
+    );
+    assert.equal(calls, 0);
+    assert.deepEqual(result.attached, []);
+    assert.equal(result.contents[2].parts[0].text, "thanks");
+  });
+
+  it("does not attach from history when this turn's content is empty", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const history = [
+      { role: "user", parts: [{ text: "who won Catan last week?" }] },
+      { role: "model", parts: [{ text: "Will" }] },
+    ];
+    const settings = { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] };
+    const empty = await service.attachIfNeeded(history, { content: "", settings });
+    const missing = await service.attachIfNeeded(history, { settings });
+    assert.equal(calls, 0);
+    assert.deepEqual(empty.attached, []);
+    assert.deepEqual(missing.attached, []);
+    assert.equal(empty.contents[0].parts[0].text, "who won Catan last week?");
+    assert.equal(missing.contents[0].parts[0].text, "who won Catan last week?");
+  });
+});
+
+describe("SSRF protections on fetch", () => {
+  it("does not follow a redirect to a private or metadata URL", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url) === "https://evil.example/r") {
+          return mockResponse({
+            ok: false,
+            status: 302,
+            text: "stolen",
+            headers: { location: "http://169.254.169.254/computeMetadata/v1/" },
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    });
+    const result = await service.fetchUrl("https://evil.example/r");
+    assert.equal(result.ok, false);
+    assert.deepEqual(requested, ["https://evil.example/r"]);
+    assert.doesNotMatch(result.error || "", /169\.254/);
+    assert.doesNotMatch(result.error || "", /computeMetadata/);
+  });
+
+  it("does not follow a redirect to an IPv6-mapped metadata host", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        return mockResponse({
+          ok: false,
+          status: 302,
+          headers: { location: "https://[::ffff:169.254.169.254]/latest/meta-data/" },
+        });
+      },
+    });
+    const result = await service.fetchUrl("https://evil.example/mapped");
+    assert.equal(result.ok, false);
+    assert.deepEqual(requested, ["https://evil.example/mapped"]);
+    assert.doesNotMatch(result.error || "", /169\.254/);
+    assert.doesNotMatch(result.error || "", /meta-data/);
+  });
+
+  it("does not fetch when DNS resolves to a private address", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+      lookup: async () => ["169.254.169.254"],
+    });
+    const result = await service.fetchUrl("https://public-looking.example/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /not allowed/);
+    assert.equal(calls, 0);
+  });
+
+  it("does not fetch a stored private URL even if Enmap already has it", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.fetchUrl("http://127.0.0.1/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /https|not allowed/);
+    assert.equal(calls, 0);
+  });
+
+  it("follows a same-policy https redirect to a public host", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url) === "https://docs.google.com/spreadsheets/pub") {
+          return mockResponse({
+            ok: false,
+            status: 302,
+            headers: { location: `${SECRET_URL}` },
+          });
+        }
+        assert.equal(String(url), SECRET_URL);
+        return mockResponse();
+      },
+    });
+    const result = await service.fetchUrl("https://docs.google.com/spreadsheets/pub");
+    assert.equal(result.ok, true);
+    assert.deepEqual(requested, ["https://docs.google.com/spreadsheets/pub", SECRET_URL]);
+    assert.match(result.text, /Azul/);
+  });
+
+  it("does not fetch DNS-rebinding style hosts that encode loopback", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+      lookup: async () => ["127.0.0.1"],
+    });
+    const result = await service.fetchUrl("https://127.0.0.1.nip.io/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /not allowed/);
+    assert.equal(calls, 0);
+  });
+
+  it("does not fetch DNS that returns IPv4-translated / NAT64 / 6to4 private embeddings", async () => {
+    for (const resolved of [
+      ["::ffff:0:169.254.169.254"],
+      ["64:ff9b::a9fe:a9fe"],
+      ["::a9fe:a9fe"],
+      ["2002:a9fe:a9fe::"],
+      ["93.184.216.34", "::ffff:0:169.254.169.254"],
+      [RFC8215_NAT64_48],
+      [TEREDO_SERVER],
+      [ISATAP],
+      ["93.184.216.34", RFC8215_NAT64_48],
+      ["93.184.216.34", TEREDO_SERVER],
+      ["93.184.216.34", ISATAP],
+    ]) {
+      let calls = 0;
+      const service = testService({
+        fetch: async () => {
+          calls += 1;
+          return mockResponse();
+        },
+        lookup: async () => resolved,
+      });
+      const result = await service.fetchUrl("https://public-looking.example/plays.csv");
+      assert.equal(result.ok, false, String(resolved));
+      assert.match(result.error, /not allowed/, String(resolved));
+      assert.equal(calls, 0, String(resolved));
+    }
+  });
+
+  it("does not follow a redirect to a translated-mapped or NAT64 metadata host", async () => {
+    const locations = [
+      "https://[::ffff:0:169.254.169.254]/latest/meta-data/",
+      "https://[64:ff9b::a9fe:a9fe]/",
+      "https://[::a9fe:a9fe]/",
+      "https://[2002:a9fe:a9fe::]/",
+      `https://[${RFC8215_NAT64_48}]/`,
+      `https://[${TEREDO_SERVER}]/`,
+      `https://[${ISATAP}]/`,
+    ];
+    for (const location of locations) {
+      const requested = [];
+      const service = testService({
+        fetch: async (url) => {
+          requested.push(String(url));
+          return mockResponse({
+            ok: false,
+            status: 302,
+            headers: { location },
+          });
+        },
+      });
+      const result = await service.fetchUrl("https://evil.example/translated");
+      assert.equal(result.ok, false, location);
+      assert.deepEqual(requested, ["https://evil.example/translated"], location);
+      assert.doesNotMatch(result.error || "", /169\.254|a9fe|meta-data|ff9b|2002/, location);
+    }
+  });
+
+  it("does not GET RFC 8215 NAT64 /48, Teredo, or ISATAP embeddings of blocked IPv4", async () => {
+    for (const address of LEFTOVER_TRANSLATION_ADDRESSES) {
+      const literalUrl = `https://[${address}]/plays.csv`;
+      let literalCalls = 0;
+      const literalService = testService({
+        fetch: async () => {
+          literalCalls += 1;
+          return mockResponse();
+        },
+      });
+      const literal = await literalService.fetchUrl(literalUrl);
+      assert.equal(literal.ok, false, `literal GET ${address}`);
+      assert.match(literal.error, /not allowed/, `literal ${address}`);
+      assert.equal(literalCalls, 0, `literal GET must not fire for ${address}`);
+
+      let dnsCalls = 0;
+      const dnsService = testService({
+        fetch: async () => {
+          dnsCalls += 1;
+          return mockResponse();
+        },
+        lookup: async () => [address],
+      });
+      const dns = await dnsService.fetchUrl("https://public-looking.example/plays.csv");
+      assert.equal(dns.ok, false, `DNS GET ${address}`);
+      assert.match(dns.error, /not allowed/, `DNS ${address}`);
+      assert.equal(dnsCalls, 0, `DNS GET must not fire for ${address}`);
+
+      let mixedCalls = 0;
+      const mixedService = testService({
+        fetch: async () => {
+          mixedCalls += 1;
+          return mockResponse();
+        },
+        lookup: async () => ["93.184.216.34", address],
+      });
+      const mixed = await mixedService.fetchUrl("https://public-looking.example/plays.csv");
+      assert.equal(mixed.ok, false, `mixed DNS GET ${address}`);
+      assert.equal(mixedCalls, 0, `mixed DNS GET must not fire for ${address}`);
+
+      const requested = [];
+      const redirectService = testService({
+        fetch: async (url) => {
+          requested.push(String(url));
+          return mockResponse({
+            ok: false,
+            status: 302,
+            headers: { location: `https://[${address}]/` },
+          });
+        },
+      });
+      const redirected = await redirectService.fetchUrl("https://evil.example/leftover");
+      assert.equal(redirected.ok, false, `redirect GET ${address}`);
+      assert.deepEqual(requested, ["https://evil.example/leftover"], `redirect must not follow ${address}`);
+    }
+  });
+
+  it("performs at most 3 fetches when following redirects", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse({
+          ok: false,
+          status: 302,
+          headers: { location: `https://example.com/hop${calls}` },
+        });
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/start");
+    assert.equal(result.ok, false);
+    assert.equal(MAX_REDIRECTS, 3);
+    assert.equal(calls, 3);
+    assert.match(result.error, /too many redirects/);
+  });
+
+  it("tells the model when a stored private URL cannot be fetched instead of silently continuing", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const result = await service.attachIfNeeded(
+      [{ role: "user", parts: [{ text: "who won Catan?" }] }],
+      {
+        content: "who won Catan?",
+        settings: {
+          context_packs: [{ name: "plays", kind: "plays", url: "http://127.0.0.1/plays.csv" }],
+        },
+      }
+    );
+    assert.equal(calls, 0);
+    assert.deepEqual(result.attached, []);
+    assert.equal(result.contents[0].parts[0].text, "who won Catan?");
+    assert.match(result.note, /could not be loaded/);
+    assert.match(result.note, /plays/);
+    assert.doesNotMatch(result.note, /127\.0\.0\.1/);
+  });
+});
+
+describe("pinned HTTPS agent lookup", () => {
+  function lookupAsync(lookup, hostname, options) {
+    return new Promise((resolve, reject) => {
+      lookup(hostname, options, (error, addresses, family) => {
+        if (error) reject(error);
+        else resolve({ addresses, family });
+      });
+    });
+  }
+
+  it("returns address objects when Node calls lookup with {all:true}", async () => {
+    const lookup = createPinnedLookup(["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"]);
+    const { addresses, family } = await lookupAsync(lookup, "docs.google.com", {
+      all: true,
+      verbatim: true,
+      hints: 32,
+    });
+    assert.equal(family, undefined);
+    assert.ok(Array.isArray(addresses));
+    assert.equal(typeof addresses[0], "object");
+    assert.equal(addresses[0].address, "93.184.216.34");
+    assert.equal(addresses[0].family, 4);
+    assert.equal(addresses[1].address, "2606:2800:220:1:248:1893:25c8:1946");
+    assert.equal(addresses[1].family, 6);
+    assert.notEqual(addresses[0].address, undefined);
+  });
+
+  it("https.request with the pinned agent does not throw Invalid IP address on Happy Eyeballs", async () => {
+    const agent = createPinnedHttpsAgent(["93.184.216.34"]);
+    const fromAgent = await lookupAsync(agent.options.lookup, "docs.google.com", { all: true, hints: 32 });
+    assert.deepEqual(fromAgent.addresses, [{ address: "93.184.216.34", family: 4 }]);
+
+    // Drive the real Node HTTP stack (it calls lookup with {all:true}). Connecting
+    // to 127.0.0.1:1 fails immediately; the broken callback threw first.
+    const liveAgent = new https.Agent({ lookup: createPinnedLookup(["127.0.0.1"]) });
+    const error = await new Promise((resolve) => {
+      const req = https.request(
+        {
+          hostname: "docs.google.com",
+          port: 1,
+          path: "/",
+          method: "GET",
+          agent: liveAgent,
+        },
+        (res) => {
+          res.resume();
+          resolve(new Error(`unexpected response ${res.statusCode}`));
+        }
+      );
+      req.on("error", resolve);
+      req.end();
+    });
+    assert.doesNotMatch(error.message, /Invalid IP address/);
+    assert.notEqual(error.message, "Invalid IP address: undefined");
+  });
+
+  it("pins TCP to the resolved address even when the URL hostname would rebind", async () => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end(`pinned-ok ${req.headers.host}`);
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    try {
+      const lookup = createPinnedLookup(["127.0.0.1"]);
+      const body = await new Promise((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: "docs.google.com",
+            port,
+            path: "/plays.csv",
+            method: "GET",
+            agent: new http.Agent({ lookup }),
+          },
+          (res) => {
+            const chunks = [];
+            res.on("data", (chunk) => chunks.push(chunk));
+            res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+          }
+        );
+        req.on("error", reject);
+        req.end();
+      });
+      assert.match(body, /pinned-ok/);
+    } finally {
+      server.close();
+    }
+  });
+});

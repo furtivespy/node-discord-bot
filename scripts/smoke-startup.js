@@ -125,6 +125,19 @@ async function main() {
   }
 
   try {
+    const context = slash && slash.loaded.find((c) => c.name === 'context')
+    assert(context, '/context module did not load')
+    assert(context.data?.name === 'context', 'slash payload name is not context')
+    const subcommands = (context.data.options || []).map((o) => o.name)
+    for (const name of ['add', 'list', 'refresh', 'remove']) {
+      assert(subcommands.includes(name), `/context missing subcommand ${name}`)
+    }
+    pass('slash command load + /context schema')
+  } catch (e) {
+    fail('slash command load + /context schema', e)
+  }
+
+  try {
     const prefix = await loadJsModules('commands')
     if (prefix.errors.length) throw new Error(prefix.errors.join('\n'))
     const names = prefix.loaded.map((c) => c.name)
