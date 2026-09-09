@@ -9,7 +9,7 @@ class Chuck extends SlashCommand {
   constructor(client) {
     super(client, {
       name: "chuck",
-      description: "Chuck Norris",
+      description: "Random Chuck Norris fact",
       usage: "Get's a random Chuck Norris fact",
       enabled: true,
       permLevel: "User",

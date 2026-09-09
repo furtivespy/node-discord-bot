@@ -9,6 +9,7 @@ class Settings extends SlashCommand {
         super(client, {
             name: "settings",
             description: "Adjust bot settings",
+            hidden: true,
           })
 		  this.data = new SlashCommandBuilder()
         .setName(this.help.name)
