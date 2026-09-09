@@ -1,7 +1,7 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { PermissionsBitField } = require("discord.js");
-const {
+import SlashCommand from "../../base/SlashCommand.js";
+import { SlashCommandBuilder } from "@discordjs/builders";
+import { PermissionsBitField } from "discord.js";
+import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
   redactUrl,
@@ -9,7 +9,7 @@ const {
   upsertGuildPack,
   removeGuildPack,
   validatePackName,
-} = require("../../modules/contextPacks.js");
+} from "../../modules/contextPacks.js";
 
 class Context extends SlashCommand {
   constructor(client) {
@@ -230,4 +230,4 @@ class Context extends SlashCommand {
   }
 }
 
-module.exports = Context;
+export default Context;

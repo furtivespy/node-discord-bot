@@ -1,8 +1,8 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const http = require("http");
-const https = require("https");
-const {
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import https from "node:https";
+import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
   MAX_REDIRECTS,
@@ -26,7 +26,7 @@ const {
   createPinnedLookup,
   createPinnedHttpsAgent,
   createContextPackService,
-} = require("../modules/contextPacks");
+} from "../modules/contextPacks.js";
 
 const PLAYS_CSV = [
   "Date,Game,Players,Winner",
@@ -37,6 +37,22 @@ const PLAYS_CSV = [
 
 const SECRET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vThisIsASecretToken/pub?gid=0&single=true&output=csv";
+
+// Pass-3 leftovers: embeddings of 169.254.169.254 that /96 + 6to4 tests cannot fail.
+const RFC8215_NAT64_48 = "64:ff9b:1:a9fe:00a9:fe00::";
+const TEREDO_SERVER = "2001:0:a9fe:a9fe::";
+const TEREDO_CLIENT_RAW = "2001:0::a9fe:a9fe";
+const TEREDO_CLIENT_XOR = "2001:0::5601:5601";
+const ISATAP = "::5efe:a9fe:a9fe";
+const ISATAP_PREFIXED = "2001:db8::5efe:a9fe:a9fe";
+const LEFTOVER_TRANSLATION_ADDRESSES = [
+  RFC8215_NAT64_48,
+  TEREDO_SERVER,
+  TEREDO_CLIENT_RAW,
+  TEREDO_CLIENT_XOR,
+  ISATAP,
+  ISATAP_PREFIXED,
+];
 
 function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {}, url } = {}) {
   return {
@@ -140,6 +156,12 @@ describe("validateContextUrl", () => {
       "::169.254.169.254",
       "2002:a9fe:a9fe::",
       "2002:7f00:1::",
+      RFC8215_NAT64_48,
+      TEREDO_SERVER,
+      TEREDO_CLIENT_RAW,
+      TEREDO_CLIENT_XOR,
+      ISATAP,
+      ISATAP_PREFIXED,
     ];
     for (const address of blocked) {
       assert.equal(isBlockedAddress(address), true, address);
@@ -150,6 +172,12 @@ describe("validateContextUrl", () => {
     assert.match(validateContextUrl("https://[64:ff9b::a9fe:a9fe]/").error, /not allowed/);
     assert.match(validateContextUrl("https://[::a9fe:a9fe]/").error, /not allowed/);
     assert.match(validateContextUrl("https://[2002:a9fe:a9fe::]/").error, /not allowed/);
+    assert.match(validateContextUrl(`https://[${RFC8215_NAT64_48}]/`).error, /not allowed/);
+    assert.match(validateContextUrl(`https://[${TEREDO_SERVER}]/`).error, /not allowed/);
+    assert.match(validateContextUrl(`https://[${ISATAP}]/`).error, /not allowed/);
+    // Public IPv4 inside the same translation prefixes must still be allowed.
+    assert.equal(isBlockedAddress("64:ff9b:1:5db8:d8:2200::"), false);
+    assert.equal(isBlockedAddress("2001:0:5db8:d822::"), false);
   });
 
   it("rejects DNS-rebinding style hostnames that encode a private IP", () => {
@@ -300,6 +328,16 @@ describe("prompt attachment", () => {
     assert.equal(text, "thanks");
     assert.doesNotMatch(text, /Catan/);
   });
+
+  it("does not fall back to history when this turn's content is empty or missing", () => {
+    const history = [
+      { role: "user", parts: [{ text: "who won Catan last week?" }] },
+      { role: "model", parts: [{ text: "Will" }] },
+    ];
+    assert.equal(recentUserText(history, { content: "" }), "");
+    assert.equal(recentUserText(history, {}), "");
+    assert.equal(recentUserText(history, { content: null }), "");
+  });
 });
 
 describe("fetch + cache", () => {
@@ -439,6 +477,28 @@ describe("fetch + cache", () => {
     assert.deepEqual(result.attached, []);
     assert.equal(result.contents[2].parts[0].text, "thanks");
   });
+
+  it("does not attach from history when this turn's content is empty", async () => {
+    let calls = 0;
+    const service = testService({
+      fetch: async () => {
+        calls += 1;
+        return mockResponse();
+      },
+    });
+    const history = [
+      { role: "user", parts: [{ text: "who won Catan last week?" }] },
+      { role: "model", parts: [{ text: "Will" }] },
+    ];
+    const settings = { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] };
+    const empty = await service.attachIfNeeded(history, { content: "", settings });
+    const missing = await service.attachIfNeeded(history, { settings });
+    assert.equal(calls, 0);
+    assert.deepEqual(empty.attached, []);
+    assert.deepEqual(missing.attached, []);
+    assert.equal(empty.contents[0].parts[0].text, "who won Catan last week?");
+    assert.equal(missing.contents[0].parts[0].text, "who won Catan last week?");
+  });
 });
 
 describe("SSRF protections on fetch", () => {
@@ -557,6 +617,12 @@ describe("SSRF protections on fetch", () => {
       ["::a9fe:a9fe"],
       ["2002:a9fe:a9fe::"],
       ["93.184.216.34", "::ffff:0:169.254.169.254"],
+      [RFC8215_NAT64_48],
+      [TEREDO_SERVER],
+      [ISATAP],
+      ["93.184.216.34", RFC8215_NAT64_48],
+      ["93.184.216.34", TEREDO_SERVER],
+      ["93.184.216.34", ISATAP],
     ]) {
       let calls = 0;
       const service = testService({
@@ -579,6 +645,9 @@ describe("SSRF protections on fetch", () => {
       "https://[64:ff9b::a9fe:a9fe]/",
       "https://[::a9fe:a9fe]/",
       "https://[2002:a9fe:a9fe::]/",
+      `https://[${RFC8215_NAT64_48}]/`,
+      `https://[${TEREDO_SERVER}]/`,
+      `https://[${ISATAP}]/`,
     ];
     for (const location of locations) {
       const requested = [];
@@ -596,6 +665,63 @@ describe("SSRF protections on fetch", () => {
       assert.equal(result.ok, false, location);
       assert.deepEqual(requested, ["https://evil.example/translated"], location);
       assert.doesNotMatch(result.error || "", /169\.254|a9fe|meta-data|ff9b|2002/, location);
+    }
+  });
+
+  it("does not GET RFC 8215 NAT64 /48, Teredo, or ISATAP embeddings of blocked IPv4", async () => {
+    for (const address of LEFTOVER_TRANSLATION_ADDRESSES) {
+      const literalUrl = `https://[${address}]/plays.csv`;
+      let literalCalls = 0;
+      const literalService = testService({
+        fetch: async () => {
+          literalCalls += 1;
+          return mockResponse();
+        },
+      });
+      const literal = await literalService.fetchUrl(literalUrl);
+      assert.equal(literal.ok, false, `literal GET ${address}`);
+      assert.match(literal.error, /not allowed/, `literal ${address}`);
+      assert.equal(literalCalls, 0, `literal GET must not fire for ${address}`);
+
+      let dnsCalls = 0;
+      const dnsService = testService({
+        fetch: async () => {
+          dnsCalls += 1;
+          return mockResponse();
+        },
+        lookup: async () => [address],
+      });
+      const dns = await dnsService.fetchUrl("https://public-looking.example/plays.csv");
+      assert.equal(dns.ok, false, `DNS GET ${address}`);
+      assert.match(dns.error, /not allowed/, `DNS ${address}`);
+      assert.equal(dnsCalls, 0, `DNS GET must not fire for ${address}`);
+
+      let mixedCalls = 0;
+      const mixedService = testService({
+        fetch: async () => {
+          mixedCalls += 1;
+          return mockResponse();
+        },
+        lookup: async () => ["93.184.216.34", address],
+      });
+      const mixed = await mixedService.fetchUrl("https://public-looking.example/plays.csv");
+      assert.equal(mixed.ok, false, `mixed DNS GET ${address}`);
+      assert.equal(mixedCalls, 0, `mixed DNS GET must not fire for ${address}`);
+
+      const requested = [];
+      const redirectService = testService({
+        fetch: async (url) => {
+          requested.push(String(url));
+          return mockResponse({
+            ok: false,
+            status: 302,
+            headers: { location: `https://[${address}]/` },
+          });
+        },
+      });
+      const redirected = await redirectService.fetchUrl("https://evil.example/leftover");
+      assert.equal(redirected.ok, false, `redirect GET ${address}`);
+      assert.deepEqual(requested, ["https://evil.example/leftover"], `redirect must not follow ${address}`);
     }
   });
 

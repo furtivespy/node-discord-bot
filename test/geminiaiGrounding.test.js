@@ -1,6 +1,7 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const { createGeminiAI } = require("../modules/geminiai.js");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { createGeminiAI } from "../modules/geminiai.js";
+import { createContextPackService } from "../modules/contextPacks.js";
 
 describe("GeminiAI grounding XOR + context packs", () => {
   function makeAi() {
@@ -38,7 +39,7 @@ describe("GeminiAI grounding XOR + context packs", () => {
     const ai = makeAi();
     const secret =
       "https://docs.google.com/spreadsheets/d/e/2PACX-1vSecret/pub?output=csv";
-    ai.contextPacks = require("../modules/contextPacks.js").createContextPackService({
+    ai.contextPacks = createContextPackService({
       fetch: async () => ({
         ok: true,
         status: 200,

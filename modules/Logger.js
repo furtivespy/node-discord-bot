@@ -1,8 +1,10 @@
 /*
 Logger class for easy and aesthetically pleasing console logging
 */
-const chalk = require("chalk");
-const moment = require("moment");
+import chalk from "chalk";
+
+import moment from "moment";
+
 
 class Logger {
   static log (content, type = "log") {
@@ -47,4 +49,4 @@ class Logger {
   } 
 }
 
-module.exports = Logger;
+export default Logger;

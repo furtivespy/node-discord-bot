@@ -1,5 +1,6 @@
-const Command = require('../../base/Command.js')
-const _ = require('lodash');
+import Command from '../../base/Command.js';
+import includes from 'lodash/includes.js';
+
 
 class Frozen extends Command {
     constructor(client){
@@ -21,7 +22,7 @@ class Frozen extends Command {
         try {
             var messageText = message.content.trim().toLowerCase()
             if((message.command && (message.command == "frozen" || message.command == "freeze"))
-             || (_.includes(messageText, "frozen") || _.includes(messageText, "freeze") || _.includes(messageText, "froze"))) {
+             || (includes(messageText, "frozen") || includes(messageText, "freeze") || includes(messageText, "froze"))) {
                  await message.react("⛄")
                  await message.react("🍦") 
                  message.react("👸")                  
@@ -32,4 +33,4 @@ class Frozen extends Command {
     }
 }
 
-module.exports = Frozen
+export default Frozen

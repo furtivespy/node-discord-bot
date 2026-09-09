@@ -1,6 +1,6 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const Context = require("../slashcommands/util/context.js");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import Context from "../slashcommands/util/context.js";
 
 const SECRET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vThisIsASecretToken/pub?output=csv";

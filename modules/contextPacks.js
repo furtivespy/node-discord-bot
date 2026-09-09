@@ -1,7 +1,9 @@
-const net = require("net");
-const https = require("https");
+import net from "node:net";
+import https from "node:https";
+import { promises as dnsPromises } from "node:dns";
+import nodeFetch from "node-fetch";
 
-const DEFAULT_FETCH = (...args) => require("node-fetch")(...args);
+const DEFAULT_FETCH = (...args) => nodeFetch(...args);
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes (within the 5–15 min target)
 const MAX_BYTES = 256 * 1024;
@@ -133,34 +135,58 @@ function hextetsToIpv4(hi, lo) {
   return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
 }
 
-function embeddedIpv4FromHextets(hextets) {
-  if (!hextets || hextets.length !== 8) return null;
+function pushIpv4(found, hi, lo, { skipUnspecified = false } = {}) {
+  const ip = hextetsToIpv4(hi, lo);
+  if (skipUnspecified && ip === "0.0.0.0") return;
+  found.push(ip);
+}
+
+function embeddedIpv4sFromHextets(hextets) {
+  if (!hextets || hextets.length !== 8) return [];
   const [h0, h1, h2, h3, h4, h5, h6, h7] = hextets;
+  const found = [];
+
   // IPv4-mapped ::ffff:0:0/96
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
-    return hextetsToIpv4(h6, h7);
+    pushIpv4(found, h6, h7);
   }
   // IPv4-translated / SIIT ::ffff:0:0:0/96
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0xffff && h5 === 0) {
-    return hextetsToIpv4(h6, h7);
+    pushIpv4(found, h6, h7);
   }
   // Deprecated IPv4-compatible ::/96
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
-    return hextetsToIpv4(h6, h7);
+    pushIpv4(found, h6, h7);
   }
   // NAT64 well-known prefix 64:ff9b::/96
   if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
-    return hextetsToIpv4(h6, h7);
+    pushIpv4(found, h6, h7);
   }
-  // NAT64 local-use 64:ff9b:1::/96
-  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0x1 && h3 === 0 && h4 === 0 && h5 === 0) {
-    return hextetsToIpv4(h6, h7);
+  // NAT64 local-use 64:ff9b:1::/48 (RFC 8215). RFC 6052 /48 embeds IPv4 around
+  // the u octet (bits 64–71); /96 form keeps IPv4 in the last 32 bits.
+  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0x1) {
+    if (h3 === 0 && h4 === 0 && h5 === 0) {
+      pushIpv4(found, h6, h7);
+    } else {
+      found.push(`${(h3 >> 8) & 0xff}.${h3 & 0xff}.${h4 & 0xff}.${(h5 >> 8) & 0xff}`);
+    }
   }
   // 6to4 2002::/16 (IPv4 in bits 16–47)
   if (h0 === 0x2002) {
-    return hextetsToIpv4(h1, h2);
+    pushIpv4(found, h1, h2);
   }
-  return null;
+  // Teredo 2001:0::/32 — server IPv4 in bits 32–63; client IPv4 in the last 32
+  // bits, obfuscated with XOR 0xFFFFFFFF (also catch an unobfuscated last 32).
+  if (h0 === 0x2001 && h1 === 0) {
+    pushIpv4(found, h2, h3, { skipUnspecified: true });
+    pushIpv4(found, h6 ^ 0xffff, h7 ^ 0xffff, { skipUnspecified: true });
+    pushIpv4(found, h6, h7, { skipUnspecified: true });
+  }
+  // ISATAP interface identifier …:5efe:IPv4
+  if (h5 === 0x5efe) {
+    pushIpv4(found, h6, h7);
+  }
+  return found;
 }
 
 function isBlockedAddress(address) {
@@ -172,8 +198,7 @@ function isBlockedAddress(address) {
     if (PRIVATE_BLOCKLIST.check(host, "ipv6")) return true;
     const hextets = parseIpv6Hextets(host);
     if (!hextets) return true;
-    const embedded = embeddedIpv4FromHextets(hextets);
-    return Boolean(embedded && isBlockedAddress(embedded));
+    return embeddedIpv4sFromHextets(hextets).some((ip) => isBlockedAddress(ip));
   }
   return false;
 }
@@ -217,9 +242,8 @@ function isRedirectStatus(status) {
 }
 
 async function defaultLookup(hostname) {
-  const { promises: dns } = require("dns");
   try {
-    const results = await dns.lookup(hostname, { all: true, verbatim: true });
+    const results = await dnsPromises.lookup(hostname, { all: true, verbatim: true });
     return results.map((row) => row.address);
   } catch (error) {
     const err = new Error("URL host could not be resolved.");
@@ -399,14 +423,12 @@ function selectPacksForTurn(packs, text) {
   return (packs || []).filter((pack) => packNeedsFetch(pack, text));
 }
 
-function recentUserText(contents, message) {
-  if (message?.content) return String(message.content);
-  const turns = Array.isArray(contents) ? contents : [];
-  for (let i = turns.length - 1; i >= 0; i--) {
-    const turn = turns[i];
-    if (turn?.role !== "user") continue;
-    const text = turn.parts?.[0]?.text;
-    if (text) return String(text);
+function recentUserText(_contents, message) {
+  // This-turn-only: empty or missing Discord content must not fall back to
+  // history (reply-ping / attachment-only mentions would otherwise attach
+  // because an earlier games turn is still in `contents`).
+  if (message && Object.prototype.hasOwnProperty.call(message, "content")) {
+    return String(message.content ?? "");
   }
   return "";
 }
@@ -715,7 +737,7 @@ function createContextPackService(options = {}) {
   };
 }
 
-module.exports = {
+export {
   CACHE_TTL_MS,
   MAX_BYTES,
   MAX_PROMPT_CHARS,

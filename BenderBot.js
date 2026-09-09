@@ -1,4 +1,4 @@
-const {
+import {
   Client,
   Collection,
   Partials,
@@ -6,21 +6,28 @@ const {
   PermissionsBitField,
   REST,
   Routes,
-} = require("discord.js");
-const Enmap = require("./modules/enmap");
-const klaw = require("klaw");
-const path = require("path");
-const database = require("./db/db.js");
-const { createGeminiAI } = require("./modules/geminiai.js")
-const { archiveLiveMessage } = require("./modules/chatArchive.js");
-const { createChatBackfill } = require("./modules/chatBackfill.js");
+} from "discord.js";
+import Enmap from "./modules/enmap.js";
+import klaw from "klaw";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import database from "./db/db.js";
+import { createGeminiAI } from "./modules/geminiai.js";
+import { archiveLiveMessage } from "./modules/chatArchive.js";
+import { createChatBackfill } from "./modules/chatBackfill.js";
+import config from "./config.js";
+import permLevels from "./config.permissionLevels.js";
+import createBugsnagLogger from "./modules/bugsnagLogger.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
 
 class BenderBot extends Client {
   constructor(options) {
     super(options);
-    this.config = require("./config.js");
-    this.permLevels = require("./config.permissionLevels.js");
+    this.config = config;
+    this.permLevels = permLevels;
     this.settings = new Enmap({
       name: "settings",
       cloneLevel: "deep",
@@ -56,15 +63,13 @@ class BenderBot extends Client {
     this.messageEvents = new Collection();
     this.guildDBs = {};
 
-    //requiring the Logger class for easy console logging
-    //this.logger = require("./modules/Logger.js");
-    this.logger = require("./modules/bugsnagLogger.js")(this.config.bugsnagKey, this.config.releaseStage);
+    this.logger = createBugsnagLogger(this.config.bugsnagKey, this.config.releaseStage);
 
     // add geminiAI module
     this.geminiAI = createGeminiAI(this)
     this.chatBackfill = createChatBackfill(this)
     // Basically just an async shortcut to using a setTimeout. Nothing fancy!
-    this.wait = require("util").promisify(setTimeout);
+    this.wait = promisify(setTimeout);
   }
 
   permlevel(message) {
@@ -85,9 +90,16 @@ class BenderBot extends Client {
     return permlvl;
   }
 
-  loadCommand(commandPath, commandName) {
+  async importDefault(commandPath, commandName) {
+    const fileUrl = pathToFileURL(path.join(commandPath, commandName)).href;
+    const mod = await import(fileUrl);
+    return mod.default;
+  }
+
+  async loadCommand(commandPath, commandName) {
     try {
-      const props = new (require(`${commandPath}${path.sep}${commandName}`))(
+      const CommandClass = await this.importDefault(commandPath, commandName);
+      const props = new CommandClass(
         this
       );
       this.logger.log(`Loading Command: ${props.help.name}. 👌`, "log");
@@ -105,9 +117,10 @@ class BenderBot extends Client {
     }
   }
 
-  loadSlashCommand(commandPath, commandName) {
+  async loadSlashCommand(commandPath, commandName) {
     try {
-      const props = new (require(`${commandPath}${path.sep}${commandName}`))(
+      const CommandClass = await this.importDefault(commandPath, commandName);
+      const props = new CommandClass(
         this
       );
       this.logger.log(`Loading Slash Command: ${props.help.name}. 👌`, "log");
@@ -118,9 +131,10 @@ class BenderBot extends Client {
     }
   }
 
-  loadEvent(commandPath, commandName) {
+  async loadEvent(commandPath, commandName) {
     try {
-      const props = new (require(`${commandPath}${path.sep}${commandName}`))(
+      const EventClass = await this.importDefault(commandPath, commandName);
+      const props = new EventClass(
         this
       );
       this.logger.log(`Loading Event: ${props.help.name}. 👌`, "log");
@@ -148,9 +162,12 @@ class BenderBot extends Client {
     if (command.shutdown) {
       await command.shutdown(this);
     }
-    delete require.cache[
-      require.resolve(`${commandPath}${path.sep}${commandName}.js`)
-    ];
+    // ESM has no require.cache. Drop the in-memory command; a later load of
+    // the same file URL still returns the cached module graph.
+    this.commands.delete(command.help.name);
+    command.conf.aliases.forEach((alias) => {
+      this.aliases.delete(alias);
+    });
     return false;
   }
 
@@ -250,36 +267,44 @@ const client = new BenderBot({
   ]
 });
 
+function collectJsFiles(dir) {
+  return new Promise((resolve, reject) => {
+    const files = [];
+    klaw(dir)
+      .on("data", (item) => {
+        const cmdFile = path.parse(item.path);
+        if (!cmdFile.ext || cmdFile.ext !== ".js") return;
+        files.push(cmdFile);
+      })
+      .on("error", reject)
+      .on("end", () => resolve(files));
+  });
+}
+
 const init = async () => {
-  klaw("./commands").on("data", (item) => {
-    const cmdFile = path.parse(item.path);
-    if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-    const response = client.loadCommand(
+  for (const cmdFile of await collectJsFiles("./commands")) {
+    const response = await client.loadCommand(
       cmdFile.dir,
       `${cmdFile.name}${cmdFile.ext}`
     );
     if (response) client.logger.error(response);
-  });
+  }
 
-  klaw("./events").on("data", (item) => {
-    const cmdFile = path.parse(item.path);
-    if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-    const response = client.loadEvent(
+  for (const cmdFile of await collectJsFiles("./events")) {
+    const response = await client.loadEvent(
       cmdFile.dir,
       `${cmdFile.name}${cmdFile.ext}`
     );
     if (response) client.logger.error(response);
-  });
+  }
 
-  klaw("./slashcommands").on("data", (item) => {
-    const cmdFile = path.parse(item.path);
-    if (!cmdFile.ext || cmdFile.ext !== ".js") return;
-    const response = client.loadSlashCommand(
+  for (const cmdFile of await collectJsFiles("./slashcommands")) {
+    const response = await client.loadSlashCommand(
       cmdFile.dir,
       `${cmdFile.name}${cmdFile.ext}`
     );
     if (response) client.logger.error(response);
-  });
+  }
 
   // Then we load events, which will include our message and ready event.
   // const evtFiles = await readdir("./events/");
@@ -287,10 +312,9 @@ const init = async () => {
   // evtFiles.forEach(file => {
   //   const eventName = file.split(".")[0];
   //   client.logger.log(`Loading Event: ${eventName}`);
-  //   const event = new (require(`./events/${file}`))(client);
+  //   const event = new (await import(`./events/${file}`)).default(client);
   //   // This line is awesome by the way. Just sayin'.
   //   client.on(eventName, (...args) => event.run(...args));
-  //   delete require.cache[require.resolve(`./events/${file}`)];
   // });
 
   client.levelCache = {};

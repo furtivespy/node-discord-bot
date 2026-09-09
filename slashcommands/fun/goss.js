@@ -1,6 +1,8 @@
-const SlashCommand = require('../../base/SlashCommand.js')
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder } = require('discord.js');
+import SlashCommand from '../../base/SlashCommand.js';
+import { SlashCommandBuilder } from '@discordjs/builders';
+
+import { EmbedBuilder } from 'discord.js';
+
 
 class Goss extends SlashCommand {
     constructor(client){
@@ -48,4 +50,4 @@ class Goss extends SlashCommand {
     }
 }
 
-module.exports = Goss
+export default Goss

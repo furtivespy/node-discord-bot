@@ -1,7 +1,8 @@
-const SlashCommand = require("../../base/SlashCommand.js");
-const { SlashCommandBuilder } = require("discord.js");
-const {GetBookEmbed} = require('../../modules/openLibrary.js')
+import SlashCommand from "../../base/SlashCommand.js";
 
+import { SlashCommandBuilder } from "discord.js";
+
+import {GetBookEmbed} from '../../modules/openLibrary.js';
 class Books extends SlashCommand {
   constructor(client) {
     super(client, {
@@ -40,4 +41,4 @@ class Books extends SlashCommand {
   }
 }
 
-module.exports = Books;
+export default Books;

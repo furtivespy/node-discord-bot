@@ -1,6 +1,9 @@
-const Event = require("../base/Event.js");
-const EventTypes = require("../base/EventTypes.js");
-const { EmbedBuilder, PermissionsBitField } = require("discord.js");
+import Event from "../base/Event.js";
+
+import EventTypes from "../base/EventTypes.js";
+
+import { EmbedBuilder, PermissionsBitField } from "discord.js";
+
 
 const EmptyStarboardData = {
   starboardChannel: undefined,
@@ -190,4 +193,4 @@ class StarBoardAdd extends Event {
   }
 }
 
-module.exports = StarBoardAdd;
+export default StarBoardAdd;

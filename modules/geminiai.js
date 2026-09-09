@@ -1,7 +1,24 @@
-const { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } = require("@google/genai");
-const { AttachmentBuilder } = require("discord.js");
-const { liveMessageText } = require("./chatArchive.js");
-const { createContextPackService, scrubErrorMessage } = require("./contextPacks.js");
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from "@google/genai";
+import { AttachmentBuilder } from "discord.js";
+import { liveMessageText } from "./chatArchive.js";
+import groundingRouter from "./prompt_components/grounding_router.js";
+import personalityDetective from "./prompt_components/personality_detective.js";
+import personalityZenmasterNj from "./prompt_components/personality_zenmaster_nj.js";
+import personalityDwarfCraftsman from "./prompt_components/personality_dwarf_craftsman.js";
+import personalityShipComputer from "./prompt_components/personality_ship_computer.js";
+import personalityEducatorJoy from "./prompt_components/personality_educator_joy.js";
+import personalityOracleSigh from "./prompt_components/personality_oracle_sigh.js";
+import personalityShakespeare from "./prompt_components/personality_shakespeare.js";
+import personalityPirateQm from "./prompt_components/personality_pirate_qm.js";
+import personalityAnxiousPhilosopher from "./prompt_components/personality_anxious_philosopher.js";
+import personalityChicagoPope from "./prompt_components/personality_chicago_pope.js";
+import personalityBender from "./prompt_components/personality_bender.js";
+import identityTemplate from "./prompt_components/identity.js";
+import chatInstructionsTemplate from "./prompt_components/chat_instructions.js";
+import formattingInstructions from "./prompt_components/formatting_instructions.js";
+import capabilitiesTemplate from "./prompt_components/capabilities.js";
+import { extractImageCallout } from "./imageCallout.js";
+import { createContextPackService, scrubErrorMessage } from "./contextPacks.js";
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
@@ -147,7 +164,7 @@ class GeminiAI {
               required: ["grounding"],
             },
             safetySettings: this.chatSafetySettings(),
-            systemInstruction: require("./prompt_components/grounding_router.js"),
+            systemInstruction: groundingRouter,
           },
         });
         const raw = this.routerResponsePreview(result);
@@ -225,47 +242,44 @@ class GeminiAI {
 
       switch (selectedPersonalityKey) {
         case "detective":
-          personality = require('./prompt_components/personality_detective.js');
+          personality = personalityDetective;
           break;
         case "zenmaster_nj":
-          personality = require('./prompt_components/personality_zenmaster_nj.js');
+          personality = personalityZenmasterNj;
           break;
         case "dwarf_craftsman":
-          personality = require('./prompt_components/personality_dwarf_craftsman.js');
+          personality = personalityDwarfCraftsman;
           break;
         case "ship_computer":
-          const shipComputerFn = require('./prompt_components/personality_ship_computer.js');
-          personality = shipComputerFn(message.guild ? message.guild.name : "Default Guild"); // Added a fallback for guild name
+          personality = personalityShipComputer(message.guild ? message.guild.name : "Default Guild"); // Added a fallback for guild name
           break;
         case "educator_joy":
-          personality = require('./prompt_components/personality_educator_joy.js');
+          personality = personalityEducatorJoy;
           break;
         case "oracle_sigh":
-          personality = require('./prompt_components/personality_oracle_sigh.js');
+          personality = personalityOracleSigh;
           break;
         case "shakespeare": // New case
-          personality = require('./prompt_components/personality_shakespeare.js');
+          personality = personalityShakespeare;
           break;
         case "pirate_qm": // New case
-          const pirateQmFn = require('./prompt_components/personality_pirate_qm.js');
-          personality = pirateQmFn(message.guild ? message.guild.name : "Default Guild");
+          personality = personalityPirateQm(message.guild ? message.guild.name : "Default Guild");
           break;
         case "anxious_philosopher": // New case
-          personality = require('./prompt_components/personality_anxious_philosopher.js');
+          personality = personalityAnxiousPhilosopher;
           break;
         case "chicago_pope": // New case
-          personality = require('./prompt_components/personality_chicago_pope.js');
+          personality = personalityChicagoPope;
           break;
         case "bender":
         default: // Fallback to bender if key is invalid or explicitly bender
-          personality = require('./prompt_components/personality_bender.js');
+          personality = personalityBender;
           break;
       }
       // End of new block
-      const identity = require('./prompt_components/identity.js')(botname, clientId, this.buildPeopleRoster(message));
-      const chatInstructions = require('./prompt_components/chat_instructions.js')(tools);
-      const formattingInstructions = require('./prompt_components/formatting_instructions.js');
-      const capabilities = require('./prompt_components/capabilities.js')(tools);
+      const identity = identityTemplate(botname, clientId, this.buildPeopleRoster(message));
+      const chatInstructions = chatInstructionsTemplate(tools);
+      const capabilities = capabilitiesTemplate(tools);
 
       // Construct the full instruction string, joining components with a space.
       const instructions = [
@@ -693,16 +707,11 @@ class GeminiAI {
   // Note: Regex-based reasoning stripping is intentionally removed.
 
   let image = null;
-  // Image prompt extraction - operates on the extracted responseText
-  if (responseText.startsWith("Error:")) {
-    // Do not attempt image prompt extraction if responseText is an error message
-  } else if (responseText.includes("Processing image of") || responseText.includes("Generating image of")) {
-    const keyword = responseText.includes("Processing image of") ? "Processing image of" : "Generating image of";
-    const keywordParts = responseText.split(keyword);
-    if (keywordParts.length > 1 && keywordParts[1]) {
-        const imagePartCandidate = keywordParts[1].split("\n")[0];
-        image = imagePartCandidate.trim();
-    }
+  // Image prompt extraction - also strips the callout from user-visible text.
+  if (!responseText.startsWith("Error:")) {
+    const extracted = extractImageCallout(responseText);
+    responseText = extracted.text;
+    image = extracted.imagePrompt;
   }
 
   // Standard cleanup - operates on the extracted responseText
@@ -753,4 +762,4 @@ class GeminiAI {
 }
 }
 
-module.exports = { createGeminiAI }
+export { createGeminiAI };
