@@ -29,7 +29,7 @@ Upload a `.csv` (or `.tsv` / plain text table) and use an `https://` object URL.
 
 ## 2. Register the URL on the Discord server
 
-Admins (Discord **Administrator** permission):
+Anyone in the server can register a pack:
 
 ```
 /context add url:<published-csv> name:plays kind:plays

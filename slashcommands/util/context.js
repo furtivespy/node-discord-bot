@@ -1,6 +1,5 @@
 import SlashCommand from "../../base/SlashCommand.js";
 import { SlashCommandBuilder } from "@discordjs/builders";
-import { PermissionsBitField } from "discord.js";
 import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
@@ -18,12 +17,11 @@ class Context extends SlashCommand {
       description: "Configure per-server CSV context packs for chat",
       usage: "/context add url:https://… name:plays",
       enabled: true,
-      permLevel: "Administrator",
+      permLevel: "User",
     });
     this.data = new SlashCommandBuilder()
       .setName(this.help.name)
       .setDescription(this.help.description)
-      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
       .setDMPermission(false)
       .addSubcommand((subcommand) =>
         subcommand
