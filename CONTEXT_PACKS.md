@@ -43,14 +43,18 @@ Other commands (all ephemeral; URLs are shown redacted as `https://host/…`):
 
 ```
 /context list
+/context status
+/context status all:True
 /context remove name:plays
 /context refresh
 /context refresh name:plays
 ```
 
-`/context refresh` clears the 10-minute fetch cache so the next matching mention downloads again.
+`/context status` is **admin-only** (server Administrator, or the bot owner / configured admin IDs). It is the freshness dashboard: per pack, whether it is configured, last successful fetch, last result (`ok` / HTTP error / parse error / timeout), cached row count, and cache TTL/expiry. Missing (no pack) is visually distinct from configured-but-broken. The reply is always ephemeral. Bot owner can pass `all:True` to scan every joined server.
 
-The bot does a one-time fetch when you add a pack so you can see whether the URL is reachable. A failure there does not unset the pack; chat will retry later.
+`/context refresh` (and the **Refresh now** buttons on `/context status`) re-download immediately instead of waiting for the 10-minute cache TTL, then report ok/error + row count.
+
+The bot does a one-time fetch when you add a pack so you can see whether the URL is reachable. A failure there does not unset the pack; chat will retry later. Last fetch metadata (`last_ok_at`, `last_error`, `last_row_count`) is stored on the guild pack so the dashboard still works after a process restart.
 
 ## 3. What a play-tracker CSV should look like
 

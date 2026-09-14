@@ -194,5 +194,10 @@ describe("help catalog", () => {
     assert.ok(details.includes("view"));
     assert.ok(details.includes("reset"));
     assert.ok(!helpContainsPrefixDocs(details));
+
+    const context = formatCommandDetails(slashcommands.get("context"));
+    assert.ok(context.includes("status"));
+    assert.ok(context.includes("refresh"));
+    assert.match(context, /freshness/i);
   });
 });
