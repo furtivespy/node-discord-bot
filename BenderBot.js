@@ -19,6 +19,7 @@ import { createChatBackfill } from "./modules/chatBackfill.js";
 import config from "./config.js";
 import permLevels from "./config.permissionLevels.js";
 import createBugsnagLogger from "./modules/bugsnagLogger.js";
+import { rememberSlashCommandIds } from "./modules/guildHelpFeatures.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
@@ -394,7 +395,8 @@ const init = async () => {
             }
           )
           .then((response) => {
-            client.logger.log("Successfully registered application commands.")
+            rememberSlashCommandIds(client, response);
+            client.logger.log("Successfully registered application commands.");
           })
           .catch((error) => client.logger.error(error));
       } else {
@@ -404,8 +406,8 @@ const init = async () => {
             body: cmds,
           })
           .then((response) => {
+            rememberSlashCommandIds(client, response);
             client.logger.log("Successfully registered application commands.");
-            //client.logger.log(JSON.stringify(response, null, 2));
           })
           .catch((error) => client.logger.error(error));
       }

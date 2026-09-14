@@ -16,6 +16,7 @@ class Context extends SlashCommand {
       name: "context",
       description: "Configure per-server CSV context packs for chat",
       usage: "/context add url:https://… name:plays",
+      category: "chat",
       enabled: true,
       permLevel: "User",
     });
