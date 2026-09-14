@@ -268,6 +268,12 @@ describe("guild pack settings", () => {
   it("rejects invalid pack names", () => {
     assert.match(validatePackName("").error, /empty/);
     assert.match(validatePackName("1plays").error, /start with a letter/);
+    assert.match(validatePackName("all").error, /reserved/);
+    assert.match(validatePackName("ALL").error, /reserved/);
+    assert.match(upsertGuildPack([], { name: "all", url: SECRET_URL }).error, /reserved/);
+    const leftover = [{ name: "all", kind: "plays", url: SECRET_URL }];
+    const removed = removeGuildPack(leftover, "all");
+    assert.deepEqual(removed.packs, []);
     assert.equal(PACK_KINDS.includes("plays"), true);
     assert.match(normalizePack({ name: "plays", kind: "sheets", url: SECRET_URL }).error, /Kind/);
   });

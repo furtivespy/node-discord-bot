@@ -229,7 +229,8 @@ describe("/context command", () => {
     const text = payload.embeds[0].data.description;
     assert.equal(payload.ephemeral, true);
     assert.match(text, /`plays`/);
-    assert.match(text, /healthy|stale/);
+    assert.match(text, /healthy/);
+    assert.doesNotMatch(text, /stale/);
     assert.match(text, /Configured: yes/);
     assert.match(text, /Last success:/);
     assert.match(text, /Last fetch: ok/);
@@ -262,10 +263,14 @@ describe("/context command", () => {
     const refresh = mockInteraction({ subcommand: "refresh", strings: { name: "plays" } });
     await cmd.execute(refresh);
     assert.equal(calls, 2);
+    assert.equal(refresh.deferred, true);
+    assert.equal(refresh.replies[0].deferred, true);
     assert.equal(refresh.replies[0].ephemeral, true);
-    assert.match(refresh.replies[0].content, /HTTP error \(404\)/);
-    assert.match(refresh.replies[0].content, /Last good copy is still in cache/);
-    assert.doesNotMatch(refresh.replies[0].content, /2PACX/);
+    const result = refresh.replies.find((payload) => payload.content);
+    assert.equal(result.ephemeral, undefined);
+    assert.match(result.content, /HTTP error \(404\)/);
+    assert.match(result.content, /Last good copy is still in cache/);
+    assert.doesNotMatch(result.content, /2PACX/);
 
     const stored = client.getSettings({ id: "guild-1" }).context_packs[0];
     assert.equal(stored.last_result, "http_error");
@@ -280,6 +285,112 @@ describe("/context command", () => {
     assert.match(text, /Configured: yes/);
     assert.doesNotMatch(text, /No context packs configured/);
     assert.doesNotMatch(text, /2PACX/);
+  });
+
+  it("defers /context refresh before awaiting the pack fetch", async () => {
+    const refresh = mockInteraction({ subcommand: "refresh" });
+    let deferredWhenFetchStarted = false;
+    const client = mockClient({
+      service: {
+        invalidate() {},
+        getUrlStatus() {
+          return { ttlMs: 10 * 60 * 1000 };
+        },
+        async fetchUrl() {
+          deferredWhenFetchStarted = Boolean(refresh.deferred);
+          return { ok: true, bytes: 42, last_result: "ok", last_row_count: 2 };
+        },
+      },
+    });
+    client.settings.set(
+      "guild-1",
+      [{ name: "plays", kind: "plays", url: SECRET_URL }],
+      "context_packs"
+    );
+    const cmd = new Context(client);
+    await cmd.execute(refresh);
+    assert.equal(deferredWhenFetchStarted, true);
+    assert.equal(refresh.replies[0].deferred, true);
+    assert.equal(refresh.replies[0].ephemeral, true);
+    assert.match(refresh.replies[1].content, /Refreshed 1 pack/);
+  });
+
+  it("shows persisted last_result ok as healthy when the in-memory cache is empty", async () => {
+    const client = mockClient({
+      service: {
+        invalidate() {},
+        getUrlStatus() {
+          return { ttlMs: 10 * 60 * 1000, inCache: false, cacheStale: true };
+        },
+        async fetchUrl() {
+          return { ok: true, bytes: 42, last_result: "ok", last_row_count: 12 };
+        },
+      },
+    });
+    client.settings.set(
+      "guild-1",
+      [
+        {
+          name: "plays",
+          kind: "plays",
+          url: SECRET_URL,
+          last_result: "ok",
+          last_ok_at: 1_700_000_000_000,
+          last_attempt_at: 1_700_000_000_000,
+          last_row_count: 12,
+        },
+      ],
+      "context_packs"
+    );
+    const cmd = new Context(client);
+    const status = mockInteraction({ subcommand: "status" });
+    await cmd.execute(status);
+    const text = status.replies[0].embeds[0].data.description;
+    assert.match(text, /healthy/);
+    assert.match(text, /Last fetch: ok/);
+    assert.doesNotMatch(text, /latest fetch failed/);
+    assert.doesNotMatch(text, /stale/);
+  });
+
+  it("rejects reserved pack name all and still renders status if one already exists", async () => {
+    const client = mockClient();
+    const cmd = new Context(client);
+    const add = mockInteraction({
+      subcommand: "add",
+      strings: { url: SECRET_URL, name: "all" },
+    });
+    await cmd.execute(add);
+    assert.match(add.replies[0].content, /reserved/);
+    assert.equal(client.getSettings({ id: "guild-1" }).context_packs, undefined);
+
+    const refreshNamed = mockInteraction({
+      subcommand: "refresh",
+      strings: { name: "all" },
+    });
+    client.settings.set(
+      "guild-1",
+      [{ name: "plays", kind: "plays", url: SECRET_URL }],
+      "context_packs"
+    );
+    await cmd.execute(refreshNamed);
+    assert.match(refreshNamed.replies[0].content, /reserved/);
+    assert.equal(refreshNamed.deferred, undefined);
+
+    client.settings.set(
+      "guild-1",
+      [
+        { name: "all", kind: "plays", url: SECRET_URL, last_result: "ok" },
+        { name: "plays", kind: "plays", url: SECRET_URL, last_result: "ok" },
+      ],
+      "context_packs"
+    );
+    const status = mockInteraction({ subcommand: "status" });
+    await cmd.execute(status);
+    const ids = status.replies[0].components
+      .flatMap((row) => row.components)
+      .map((button) => button.data.custom_id);
+    assert.deepEqual(ids, ["context:refresh:all", "context:refresh:plays"]);
+    assert.equal(new Set(ids).size, ids.length);
   });
 
   it("owner all-guilds view is denied to ordinary guild admins", async () => {

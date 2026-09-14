@@ -12,6 +12,7 @@ const FETCH_TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 3;
 const MAX_PACKS_PER_GUILD = 8;
 const MAX_NAME_LENGTH = 32;
+const RESERVED_PACK_NAMES = new Set(["all"]);
 const REDACTED_URL_RE = /https?:\/\/[^\s)'"<>]+/gi;
 
 const PRIVATE_BLOCKLIST = new net.BlockList();
@@ -323,7 +324,7 @@ function validateContextUrl(rawUrl) {
   return { url: trimmed };
 }
 
-function validatePackName(rawName) {
+function validatePackName(rawName, { allowReserved = false } = {}) {
   const name = String(rawName || "")
     .trim()
     .toLowerCase();
@@ -333,6 +334,9 @@ function validatePackName(rawName) {
   }
   if (!/^[a-z][a-z0-9-]*$/.test(name)) {
     return { error: "Name must start with a letter and use only letters, numbers, and hyphens." };
+  }
+  if (!allowReserved && RESERVED_PACK_NAMES.has(name)) {
+    return { error: `Name \`${name}\` is reserved.` };
   }
   return { name };
 }
@@ -401,7 +405,7 @@ function upsertGuildPack(packs, input) {
 }
 
 function removeGuildPack(packs, rawName) {
-  const named = validatePackName(rawName);
+  const named = validatePackName(rawName, { allowReserved: true });
   if (named.error) return named;
   const next = Array.isArray(packs) ? packs.filter(isStoredPack) : [];
   const remaining = next.filter((pack) => pack.name !== named.name);

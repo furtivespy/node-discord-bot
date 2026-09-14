@@ -279,32 +279,30 @@ class Context extends SlashCommand {
       return;
     }
 
-    if (!rawName) {
-      const lines = await this.refreshPacks(interaction.guild.id, packs);
-      await interaction.reply({
-        content: `Refreshed ${packs.length} pack(s) now:\n${lines.join("\n")}`,
-        ephemeral: true,
-      });
-      return;
+    let selected = packs;
+    if (rawName) {
+      const named = validatePackName(rawName);
+      if (named.error) {
+        await interaction.reply({ content: named.error, ephemeral: true });
+        return;
+      }
+      const pack = packs.find((item) => item.name === named.name);
+      if (!pack) {
+        await interaction.reply({
+          content: `No context pack named \`${named.name}\`.`,
+          ephemeral: true,
+        });
+        return;
+      }
+      selected = [pack];
     }
 
-    const named = validatePackName(rawName);
-    if (named.error) {
-      await interaction.reply({ content: named.error, ephemeral: true });
-      return;
-    }
-    const pack = packs.find((item) => item.name === named.name);
-    if (!pack) {
-      await interaction.reply({
-        content: `No context pack named \`${named.name}\`.`,
-        ephemeral: true,
-      });
-      return;
-    }
-    const lines = await this.refreshPacks(interaction.guild.id, [pack]);
-    await interaction.reply({
-      content: lines.join("\n"),
-      ephemeral: true,
+    await interaction.deferReply({ ephemeral: true });
+    const lines = await this.refreshPacks(interaction.guild.id, selected);
+    await interaction.editReply({
+      content: rawName
+        ? lines.join("\n")
+        : `Refreshed ${packs.length} pack(s) now:\n${lines.join("\n")}`,
     });
   }
 
@@ -326,12 +324,15 @@ class Context extends SlashCommand {
           .setCustomId(refreshCustomId("all"))
           .setLabel("Refresh now")
           .setStyle(ButtonStyle.Primary),
-        ...snapshot.packs.slice(0, 4).map((pack) =>
-          new ButtonBuilder()
-            .setCustomId(refreshCustomId(pack.name))
-            .setLabel(`Refresh ${pack.name}`.slice(0, 80))
-            .setStyle(ButtonStyle.Secondary)
-        ),
+        ...snapshot.packs
+          .filter((pack) => pack.name !== "all")
+          .slice(0, 4)
+          .map((pack) =>
+            new ButtonBuilder()
+              .setCustomId(refreshCustomId(pack.name))
+              .setLabel(`Refresh ${pack.name}`.slice(0, 80))
+              .setStyle(ButtonStyle.Secondary)
+          ),
       ];
       for (let i = 0; i < buttons.length; i += 5) {
         components.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));

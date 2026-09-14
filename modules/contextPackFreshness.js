@@ -27,9 +27,8 @@ const HEALTH_COLOR = {
 };
 
 const HEALTH_LINE = {
-  healthy: "✅ healthy — last fetch succeeded and the cache is still fresh",
-  stale:
-    "⚠️ stale — configured, but the cache is old or the latest fetch failed (chat may still use old rows)",
+  healthy: "✅ healthy — last fetch succeeded",
+  stale: "⚠️ stale — configured, but the latest fetch failed (chat may still use old rows)",
   broken: "❌ broken — configured, but Bender has never successfully fetched it",
   never: "💤 never fetched — configured, but nothing has been downloaded yet",
   missing: "▫️ not configured",
@@ -83,13 +82,12 @@ function inferPackHealth({
   last_result = null,
   last_ok_at = null,
   last_attempt_at = null,
-  inCache = false,
-  cacheStale = true,
 } = {}) {
   if (!configured) return HEALTH.missing;
   if (!last_attempt_at && !last_ok_at && !last_result) return HEALTH.never;
-  if (last_result === "ok" && inCache && !cacheStale) return HEALTH.healthy;
-  if (last_result === "ok") return HEALTH.stale;
+  // Persisted last_result "ok" is healthy even after restart (in-memory cache is empty).
+  // Cache TTL / inCache is shown on the expires line, not the headline.
+  if (last_result === "ok") return HEALTH.healthy;
   if (last_result && last_result !== "ok") {
     return last_ok_at ? HEALTH.stale : HEALTH.broken;
   }

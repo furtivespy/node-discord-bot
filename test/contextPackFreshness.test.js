@@ -46,8 +46,27 @@ describe("context pack freshness dashboard", () => {
     );
     assert.equal(
       inferPackHealth({ last_result: "ok", last_ok_at: 1, inCache: false, cacheStale: true }),
-      HEALTH.stale
+      HEALTH.healthy
     );
+  });
+
+  it("does not label persisted last_result ok as stale after a cache miss", () => {
+    const row = buildPackFreshness(
+      {
+        ...PLAYS,
+        last_result: "ok",
+        last_ok_at: 1_700_000_000_000,
+        last_attempt_at: 1_700_000_000_000,
+        last_row_count: 12,
+      },
+      { ttlMs: 10 * 60 * 1000, inCache: false, cacheStale: true }
+    );
+    assert.equal(row.health, HEALTH.healthy);
+    const text = formatPackSectionForAssert(row);
+    assert.match(text, /healthy/);
+    assert.match(text, /Last fetch: ok/);
+    assert.doesNotMatch(text, /latest fetch failed/);
+    assert.doesNotMatch(text, /stale/);
   });
 
   it("never prints the secret URL and keeps missing vs failing visually distinct", () => {
