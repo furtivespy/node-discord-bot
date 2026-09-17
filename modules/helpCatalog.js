@@ -1,8 +1,18 @@
 import { ApplicationCommandOptionType, PermissionsBitField } from "discord.js";
+import {
+  collectCommandIds,
+  collectHelpFeatures,
+  formatCommandMention,
+} from "./guildHelpFeatures.js";
 
 /**
  * `/help` reads the live slash-command collection. New commands show up
  * automatically when they load from slashcommands/<area>/.
+ *
+ * When guild config can be read, overview also sections this-server features
+ * (context packs, image gen, chat memory, starboard) and command names become
+ * Discord application-command mentions. Missing flags/IDs fail soft to the
+ * global `/name` list.
  *
  * Set `category` on the command if the folder is the wrong help group
  * (e.g. chat, admin). Set `hidden: true` for owner-only / internal commands.
@@ -115,11 +125,25 @@ function viewerFromInteraction(interaction, client) {
   } catch {
     isAdmin = false;
   }
+  let commandIds = {};
+  let features = { known: false, items: [] };
+  try {
+    commandIds = collectCommandIds(client, interaction.guild);
+  } catch {
+    commandIds = {};
+  }
+  try {
+    features = collectHelpFeatures(client, interaction.guild);
+  } catch {
+    features = { known: false, items: [] };
+  }
   return {
     inGuild: Boolean(interaction.guild),
     nsfwChannel: Boolean(interaction.channel?.nsfw),
     isAdmin,
     isOwner: Boolean(ownerId) && ownerId === interaction.user.id,
+    commandIds,
+    features,
   };
 }
 
@@ -149,8 +173,61 @@ function commandDescription(cmd) {
     .trim();
 }
 
-function formatCommandLine(cmd) {
-  return `\`/${cmd.help.name}\` — ${commandDescription(cmd)}`;
+function formatCommandLine(cmd, commandIds = {}) {
+  return `${formatCommandMention(cmd.help.name, commandIds)} — ${commandDescription(cmd)}`;
+}
+
+function visibleFeatureItems(viewer = {}) {
+  const items = viewer.features?.items;
+  if (!viewer.features?.known || !Array.isArray(items)) return [];
+  return items.filter((item) => !item.adminOnly || viewer.isAdmin || viewer.isOwner);
+}
+
+function formatFeatureLine(item, commandIds = {}) {
+  const blurb = item.available ? item.availableBlurb : item.unavailableBlurb;
+  const mention = item.command ? ` ${formatCommandMention(item.command, commandIds)}` : "";
+  return `**${item.label}** — ${blurb}${mention}`.trim();
+}
+
+function featureFields(viewer = {}) {
+  const items = visibleFeatureItems(viewer);
+  if (!items.length) return [];
+  const commandIds = viewer.commandIds || {};
+  const available = items.filter((item) => item.available);
+  const missing = items.filter((item) => !item.available);
+  const fields = [];
+  if (available.length) {
+    fields.push({
+      name: "✅ Available here",
+      value: available.map((item) => formatFeatureLine(item, commandIds)).join("\n").slice(0, 1024),
+    });
+  }
+  if (missing.length) {
+    fields.push({
+      name: "🚫 Not set up on this server",
+      value: missing.map((item) => formatFeatureLine(item, commandIds)).join("\n").slice(0, 1024),
+    });
+  }
+  return fields;
+}
+
+function categoryFeatureNote(categoryId, viewer = {}) {
+  const items = visibleFeatureItems(viewer).filter((item) => {
+    if (categoryId === "chat") return ["context_packs", "image_gen", "file_search"].includes(item.id);
+    if (categoryId === "admin") return item.id === "starboard";
+    return false;
+  });
+  if (!items.length) return "";
+  return items
+    .map((item) => `${item.label}: ${item.available ? "on" : "not set up"}`)
+    .join(" · ");
+}
+
+function helpFooter(viewer = {}) {
+  if (viewer.features?.known) {
+    return { text: "Tap a command name to use it. This-server features are listed first." };
+  }
+  return { text: "Live slash commands only. This list matches what Bender has loaded." };
 }
 
 function usefulUsage(cmd) {
@@ -201,12 +278,16 @@ function groupByCategory(commands) {
   });
 }
 
-function overviewEmbed(commands) {
+function overviewEmbed(commands, viewer = {}) {
+  const commandIds = viewer.commandIds || {};
   const groups = groupByCategory(commands);
-  const fields = groups.map(({ meta, commands: cmds }) => ({
-    name: `${meta.emoji} ${meta.label}`,
-    value: cmds.map(formatCommandLine).join("\n").slice(0, 1024) || "—",
-  }));
+  const fields = [
+    ...featureFields(viewer),
+    ...groups.map(({ meta, commands: cmds }) => ({
+      name: `${meta.emoji} ${meta.label}`,
+      value: cmds.map((cmd) => formatCommandLine(cmd, commandIds)).join("\n").slice(0, 1024) || "—",
+    })),
+  ];
   return {
     color: HELP_COLOR,
     title: "Bender — slash commands",
@@ -215,21 +296,22 @@ function overviewEmbed(commands) {
       "Use `/help command:wiki` for details on one command.",
     ].join("\n\n"),
     fields,
-    footer: { text: "Live slash commands only. This list matches what Bender has loaded." },
+    footer: helpFooter(viewer),
   };
 }
 
-function categoryEmbed(categoryId, commands) {
+function categoryEmbed(categoryId, commands, viewer = {}) {
   const meta = categoryMeta(categoryId);
+  const commandIds = viewer.commandIds || {};
   const group = groupByCategory(commands).find((g) => g.meta.id === meta.id);
   const listed = group?.commands || [];
+  const note = categoryFeatureNote(categoryId, viewer);
+  const commandLines = listed.map((cmd) => formatCommandLine(cmd, commandIds)).join("\n") || "Nothing to show here.";
   return {
     color: HELP_COLOR,
     title: `${meta.emoji} ${meta.label}`,
-    description: [meta.description, "", listed.map(formatCommandLine).join("\n") || "Nothing to show here."]
-      .join("\n")
-      .slice(0, 4096),
-    footer: { text: "Live slash commands only. This list matches what Bender has loaded." },
+    description: [meta.description, note, commandLines].filter(Boolean).join("\n\n").slice(0, 4096),
+    footer: helpFooter(viewer),
   };
 }
 
@@ -278,7 +360,7 @@ function resolveHelpView(slashcommands, viewer, { commandName, categoryId } = {}
       };
     }
     return {
-      embed: overviewEmbed(commands),
+      embed: overviewEmbed(commands, viewer),
       selectedId: OVERVIEW_ID,
       commands,
       note: `\`${wanted}\` is not a current slash command you can use here. Browse below or start typing \`/\`.`,
@@ -288,7 +370,7 @@ function resolveHelpView(slashcommands, viewer, { commandName, categoryId } = {}
     const visible = commands.some((c) => categoryIdFor(c) === categoryId);
     if (visible) {
       return {
-        embed: categoryEmbed(categoryId, commands),
+        embed: categoryEmbed(categoryId, commands, viewer),
         selectedId: categoryId,
         commands,
         note: null,
@@ -296,7 +378,7 @@ function resolveHelpView(slashcommands, viewer, { commandName, categoryId } = {}
     }
     if (categoryId === "nsfw" && !viewer.nsfwChannel) {
       return {
-        embed: overviewEmbed(commands),
+        embed: overviewEmbed(commands, viewer),
         selectedId: OVERVIEW_ID,
         commands,
         note: "NSFW commands only appear in NSFW channels.",
@@ -304,21 +386,21 @@ function resolveHelpView(slashcommands, viewer, { commandName, categoryId } = {}
     }
     if (categoryId === "admin" && !viewer.isAdmin && !viewer.isOwner) {
       return {
-        embed: overviewEmbed(commands),
+        embed: overviewEmbed(commands, viewer),
         selectedId: OVERVIEW_ID,
         commands,
         note: "Admin commands are only listed for server administrators.",
       };
     }
     return {
-      embed: overviewEmbed(commands),
+      embed: overviewEmbed(commands, viewer),
       selectedId: OVERVIEW_ID,
       commands,
       note: "Nothing to show for that category here.",
     };
   }
   return {
-    embed: overviewEmbed(commands),
+    embed: overviewEmbed(commands, viewer),
     selectedId: OVERVIEW_ID,
     commands,
     note: null,

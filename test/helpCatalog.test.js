@@ -153,6 +153,7 @@ describe("help catalog", () => {
     assert.ok(chat.embed.description.includes("/setpersonality"));
     assert.ok(chat.embed.description.includes("/markov"));
     assert.ok(chat.embed.description.includes("/prompt"));
+    assert.ok(chat.embed.description.includes("/context"));
 
     const missing = resolveHelpView(slashcommands, viewer, { commandName: "bringo" });
     assert.ok(missing.note.includes("not a current slash command"));
@@ -181,6 +182,7 @@ describe("help catalog", () => {
   it("assigns chat/admin categories from command metadata, not leftover prefix groups", () => {
     assert.equal(categoryIdFor(slashcommands.get("setpersonality")), "chat");
     assert.equal(categoryIdFor(slashcommands.get("markov")), "chat");
+    assert.equal(categoryIdFor(slashcommands.get("context")), "chat");
     assert.equal(categoryIdFor(slashcommands.get("config")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("starboard")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("wiki")), "info");
@@ -194,5 +196,133 @@ describe("help catalog", () => {
     assert.ok(details.includes("view"));
     assert.ok(details.includes("reset"));
     assert.ok(!helpContainsPrefixDocs(details));
+  });
+
+  it("sections this-server features and deep-links when command ids are known", () => {
+    const on = resolveHelpView(slashcommands, {
+      inGuild: true,
+      nsfwChannel: false,
+      isAdmin: false,
+      isOwner: false,
+      commandIds: { context: "222", wiki: "100", help: "1" },
+      features: {
+        known: true,
+        items: [
+          {
+            id: "context_packs",
+            label: "Context packs",
+            available: true,
+            command: "context",
+            availableBlurb: "Chat can use this server's play tracker / notes.",
+          },
+          {
+            id: "image_gen",
+            label: "Image generation",
+            available: true,
+            availableBlurb: "Mention Bender and ask for an image.",
+          },
+          {
+            id: "starboard",
+            label: "Starboard",
+            available: true,
+            command: "starboard",
+            adminOnly: true,
+            availableBlurb: "Starred messages post to the configured channel.",
+          },
+        ],
+      },
+    });
+    const onText = embedText(on.embed);
+    const available = on.embed.fields.find((field) => field.name.includes("Available here"));
+    const missing = on.embed.fields.find((field) => field.name.includes("Not set up"));
+    assert.ok(available);
+    assert.ok(available.value.includes("Context packs"));
+    assert.ok(available.value.includes("Image generation"));
+    assert.ok(available.value.includes("</context:222>"));
+    assert.ok(!available.value.includes("Starboard"), "regular users should not see admin-only starboard");
+    assert.equal(missing, undefined);
+    assert.ok(onText.includes("</wiki:100>"));
+    assert.ok(!onText.toLowerCase().includes("available everywhere"));
+
+    const off = resolveHelpView(slashcommands, {
+      inGuild: true,
+      nsfwChannel: false,
+      isAdmin: true,
+      isOwner: false,
+      commandIds: { context: "222", starboard: "8" },
+      features: {
+        known: true,
+        items: [
+          {
+            id: "context_packs",
+            label: "Context packs",
+            available: false,
+            command: "context",
+            unavailableBlurb: "No pack registered. Add a published CSV with this command.",
+          },
+          {
+            id: "image_gen",
+            label: "Image generation",
+            available: false,
+            unavailableBlurb: "Not enabled on this server.",
+          },
+          {
+            id: "starboard",
+            label: "Starboard",
+            available: false,
+            command: "starboard",
+            adminOnly: true,
+            unavailableBlurb: "No starboard channel set.",
+          },
+        ],
+      },
+    });
+    const offAvailable = off.embed.fields.find((field) => field.name.includes("Available here"));
+    const offMissing = off.embed.fields.find((field) => field.name.includes("Not set up"));
+    assert.equal(offAvailable, undefined);
+    assert.ok(offMissing);
+    assert.ok(offMissing.value.includes("Context packs"));
+    assert.ok(offMissing.value.includes("Image generation"));
+    assert.ok(offMissing.value.includes("Starboard"));
+    assert.ok(offMissing.value.includes("</context:222>"));
+    assert.ok(offMissing.value.includes("</starboard:8>"));
+    const chat = resolveHelpView(slashcommands, {
+      inGuild: true,
+      features: {
+        known: true,
+        items: [
+          {
+            id: "context_packs",
+            label: "Context packs",
+            available: false,
+            unavailableBlurb: "No pack registered.",
+          },
+          {
+            id: "image_gen",
+            label: "Image generation",
+            available: true,
+            availableBlurb: "Mention Bender and ask for an image.",
+          },
+        ],
+      },
+    }, { categoryId: "chat" });
+    assert.ok(chat.embed.description.includes("Context packs: not set up"));
+    assert.ok(chat.embed.description.includes("Image generation: on"));
+  });
+
+  it("keeps today's global list when feature flags cannot be read", () => {
+    const view = resolveHelpView(slashcommands, {
+      inGuild: true,
+      nsfwChannel: false,
+      isAdmin: false,
+      isOwner: false,
+      features: { known: false, items: [] },
+    });
+    const text = embedText(view.embed);
+    assert.ok(!text.includes("Available here"));
+    assert.ok(!text.includes("Not set up on this server"));
+    assert.ok(text.includes("/wiki"));
+    assert.ok(text.includes("/setpersonality"));
+    assert.ok(view.embed.footer.text.includes("Live slash commands only"));
   });
 });

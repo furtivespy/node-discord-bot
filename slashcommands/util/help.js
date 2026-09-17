@@ -13,6 +13,7 @@ import {
   selectOptions,
   listHelpCommands,
 } from "../../modules/helpCatalog.js";
+import { ensureSlashCommandIds } from "../../modules/guildHelpFeatures.js";
 
 const COLLECTOR_MS = 180_000;
 
@@ -110,6 +111,7 @@ class Help extends SlashCommand {
 
   async execute(interaction) {
     try {
+      await ensureSlashCommandIds(this.client, interaction.guild);
       const payload = this.helpPayload(interaction, {
         commandName: interaction.options.getString("command"),
         categoryId: interaction.options.getString("category"),
