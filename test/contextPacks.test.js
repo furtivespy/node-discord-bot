@@ -26,6 +26,10 @@ import {
   createPinnedLookup,
   createPinnedHttpsAgent,
   createContextPackService,
+  csvRowCount,
+  classifyFetchError,
+  persistGuildPackStatus,
+  pickPackStatus,
 } from "../modules/contextPacks.js";
 
 const PLAYS_CSV = [
@@ -205,6 +209,22 @@ describe("guild pack settings", () => {
     assert.equal(second.pack.url, "https://example.com/other.csv");
   });
 
+  it("keeps last fetch metadata when the URL is unchanged, and clears it on rotate", () => {
+    const withStatus = upsertGuildPack(
+      [{ name: "plays", kind: "plays", url: SECRET_URL, last_ok_at: 9, last_result: "ok", last_row_count: 12 }],
+      { name: "plays", kind: "plays", url: SECRET_URL }
+    );
+    assert.equal(withStatus.pack.last_ok_at, 9);
+    assert.equal(withStatus.pack.last_row_count, 12);
+    const rotated = upsertGuildPack(withStatus.packs, {
+      name: "plays",
+      kind: "plays",
+      url: "https://example.com/other.csv",
+    });
+    assert.equal(rotated.pack.last_ok_at, undefined);
+    assert.deepEqual(pickPackStatus(rotated.pack), {});
+  });
+
   it("lists only well-shaped packs from guild settings", () => {
     assert.deepEqual(listGuildPacks({}), []);
     assert.deepEqual(
@@ -248,6 +268,12 @@ describe("guild pack settings", () => {
   it("rejects invalid pack names", () => {
     assert.match(validatePackName("").error, /empty/);
     assert.match(validatePackName("1plays").error, /start with a letter/);
+    assert.match(validatePackName("all").error, /reserved/);
+    assert.match(validatePackName("ALL").error, /reserved/);
+    assert.match(upsertGuildPack([], { name: "all", url: SECRET_URL }).error, /reserved/);
+    const leftover = [{ name: "all", kind: "plays", url: SECRET_URL }];
+    const removed = removeGuildPack(leftover, "all");
+    assert.deepEqual(removed.packs, []);
     assert.equal(PACK_KINDS.includes("plays"), true);
     assert.match(normalizePack({ name: "plays", kind: "sheets", url: SECRET_URL }).error, /Kind/);
   });
@@ -498,6 +524,95 @@ describe("fetch + cache", () => {
     assert.deepEqual(missing.attached, []);
     assert.equal(empty.contents[0].parts[0].text, "who won Catan last week?");
     assert.equal(missing.contents[0].parts[0].text, "who won Catan last week?");
+  });
+
+  it("classifies HTTP, parse, and timeout failures and counts CSV rows", () => {
+    assert.equal(csvRowCount(PLAYS_CSV), 3);
+    assert.equal(classifyFetchError(new Error("HTTP 503")), "http_error");
+    assert.equal(classifyFetchError(new Error("empty body")), "parse_error");
+    assert.equal(classifyFetchError(new Error("HTML instead of CSV/text")), "parse_error");
+    assert.equal(classifyFetchError({ type: "request-timeout", message: "network timeout" }), "timeout");
+    assert.equal(classifyFetchError(new Error("URL host is not allowed.")), "error");
+  });
+
+  it("records last_ok_at / last_error / last_row_count and can force a refresh", async () => {
+    let calls = 0;
+    const persisted = [];
+    const fetch = async () => {
+      calls += 1;
+      if (calls === 1) return mockResponse();
+      return mockResponse({ ok: false, status: 500, text: "nope" });
+    };
+    const service = testService({
+      fetch,
+      persistPackStatus(guildId, packName, status) {
+        persisted.push({ guildId, packName, ...status });
+      },
+    });
+    const message = {
+      guild: { id: "guild-1" },
+      content: "Who has the most wins?",
+      settings: { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] },
+    };
+    const contents = [{ role: "user", parts: [{ text: "Who has the most wins?" }] }];
+
+    await service.attachIfNeeded(contents, message);
+    assert.equal(calls, 1);
+    assert.equal(persisted.length, 1);
+    assert.equal(persisted[0].guildId, "guild-1");
+    assert.equal(persisted[0].packName, "plays");
+    assert.equal(persisted[0].last_result, "ok");
+    assert.equal(persisted[0].last_row_count, 3);
+    assert.ok(persisted[0].last_ok_at);
+    assert.equal(persisted[0].last_error, null);
+
+    await service.attachIfNeeded(contents, message);
+    assert.equal(calls, 1);
+    assert.equal(persisted.length, 1);
+
+    const live = await service.fetchUrl(SECRET_URL, { force: true });
+    assert.equal(calls, 2);
+    assert.equal(live.serving_stale, true);
+    assert.equal(live.last_result, "http_error");
+    assert.match(live.last_error, /HTTP 500/);
+    assert.equal(live.last_row_count, 3);
+    const status = service.getUrlStatus(SECRET_URL);
+    assert.equal(status.last_result, "http_error");
+    assert.equal(status.inCache, true);
+    assert.equal(status.cacheStale, false);
+  });
+
+  it("persists scrubbed status onto guild packs without storing a new URL", () => {
+    const store = {};
+    const client = {
+      settings: {
+        has(id) {
+          return Boolean(store[id]);
+        },
+        get(id) {
+          return store[id];
+        },
+        set(id, value, key) {
+          if (!store[id]) store[id] = {};
+          if (key) store[id][key] = value;
+          else store[id] = value;
+        },
+      },
+    };
+    store["guild-1"] = { context_packs: [{ name: "plays", kind: "plays", url: SECRET_URL }] };
+    persistGuildPackStatus(client, "guild-1", "plays", {
+      last_ok_at: 11,
+      last_attempt_at: 12,
+      last_result: "timeout",
+      last_error: "network timeout",
+      last_row_count: 3,
+      last_bytes: 99,
+    });
+    const pack = store["guild-1"].context_packs[0];
+    assert.equal(pack.url, SECRET_URL);
+    assert.equal(pack.last_result, "timeout");
+    assert.equal(pack.last_ok_at, 11);
+    assert.equal(pack.last_row_count, 3);
   });
 });
 

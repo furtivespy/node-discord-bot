@@ -12,6 +12,7 @@ const FETCH_TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 3;
 const MAX_PACKS_PER_GUILD = 8;
 const MAX_NAME_LENGTH = 32;
+const RESERVED_PACK_NAMES = new Set(["all"]);
 const REDACTED_URL_RE = /https?:\/\/[^\s)'"<>]+/gi;
 
 const PRIVATE_BLOCKLIST = new net.BlockList();
@@ -323,7 +324,7 @@ function validateContextUrl(rawUrl) {
   return { url: trimmed };
 }
 
-function validatePackName(rawName) {
+function validatePackName(rawName, { allowReserved = false } = {}) {
   const name = String(rawName || "")
     .trim()
     .toLowerCase();
@@ -333,6 +334,9 @@ function validatePackName(rawName) {
   }
   if (!/^[a-z][a-z0-9-]*$/.test(name)) {
     return { error: "Name must start with a letter and use only letters, numbers, and hyphens." };
+  }
+  if (!allowReserved && RESERVED_PACK_NAMES.has(name)) {
+    return { error: `Name \`${name}\` is reserved.` };
   }
   return { name };
 }
@@ -391,13 +395,17 @@ function upsertGuildPack(packs, input) {
   if (existingIndex === -1) {
     next.push(normalized.pack);
   } else {
-    next[existingIndex] = normalized.pack;
+    const previous = next[existingIndex];
+    next[existingIndex] = {
+      ...normalized.pack,
+      ...(previous.url === normalized.pack.url ? pickPackStatus(previous) : {}),
+    };
   }
-  return { packs: next, pack: normalized.pack, replaced: existingIndex !== -1 };
+  return { packs: next, pack: next[existingIndex === -1 ? next.length - 1 : existingIndex], replaced: existingIndex !== -1 };
 }
 
 function removeGuildPack(packs, rawName) {
-  const named = validatePackName(rawName);
+  const named = validatePackName(rawName, { allowReserved: true });
   if (named.error) return named;
   const next = Array.isArray(packs) ? packs.filter(isStoredPack) : [];
   const remaining = next.filter((pack) => pack.name !== named.name);
@@ -405,6 +413,95 @@ function removeGuildPack(packs, rawName) {
     return { error: `No context pack named \`${named.name}\`.` };
   }
   return { packs: remaining, name: named.name };
+}
+
+const PACK_STATUS_KEYS = [
+  "last_ok_at",
+  "last_attempt_at",
+  "last_result",
+  "last_error",
+  "last_row_count",
+  "last_bytes",
+];
+
+function pickPackStatus(pack) {
+  const out = {};
+  if (!pack || typeof pack !== "object") return out;
+  for (const key of PACK_STATUS_KEYS) {
+    if (pack[key] !== undefined) out[key] = pack[key];
+  }
+  return out;
+}
+
+function applyPackStatus(pack, status) {
+  if (!pack || typeof pack !== "object") return pack;
+  const next = { ...pack };
+  for (const key of PACK_STATUS_KEYS) {
+    if (status && status[key] !== undefined) next[key] = status[key];
+  }
+  return next;
+}
+
+function csvRowCount(text) {
+  const raw = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .trim();
+  if (!raw) return 0;
+  const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
+  return Math.max(0, lines.length - 1);
+}
+
+function errorText(error) {
+  if (error == null) return "";
+  if (typeof error === "string") return error;
+  return [error.message, error.type, error.code, error.cause?.code, error.cause?.message]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function classifyFetchError(error) {
+  const text = errorText(error);
+  if (
+    error?.type === "request-timeout" ||
+    error?.name === "AbortError" ||
+    /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT|HeadersTimeout|UND_ERR_CONNECT_TIMEOUT|request-timeout|AbortError/i.test(
+      text
+    )
+  ) {
+    return "timeout";
+  }
+  if (/\bHTTP\s+\d{3}\b/i.test(text)) return "http_error";
+  if (/empty body|HTML instead|body too large/i.test(text)) return "parse_error";
+  return "error";
+}
+
+function toPersistedStatus(fetched) {
+  const last_result =
+    fetched?.last_result ??
+    (fetched?.serving_stale ? "error" : fetched?.ok ? "ok" : fetched ? "error" : null);
+  const ok = last_result === "ok";
+  return {
+    last_ok_at: fetched?.last_ok_at ?? (ok ? fetched?.fetchedAt ?? fetched?.last_attempt_at ?? null : null),
+    last_attempt_at: fetched?.last_attempt_at ?? fetched?.fetchedAt ?? null,
+    last_result,
+    last_error: ok ? null : fetched?.last_error || fetched?.error || null,
+    last_row_count: fetched?.last_row_count ?? null,
+    last_bytes: fetched?.last_bytes ?? fetched?.bytes ?? null,
+  };
+}
+
+function persistGuildPackStatus(client, guildId, packName, status) {
+  if (!client?.settings || !guildId || !packName) return;
+  const raw = client.settings.get(guildId) || {};
+  const packs = listGuildPacks(raw);
+  const index = packs.findIndex((pack) => pack.name === packName);
+  if (index === -1) return;
+  const next = packs.slice();
+  next[index] = applyPackStatus(next[index], status);
+  if (typeof client.settings.has === "function" && !client.settings.has(guildId)) {
+    client.settings.set(guildId, {});
+  }
+  client.settings.set(guildId, next, "context_packs");
 }
 
 function packNameMentioned(pack, text) {
@@ -556,9 +653,11 @@ function createContextPackService(options = {}) {
   const fetchImpl = options.fetch || DEFAULT_FETCH;
   const lookupImpl = options.lookup || defaultLookup;
   const cache = options.cache || new Map();
+  const statusByUrl = options.statusByUrl || new Map();
   const ttlMs = options.ttlMs || CACHE_TTL_MS;
   const now = options.now || (() => Date.now());
   const logger = options.logger || { log() {} };
+  const persistPackStatus = options.persistPackStatus;
 
   function cacheKey(url) {
     return url;
@@ -581,6 +680,42 @@ function createContextPackService(options = {}) {
       return;
     }
     cache.delete(cacheKey(url));
+  }
+
+  function rememberStatus(url, patch) {
+    const previous = statusByUrl.get(url) || {};
+    const next = { ...previous, ...patch };
+    statusByUrl.set(url, next);
+    return next;
+  }
+
+  function getUrlStatus(url) {
+    const remembered = statusByUrl.get(url) || {};
+    const cached = cache.get(cacheKey(url));
+    const inCache = Boolean(cached?.ok && cached.text);
+    const cacheStale = inCache ? now() - cached.fetchedAt > ttlMs : true;
+    return {
+      last_ok_at: remembered.last_ok_at ?? (inCache ? cached.fetchedAt : null),
+      last_attempt_at: remembered.last_attempt_at ?? null,
+      last_result: remembered.last_result ?? (inCache && !cacheStale ? "ok" : null),
+      last_error: remembered.last_error ?? null,
+      last_row_count: remembered.last_row_count ?? (cached?.text ? csvRowCount(cached.text) : null),
+      last_bytes: remembered.last_bytes ?? cached?.bytes ?? null,
+      inCache,
+      cacheStale,
+      fetchedAt: cached?.fetchedAt ?? null,
+      expiresAt: cached?.fetchedAt != null ? cached.fetchedAt + ttlMs : null,
+      ttlMs,
+    };
+  }
+
+  function notifyPersist(guildId, pack, fetched) {
+    if (!persistPackStatus || !guildId || !pack?.name) return;
+    try {
+      persistPackStatus(guildId, pack.name, toPersistedStatus(fetched));
+    } catch (error) {
+      logger.log(`context pack status persist failed (${scrubErrorMessage(error)})`, "warn");
+    }
   }
 
   async function assertSafeFetchTarget(rawUrl) {
@@ -643,16 +778,35 @@ function createContextPackService(options = {}) {
     throw new Error("too many redirects");
   }
 
-  async function fetchUrl(url) {
+  async function fetchUrl(url, fetchOptions = {}) {
+    const force = Boolean(fetchOptions.force);
     const rejected = validateContextUrl(url);
     if (rejected.error) {
       logger.log(`context pack fetch rejected ${redactUrl(url)} (${rejected.error})`, "warn");
-      return { ok: false, error: rejected.error, stale: false };
+      const status = rememberStatus(url, {
+        last_attempt_at: now(),
+        last_result: "error",
+        last_error: rejected.error,
+      });
+      return { ok: false, error: rejected.error, stale: false, fromCache: false, ...status };
     }
 
     const cached = readCache(url);
-    if (cached && !cached.stale && cached.ok) {
-      return cached;
+    if (!force && cached && !cached.stale && cached.ok) {
+      const remembered = statusByUrl.get(url) || {};
+      const rowCount = remembered.last_row_count ?? csvRowCount(cached.text);
+      return {
+        ...cached,
+        stale: false,
+        fromCache: true,
+        last_result: "ok",
+        last_error: null,
+        last_ok_at: remembered.last_ok_at ?? cached.fetchedAt,
+        last_attempt_at: remembered.last_attempt_at ?? cached.fetchedAt,
+        last_row_count: rowCount,
+        last_bytes: remembered.last_bytes ?? cached.bytes,
+        expiresAt: cached.fetchedAt + ttlMs,
+      };
     }
     try {
       const { text, bytes } = await fetchFollowingSafeRedirects(url);
@@ -672,14 +826,49 @@ function createContextPackService(options = {}) {
         bytes: Buffer.byteLength(body, "utf8") || bytes,
       };
       writeCache(url, entry);
+      const stored = cache.get(cacheKey(url));
+      const status = rememberStatus(url, {
+        last_ok_at: stored.fetchedAt,
+        last_attempt_at: stored.fetchedAt,
+        last_result: "ok",
+        last_error: null,
+        last_row_count: csvRowCount(body),
+        last_bytes: entry.bytes,
+      });
       logger.log(`context pack fetched ${redactUrl(url)} (${entry.bytes} bytes)`, "log");
-      return { ...entry, stale: false };
+      return {
+        ...entry,
+        stale: false,
+        fromCache: false,
+        fetchedAt: stored.fetchedAt,
+        expiresAt: stored.fetchedAt + ttlMs,
+        ...status,
+      };
     } catch (error) {
-      logger.log(`context pack fetch failed ${redactUrl(url)} (${scrubErrorMessage(error, url)})`, "warn");
+      const last_result = classifyFetchError(error);
+      const last_error = scrubErrorMessage(error, url);
+      logger.log(`context pack fetch failed ${redactUrl(url)} (${last_error})`, "warn");
+      const previous = statusByUrl.get(url) || {};
+      const status = rememberStatus(url, {
+        last_attempt_at: now(),
+        last_result,
+        last_error,
+        last_ok_at: previous.last_ok_at ?? cached?.fetchedAt ?? null,
+        last_row_count: previous.last_row_count ?? (cached?.text ? csvRowCount(cached.text) : null),
+        last_bytes: previous.last_bytes ?? cached?.bytes ?? null,
+      });
       if (cached?.ok) {
-        return { ...cached, stale: true };
+        return {
+          ...cached,
+          stale: true,
+          fromCache: false,
+          serving_stale: true,
+          error: last_error,
+          expiresAt: cached.fetchedAt + ttlMs,
+          ...status,
+        };
       }
-      return { ok: false, error: scrubErrorMessage(error, url), stale: false };
+      return { ok: false, error: last_error, stale: false, fromCache: false, ...status };
     }
   }
 
@@ -694,11 +883,13 @@ function createContextPackService(options = {}) {
       return { contents, attached: [], note: "" };
     }
 
+    const guildId = message?.guild?.id || message?.guildId || null;
     const blocks = [];
     const attached = [];
     const failed = [];
     for (const pack of wanted) {
       const fetched = await fetchUrl(pack.url);
+      if (!fetched.fromCache) notifyPersist(guildId, pack, fetched);
       if (!fetched.ok || !fetched.text) {
         failed.push({ name: pack.name, kind: pack.kind });
         continue;
@@ -734,6 +925,8 @@ function createContextPackService(options = {}) {
     fetchUrl,
     attachIfNeeded,
     listGuildPacks,
+    getUrlStatus,
+    ttlMs,
   };
 }
 
@@ -756,6 +949,13 @@ export {
   listGuildPacks,
   upsertGuildPack,
   removeGuildPack,
+  PACK_STATUS_KEYS,
+  pickPackStatus,
+  applyPackStatus,
+  csvRowCount,
+  classifyFetchError,
+  toPersistedStatus,
+  persistGuildPackStatus,
   packNeedsFetch,
   selectPacksForTurn,
   recentUserText,

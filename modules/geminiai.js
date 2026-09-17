@@ -18,7 +18,7 @@ import chatInstructionsTemplate from "./prompt_components/chat_instructions.js";
 import formattingInstructions from "./prompt_components/formatting_instructions.js";
 import capabilitiesTemplate from "./prompt_components/capabilities.js";
 import { extractImageCallout } from "./imageCallout.js";
-import { createContextPackService, scrubErrorMessage } from "./contextPacks.js";
+import { createContextPackService, persistGuildPackStatus, scrubErrorMessage } from "./contextPacks.js";
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
@@ -54,7 +54,12 @@ class GeminiAI {
     constructor(client) {
         this.client = client
         this.AI2 = new GoogleGenAI({apiKey: this.client.config.geminiKey})
-        this.contextPacks = createContextPackService({ logger: this.client.logger })
+        this.contextPacks = createContextPackService({
+            logger: this.client.logger,
+            persistPackStatus: (guildId, packName, status) => {
+                persistGuildPackStatus(this.client, guildId, packName, status);
+            },
+        })
     }
 
     chatSafetySettings() {
