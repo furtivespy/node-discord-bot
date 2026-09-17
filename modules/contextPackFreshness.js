@@ -1,6 +1,6 @@
 import { PermissionsBitField } from "discord.js";
 import { isBotAdmin, splitDiscordMessages } from "./guildConfigOverview.js";
-import { CACHE_TTL_MS, listGuildPacks, redactUrl } from "./contextPacks.js";
+import { CACHE_TTL_MS, listGuildPacks, scrubErrorMessage } from "./contextPacks.js";
 
 const HEALTH = {
   missing: "missing",
@@ -125,7 +125,7 @@ function buildPackFreshness(pack, liveStatus = {}) {
     name: pack?.name || "(unnamed)",
     kind: pack?.kind || "unknown",
     configured: true,
-    redactedUrl: redactUrl(pack?.url),
+    url: pack?.url || null,
     health,
     last_ok_at,
     last_attempt_at,
@@ -185,29 +185,33 @@ function formatPackFreshness(row) {
     `Last fetch: ${formatFetchResult(row.last_result, row.last_error)} · ${formatDiscordTime(row.last_attempt_at)}`,
   ];
   if (row.last_error && row.last_result && row.last_result !== "ok") {
-    lines.push(`Error: ${row.last_error}`);
+    lines.push(`Error: ${scrubErrorMessage(row.last_error)}`);
   }
   lines.push(`Cached rows: ${rows}${size}`);
   lines.push(`Cache TTL: ${Math.round(row.ttlMs / 60000)} min · expires ${expires}`);
-  lines.push(`URL: ${row.redactedUrl}`);
+  lines.push(`URL: ${row.url ? `<${row.url}>` : "(no url)"}`);
   return lines.join("\n");
+}
+
+function formatGuildFreshnessBody(snapshot) {
+  if (snapshot.missing) {
+    return "▫️ **No context packs configured** on this server. Chat is not using a CSV pack. This is distinct from a configured pack that failed to fetch.";
+  }
+  return snapshot.packs.map(formatPackFreshness).join("\n\n");
 }
 
 function formatFreshnessDashboard(snapshot) {
   const header = [
     `**Context pack freshness — ${snapshot.guildName}**`,
-    "Admin-only. Full published URLs are never shown.",
+    "Admin-only. Pack URLs are shown here so you can check which sheet chat is using.",
     "",
   ];
   if (snapshot.missing) {
-    return (
-      header.join("\n") +
-      "▫️ **No context packs configured** on this server. Chat is not using a CSV pack. This is distinct from a configured pack that failed to fetch.\n\nAdd one with `/context add`."
-    );
+    return header.join("\n") + formatGuildFreshnessBody(snapshot) + "\n\nAdd one with `/context add`.";
   }
   return (
     header.join("\n") +
-    snapshot.packs.map(formatPackFreshness).join("\n\n") +
+    formatGuildFreshnessBody(snapshot) +
     "\n\nRefresh now re-downloads immediately (does not wait for TTL)."
   );
 }
@@ -216,25 +220,14 @@ function formatAllGuildsFreshness(snapshots) {
   const list = Array.isArray(snapshots) ? snapshots : [];
   const header = [
     `**Context pack freshness — all servers** (${list.length} guild${list.length === 1 ? "" : "s"})`,
-    "Bot owner / configured admin IDs only. Full URLs redacted.",
+    "Bot owner / configured admin IDs only. Pack URLs are shown here for debugging.",
     "",
   ];
   if (!list.length) return header.join("\n") + "No joined guilds.";
   return (
     header.join("\n") +
     list
-      .map((snap) => {
-        if (snap.missing) {
-          return `**${snap.guildName}** — \`${snap.guildId}\`\n▫️ No context packs configured`;
-        }
-        const summary = snap.packs
-          .map(
-            (row) =>
-              `• \`${row.name}\`: ${row.health} · last fetch ${formatFetchResult(row.last_result, row.last_error)} · rows ${row.last_row_count ?? "unknown"} · last success ${formatDiscordTime(row.last_ok_at)}`
-          )
-          .join("\n");
-        return `**${snap.guildName}** — \`${snap.guildId}\`\n${summary}`;
-      })
+      .map((snap) => `**${snap.guildName}** — \`${snap.guildId}\`\n${formatGuildFreshnessBody(snap)}`)
       .join("\n\n")
   );
 }

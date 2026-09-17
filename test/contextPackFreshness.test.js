@@ -69,7 +69,7 @@ describe("context pack freshness dashboard", () => {
     assert.doesNotMatch(text, /stale/);
   });
 
-  it("never prints the secret URL and keeps missing vs failing visually distinct", () => {
+  it("keeps missing vs failing visually distinct and shows the pack URL to admins", () => {
     const missing = formatFreshnessDashboard(
       buildGuildFreshness({ guildName: "Alpha Pub", packs: [] })
     );
@@ -93,9 +93,7 @@ describe("context pack freshness dashboard", () => {
     assert.match(broken, /broken/);
     assert.match(broken, /Configured: yes/);
     assert.match(broken, /HTTP error \(404\)/);
-    assert.match(broken, /https:\/\/docs\.google\.com\/…/);
-    assert.doesNotMatch(broken, /2PACX/);
-    assert.doesNotMatch(broken, /ThisIsASecretToken/);
+    assert.match(broken, /2PACX-1vThisIsASecretToken/);
     assert.notEqual(missing.includes("No context packs configured"), broken.includes("No context packs configured"));
   });
 
@@ -117,10 +115,47 @@ describe("context pack freshness dashboard", () => {
     assert.match(text, /128/);
     assert.match(text, /10 min/);
     assert.match(text, /<t:1700000000:/);
-    assert.doesNotMatch(text, /2PACX/);
+    assert.match(text, /2PACX-1vThisIsASecretToken/);
   });
 
-  it("redacts secrets in the all-guilds owner view", () => {
+  it("all-guilds view includes the same pack fields as the single-server dashboard", () => {
+    const snapshot = buildGuildFreshness({
+      guildId: "111",
+      guildName: "Alpha Pub",
+      packs: [PLAYS],
+      service: {
+        getUrlStatus: () => ({
+          last_ok_at: 1_700_000_000_000,
+          last_attempt_at: 1_700_000_000_000,
+          last_result: "ok",
+          last_row_count: 128,
+          last_bytes: 4096,
+          inCache: true,
+          cacheStale: false,
+          expiresAt: 1_700_000_600_000,
+          ttlMs: 10 * 60 * 1000,
+        }),
+      },
+    });
+    const single = formatFreshnessDashboard(snapshot);
+    const all = formatAllGuildsFreshness([snapshot]);
+    for (const field of [
+      /Configured: yes/,
+      /Health: ✅ healthy/,
+      /Last success: <t:1700000000:/,
+      /Last fetch: ok · <t:1700000000:/,
+      /Cached rows: 128 · 4\.0 KB/,
+      /Cache TTL: 10 min · expires <t:1700000600:/,
+      /2PACX-1vThisIsASecretToken/,
+    ]) {
+      assert.match(single, field);
+      assert.match(all, field);
+    }
+    assert.match(all, /Alpha Pub/);
+    assert.match(all, /`111`/);
+  });
+
+  it("shows pack URLs in the all-guilds owner view and still scrubs them from error text", () => {
     const text = formatAllGuildsFreshness([
       buildGuildFreshness({
         guildId: "111",
@@ -133,8 +168,15 @@ describe("context pack freshness dashboard", () => {
     assert.match(text, /Empty Hall/);
     assert.match(text, /No context packs configured/);
     assert.match(text, /timeout/);
-    assert.doesNotMatch(text, /2PACX/);
-    assert.doesNotMatch(text, /ThisIsASecretToken/);
+    assert.match(text, /Configured: yes/);
+    assert.match(text, /Last success:/);
+    assert.match(text, /Cached rows:/);
+    assert.match(text, /Cache TTL:/);
+    assert.match(text, /2PACX-1vThisIsASecretToken/);
+    const errorLine = text.split("\n").find((line) => line.startsWith("Error:"));
+    assert.ok(errorLine);
+    assert.doesNotMatch(errorLine, /2PACX/);
+    assert.doesNotMatch(errorLine, /ThisIsASecretToken/);
   });
 
   it("formats Discord timestamps and byte sizes", () => {

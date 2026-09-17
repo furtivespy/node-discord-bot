@@ -211,7 +211,7 @@ describe("/context command", () => {
     assert.equal(status.replies[0].components.length, 0);
   });
 
-  it("shows last fetch, rows, and errors without leaking the URL", async () => {
+  it("shows last fetch, rows, errors, and the full pack URL to admins", async () => {
     const client = clientWithLiveService({
       fetch: async () => mockResponse(),
     });
@@ -236,8 +236,7 @@ describe("/context command", () => {
     assert.match(text, /Last fetch: ok/);
     assert.match(text, /Cached rows: 2/);
     assert.match(text, /Cache TTL: 10 min/);
-    assert.match(text, /https:\/\/docs\.google\.com\/…/);
-    assert.doesNotMatch(text, /2PACX/);
+    assert.match(text, /2PACX-1vThisIsASecretToken/);
     assert.ok(payload.components.length >= 1);
     assert.ok(
       payload.components[0].components.some((button) => button.data.custom_id === "context:refresh:all")
@@ -284,7 +283,7 @@ describe("/context command", () => {
     assert.match(text, /HTTP error \(404\)/);
     assert.match(text, /Configured: yes/);
     assert.doesNotMatch(text, /No context packs configured/);
-    assert.doesNotMatch(text, /2PACX/);
+    assert.match(text, /2PACX-1vThisIsASecretToken/);
   });
 
   it("defers /context refresh before awaiting the pack fetch", async () => {
@@ -405,5 +404,42 @@ describe("/context command", () => {
     await cmd.execute(denied);
     assert.match(denied.replies[0].content, /only for the bot owner/);
     assert.equal(denied.replies[0].ephemeral, true);
+  });
+
+  it("owner all-guilds view includes the same pack details as /context status", async () => {
+    const client = clientWithLiveService();
+    const cmd = new Context(client);
+    await cmd.execute(
+      mockInteraction({
+        subcommand: "add",
+        strings: { url: SECRET_URL, name: "plays", kind: "plays" },
+      })
+    );
+
+    const status = mockInteraction({ subcommand: "status" });
+    await cmd.execute(status);
+    const singleText = status.replies[0].embeds[0].data.description;
+
+    const all = mockInteraction({
+      subcommand: "status",
+      booleans: { all: true },
+      userId: "owner-1",
+    });
+    await cmd.execute(all);
+    const allText = all.replies.map((payload) => payload.content).filter(Boolean).join("\n");
+
+    for (const field of [
+      /Configured: yes/,
+      /Health: ✅ healthy/,
+      /Last success:/,
+      /Last fetch: ok/,
+      /Cached rows: 2/,
+      /Cache TTL: 10 min/,
+      /2PACX-1vThisIsASecretToken/,
+    ]) {
+      assert.match(singleText, field);
+      assert.match(allText, field);
+    }
+    assert.match(allText, /Alpha Pub/);
   });
 });

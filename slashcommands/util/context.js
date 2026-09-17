@@ -222,7 +222,7 @@ class Context extends SlashCommand {
         `Context packs (${packs.length}/${MAX_PACKS_PER_GUILD}):`,
         lines.join("\n"),
         `Kinds: ${PACK_KINDS.join(", ")}.`,
-        "Admins: `/context status` for last fetch / rows / errors.",
+        "Admins: `/context status` for last fetch / rows / URL / errors.",
       ].join("\n"),
       ephemeral: true,
     });
@@ -315,7 +315,7 @@ class Context extends SlashCommand {
     const embed = new EmbedBuilder()
       .setColor(freshnessEmbedColor(snapshot.health))
       .setDescription(description)
-      .setFooter({ text: "Ephemeral · admins only · URLs redacted" });
+      .setFooter({ text: "Ephemeral · admins only" });
 
     const components = [];
     if (allowRefresh && !snapshot.missing && snapshot.packs.length) {

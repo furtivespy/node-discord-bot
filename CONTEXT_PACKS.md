@@ -39,7 +39,7 @@ Anyone in the server can register a pack:
 - `kind:plays` attaches on **games/stats** questions (plays, wins, scores, game night, “have we played X”).
 - `kind:general` attaches for house-rules / named-pack questions, or when the pack name is mentioned.
 
-Other commands (all ephemeral; URLs are shown redacted as `https://host/…`):
+Other commands (all ephemeral):
 
 ```
 /context list
@@ -50,7 +50,9 @@ Other commands (all ephemeral; URLs are shown redacted as `https://host/…`):
 /context refresh name:plays
 ```
 
-`/context status` is **admin-only** (server Administrator, or the bot owner / configured admin IDs). It is the freshness dashboard: per pack, whether it is configured, last successful fetch, last result (`ok` / HTTP error / parse error / timeout), cached row count, and cache TTL/expiry. Missing (no pack) is visually distinct from configured-but-broken. The reply is always ephemeral. Bot owner can pass `all:True` to scan every joined server.
+`/context add`, `/context list`, and `/context refresh` hide the published URL as `https://host/…` so it is not pasted into a public channel by accident.
+
+`/context status` is **admin-only** (server Administrator, or the bot owner / configured admin IDs). It is the freshness dashboard: per pack, the published URL, whether it is configured, last successful fetch, last result (`ok` / HTTP error / parse error / timeout), cached row count, and cache TTL/expiry. Missing (no pack) is visually distinct from configured-but-broken. The reply is always ephemeral. Bot owner can pass `all:True` to scan every joined server (same per-pack details, including URLs).
 
 `/context refresh` (and the **Refresh now** buttons on `/context status`) re-download immediately instead of waiting for the 10-minute cache TTL, then report ok/error + row count.
 
