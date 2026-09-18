@@ -588,6 +588,42 @@ describe("/context command", () => {
     assert.ok(logs.every((line) => !line.includes("2PACX")));
   });
 
+  it("attach/set/add report a failed probe with the scrubbed fetch error and never print the URL", async () => {
+    for (const { subcommand, status, verb } of [
+      { subcommand: "attach", status: 404, verb: "Attached" },
+      { subcommand: "set", status: 503, verb: "Set" },
+      { subcommand: "add", status: 404, verb: "Added" },
+    ]) {
+      const logs = [];
+      const client = clientWithLiveService({
+        logs,
+        fetch: async () => mockResponse("nope", { ok: false, status }),
+      });
+      const cmd = new Context(client);
+      const interaction = mockInteraction({
+        subcommand,
+        strings: { url: SECRET_URL, name: "plays" },
+      });
+      await cmd.execute(interaction);
+
+      const result = replyContent(interaction);
+      assert.match(result.content, new RegExp(`${verb} context pack \`plays\``));
+      assert.match(result.content, /Saved, but the fetch did not succeed just now/);
+      assert.match(result.content, new RegExp(`HTTP error \\(${status}\\)`));
+      assert.match(result.content, new RegExp(`HTTP ${status}`));
+      assert.doesNotMatch(result.content, /2PACX/);
+      assert.doesNotMatch(JSON.stringify(interaction.replies), /2PACX/);
+      assert.ok(logs.some((line) => line.includes("docs.google.com/…")));
+      assert.ok(logs.every((line) => !line.includes("2PACX")), subcommand);
+
+      const stored = client.getSettings({ id: "guild-1" }).context_packs[0];
+      assert.equal(stored.url, SECRET_URL);
+      assert.equal(stored.last_result, "http_error");
+      assert.match(stored.last_error, new RegExp(`HTTP ${status}`));
+      assert.doesNotMatch(stored.last_error, /2PACX/);
+    }
+  });
+
   it("preview reports HTTP errors without printing secrets", async () => {
     const logs = [];
     const client = clientWithLiveService({

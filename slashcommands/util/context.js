@@ -105,6 +105,13 @@ function liveFetchOk(fetched) {
   return Boolean(fetched.ok);
 }
 
+function describeFetchFailure(fetched, url) {
+  if (!fetched) return "context pack service is not available";
+  const detail = scrubErrorMessage(fetched.last_error || fetched.error || "unknown error", url);
+  const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
+  return `${kind} — ${detail}`;
+}
+
 class Context extends SlashCommand {
   constructor(client) {
     super(client, {
@@ -261,7 +268,7 @@ class Context extends SlashCommand {
     if (fetched) this.rememberFetch(interaction.guild.id, result.pack.name, fetched);
     const check = liveFetchOk(fetched)
       ? `Reachable (${fetched.last_row_count ?? "?"} rows, ${fetched.bytes} bytes). Chat will attach it on matching questions.`
-      : "Saved, but the fetch did not succeed just now. Chat will retry when a matching question comes in.";
+      : `Saved, but the fetch did not succeed just now: ${describeFetchFailure(fetched, result.pack.url)}. Chat will retry when a matching question comes in.`;
 
     await interaction.editReply({
       content: [
@@ -348,10 +355,8 @@ class Context extends SlashCommand {
 
     const body = fetched.text;
     if (!body) {
-      const detail = fetched.last_error || fetched.error || "unknown error";
-      const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
       await interaction.editReply({
-        content: `Could not preview \`${pack.name}\`: ${kind} — ${detail}.`,
+        content: `Could not preview \`${pack.name}\`: ${describeFetchFailure(fetched, pack.url)}.`,
       });
       return;
     }
@@ -374,9 +379,7 @@ class Context extends SlashCommand {
       `Preview of \`${pack.name}\` (${pack.kind}) — ${rows} row${rows === 1 ? "" : "s"} · ${source}.`,
     ];
     if (!liveFetchOk(fetched)) {
-      const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
-      const detail = fetched.last_error || fetched.error || "unknown error";
-      lines.push(`Latest fetch: ${kind} — ${detail}.`);
+      lines.push(`Latest fetch: ${describeFetchFailure(fetched, pack.url)}.`);
     }
     lines.push(
       preview.truncated
@@ -412,9 +415,8 @@ class Context extends SlashCommand {
       const rows = fetched.last_row_count == null ? "?" : fetched.last_row_count;
       return `\`${pack.name}\`: ok — ${rows} rows (${fetched.bytes} bytes).`;
     }
-    const detail = fetched.last_error || fetched.error || "unknown error";
     const stale = fetched.serving_stale ? " Last good copy is still in cache." : "";
-    return `\`${pack.name}\`: ${formatFetchResult(fetched.last_result, fetched.last_error || fetched.error)} — ${detail}.${stale}`;
+    return `\`${pack.name}\`: ${describeFetchFailure(fetched, pack.url)}.${stale}`;
   }
 
   async refreshPacks(guildId, packs) {
