@@ -131,7 +131,16 @@ class GeminiAI {
 
     async attachGuildContextPacks(contents, message) {
       try {
-        return await this.contextPacks.attachIfNeeded(contents, message);
+        const packed = await this.contextPacks.attachIfNeeded(contents, message);
+        if (packed?.attached?.length) {
+          try {
+            this.client.usagePulse?.recordEvent(
+              message?.guild?.id || message?.guildId,
+              "context_pack_inject"
+            );
+          } catch {}
+        }
+        return packed;
       } catch (error) {
         this.client.logger.log(`context pack attach failed (${scrubErrorMessage(error)})`, "warn");
         return { contents, attached: [], note: "" };
@@ -234,7 +243,7 @@ class GeminiAI {
           config,
         })
         let botname = message.guild.members.cache.get(this.client.user.id).displayName
-        return await this.processResponse(result, botname)
+        return await this.processResponse(result, botname, { guildId: message?.guild?.id })
     }
 
     getSystemInstructions(message, tools = [], extraInstruction = "") {
@@ -670,7 +679,7 @@ class GeminiAI {
       return ctx.title || null;
     }
 
-    async processResponse(result, botname) {
+    async processResponse(result, botname, { guildId } = {}) {
   let responseText = "Error: Could not extract AI response text."; // Default error message
   let candidate = null;
 
@@ -761,6 +770,12 @@ class GeminiAI {
   let imageResponse = null;
   if (image) {
     imageResponse = await this.generateImageNew(`generate an image of ${image}`);
+    try {
+      this.client.usagePulse?.recordEvent(
+        guildId,
+        imageResponse ? "image_gen_success" : "image_gen_fail"
+      );
+    } catch {}
   }
 
   return { response: finalResponseText, imageResponse };
