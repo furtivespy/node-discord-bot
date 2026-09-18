@@ -11,6 +11,7 @@ import {
   buildGuildFreshness,
   formatFreshnessDashboard,
   formatAllGuildsFreshness,
+  formatShortFreshness,
   parseRefreshCustomId,
   refreshCustomId,
 } from "../modules/contextPackFreshness.js";
@@ -184,6 +185,21 @@ describe("context pack freshness dashboard", () => {
     assert.equal(formatDiscordTime(1_700_000_000_000), "<t:1700000000:f> (<t:1700000000:R>)");
     assert.equal(formatBytes(800), "800 B");
     assert.equal(formatBytes(2048), "2.0 KB");
+  });
+
+  it("summarizes freshness for /context list without printing the URL", () => {
+    const row = buildPackFreshness(PLAYS, {
+      last_ok_at: 1_700_000_000_000,
+      last_attempt_at: 1_700_000_000_000,
+      last_result: "ok",
+      last_row_count: 12,
+      ttlMs: 10 * 60 * 1000,
+    });
+    const text = formatShortFreshness(row);
+    assert.match(text, /✅ healthy/);
+    assert.match(text, /12 rows/);
+    assert.match(text, /last fetch ok/);
+    assert.doesNotMatch(text, /2PACX/);
   });
 
   it("gates the dashboard to guild admins and bot admins", () => {

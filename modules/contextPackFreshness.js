@@ -34,6 +34,14 @@ const HEALTH_LINE = {
   missing: "▫️ not configured",
 };
 
+const HEALTH_SHORT = {
+  healthy: "✅ healthy",
+  stale: "⚠️ stale",
+  broken: "❌ broken",
+  never: "💤 never fetched",
+  missing: "▫️ not configured",
+};
+
 function firstDefined(...values) {
   for (const value of values) {
     if (value !== undefined && value !== null) return value;
@@ -75,6 +83,13 @@ function formatBytes(n) {
   if (!Number.isFinite(bytes) || bytes < 0) return "unknown";
   if (bytes < 1024) return `${Math.round(bytes)} B`;
   return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function formatShortFreshness(row) {
+  const label = HEALTH_SHORT[row?.health] || row?.health || "unknown";
+  const rows = row?.last_row_count == null ? "rows unknown" : `${row.last_row_count} rows`;
+  const fetch = formatFetchResult(row?.last_result, row?.last_error);
+  return `${label} · ${rows} · last fetch ${fetch}`;
 }
 
 function inferPackHealth({
@@ -207,7 +222,7 @@ function formatFreshnessDashboard(snapshot) {
     "",
   ];
   if (snapshot.missing) {
-    return header.join("\n") + formatGuildFreshnessBody(snapshot) + "\n\nAdd one with `/context add`.";
+    return header.join("\n") + formatGuildFreshnessBody(snapshot) + "\n\nAdd one with `/context attach` or `/context add`.";
   }
   return (
     header.join("\n") +
@@ -249,10 +264,12 @@ export {
   HEALTH,
   HEALTH_COLOR,
   HEALTH_LINE,
+  HEALTH_SHORT,
   canViewContextDashboard,
   formatFetchResult,
   formatDiscordTime,
   formatBytes,
+  formatShortFreshness,
   inferPackHealth,
   worstHealth,
   buildPackFreshness,

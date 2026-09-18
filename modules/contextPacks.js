@@ -451,6 +451,114 @@ function csvRowCount(text) {
   return Math.max(0, lines.length - 1);
 }
 
+const PREVIEW_MAX_ROWS = 8;
+const PREVIEW_MAX_CHARS = 1200;
+const PREVIEW_SECRET_HEADER_RE =
+  /token|secret|password|passwd|api[_-]?key|(^|[\s_])key$|auth|credential|bearer|email|ssn/i;
+const PREVIEW_SECRET_VALUE_RE =
+  /\b(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gho_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[A-Za-z0-9_-]{20,}|ya29\.[A-Za-z0-9_-]+|AKIA[0-9A-Z]{16}|Bearer\s+\S+)/gi;
+const PREVIEW_EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+
+function detectCsvDelimiter(header) {
+  const commas = (String(header).match(/,/g) || []).length;
+  const tabs = (String(header).match(/\t/g) || []).length;
+  return tabs > commas ? "\t" : ",";
+}
+
+function splitCsvLine(line, delimiter = ",") {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+  const text = String(line ?? "");
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === delimiter && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  cells.push(current);
+  return cells;
+}
+
+function csvNeedsQuotes(value, delimiter = ",") {
+  return /["\n\r]/.test(value) || value.includes(delimiter);
+}
+
+function joinCsvLine(cells, delimiter = ",") {
+  return cells
+    .map((cell) => {
+      const value = String(cell ?? "");
+      if (!csvNeedsQuotes(value, delimiter)) return value;
+      return `"${value.replace(/"/g, '""')}"`;
+    })
+    .join(delimiter);
+}
+
+function redactPreviewValue(value, { header = "", force = false } = {}) {
+  if (force || PREVIEW_SECRET_HEADER_RE.test(header)) return "[redacted]";
+  let text = String(value ?? "");
+  text = text.replace(REDACTED_URL_RE, (url) => redactUrl(url));
+  text = text.replace(PREVIEW_EMAIL_RE, "[redacted-email]");
+  text = text.replace(PREVIEW_SECRET_VALUE_RE, "[redacted]");
+  return text;
+}
+
+function redactPreviewText(text) {
+  return redactPreviewValue(text);
+}
+
+function formatPackPreview(csvText, { maxRows = PREVIEW_MAX_ROWS, maxChars = PREVIEW_MAX_CHARS } = {}) {
+  const raw = String(csvText || "").replace(/^\uFEFF/, "").trim();
+  if (!raw) {
+    return { error: "Pack is empty.", snippet: "", rowsShown: 0, rowsTotal: 0, truncated: false };
+  }
+  const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
+  const headerLine = lines[0] || "";
+  const dataLines = lines.slice(1);
+  const delimiter = detectCsvDelimiter(headerLine);
+  const headers = splitCsvLine(headerLine, delimiter);
+  const secretHeaders = headers.map((header) => PREVIEW_SECRET_HEADER_RE.test(header));
+  const shown = dataLines.slice(0, maxRows).map((line) => {
+    const cells = splitCsvLine(line, delimiter);
+    return joinCsvLine(
+      headers.map((header, index) =>
+        redactPreviewValue(cells[index] ?? "", { header, force: secretHeaders[index] })
+      ),
+      delimiter
+    );
+  });
+  const redactedHeader = joinCsvLine(
+    headers.map((header) => redactPreviewValue(header)),
+    delimiter
+  );
+  let snippet = [redactedHeader, ...shown].join("\n").replace(/```/g, "'''");
+  let truncated = dataLines.length > maxRows;
+  if (snippet.length > maxChars) {
+    snippet = snippet.slice(0, maxChars);
+    truncated = true;
+  }
+  return {
+    snippet,
+    header: redactedHeader,
+    rowsShown: shown.length,
+    rowsTotal: dataLines.length,
+    truncated,
+    delimiter,
+  };
+}
+
 function errorText(error) {
   if (error == null) return "";
   if (typeof error === "string") return error;
@@ -938,6 +1046,8 @@ export {
   PACK_KINDS,
   PLAYS_HEURISTIC,
   MAX_REDIRECTS,
+  PREVIEW_MAX_ROWS,
+  PREVIEW_MAX_CHARS,
   redactUrl,
   scrubErrorMessage,
   isBlockedAddress,
@@ -953,6 +1063,9 @@ export {
   pickPackStatus,
   applyPackStatus,
   csvRowCount,
+  splitCsvLine,
+  redactPreviewText,
+  formatPackPreview,
   classifyFetchError,
   toPersistedStatus,
   persistGuildPackStatus,
