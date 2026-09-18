@@ -5,17 +5,20 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  PermissionsBitField,
 } from "discord.js";
 import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
   redactUrl,
+  scrubErrorMessage,
   listGuildPacks,
   upsertGuildPack,
   removeGuildPack,
   validatePackName,
   persistGuildPackStatus,
   toPersistedStatus,
+  formatPackPreview,
 } from "../../modules/contextPacks.js";
 import {
   canViewContextDashboard,
@@ -23,6 +26,7 @@ import {
   formatAllGuildsFreshness,
   formatFetchResult,
   formatFreshnessDashboard,
+  formatShortFreshness,
   freshnessEmbedColor,
   parseRefreshCustomId,
   refreshCustomId,
@@ -31,6 +35,68 @@ import {
 import { isBotAdmin } from "../../modules/guildConfigOverview.js";
 
 const REFRESH_COLLECTOR_MS = 120_000;
+const PREVIEW_REPLY_MAX = 1900;
+
+const WRITE_DONE = {
+  add: { created: "Added", replaced: "Updated" },
+  set: { created: "Set", replaced: "Updated" },
+  attach: { created: "Attached", replaced: "Updated" },
+};
+
+const REMOVE_DONE = {
+  remove: "Removed",
+  clear: "Cleared",
+  detach: "Detached",
+};
+
+function addPackUrlSubcommand(command, name, description) {
+  return command.addSubcommand((subcommand) =>
+    subcommand
+      .setName(name)
+      .setDescription(description)
+      .addStringOption((option) =>
+        option
+          .setName("url")
+          .setDescription("Published https CSV/text URL (treated as a secret)")
+          .setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("name")
+          .setDescription("Short pack name (default: plays)")
+          .setRequired(false)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("kind")
+          .setDescription("When to attach this pack (default: plays)")
+          .setRequired(false)
+          .addChoices(
+            { name: "Play tracker (games/stats questions)", value: "plays" },
+            { name: "General notes (house rules / named pack)", value: "general" }
+          )
+      )
+  );
+}
+
+function addPackNameSubcommand(command, name, description) {
+  return command.addSubcommand((subcommand) =>
+    subcommand
+      .setName(name)
+      .setDescription(description)
+      .addStringOption((option) =>
+        option.setName("name").setDescription("Pack name to remove").setRequired(true)
+      )
+  );
+}
+
+function clipPreviewReply(text, max = PREVIEW_REPLY_MAX) {
+  const body = String(text || "");
+  if (body.length <= max) return body;
+  const cut = body.slice(0, max - 24);
+  const fenced = cut.includes("```") && (cut.split("```").length - 1) % 2 === 1;
+  return `${cut}${fenced ? "\n```" : ""}\n(truncated)`;
+}
 
 function liveFetchOk(fetched) {
   if (!fetched) return false;
@@ -43,65 +109,51 @@ class Context extends SlashCommand {
   constructor(client) {
     super(client, {
       name: "context",
-      description: "Configure per-server CSV context packs for chat",
-      usage: "/context add url:https://… name:plays",
+      description: "Admin: attach, preview, and refresh per-server CSV context packs",
+      usage: "/context attach url:https://… name:plays",
       category: "chat",
       enabled: true,
-      permLevel: "User",
+      permLevel: "Administrator",
     });
     this.data = new SlashCommandBuilder()
       .setName(this.help.name)
       .setDescription(this.help.description)
       .setDMPermission(false)
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator);
+    addPackUrlSubcommand(this.data, "attach", "Attach a published CSV/context URL for this server");
+    addPackUrlSubcommand(this.data, "set", "Set this server's published CSV/context URL (stored secret)");
+    addPackUrlSubcommand(this.data, "add", "Register a published CSV/context URL for this server");
+    this.data
       .addSubcommand((subcommand) =>
         subcommand
-          .setName("add")
-          .setDescription("Register a published CSV/context URL for this server")
-          .addStringOption((option) =>
-            option
-              .setName("url")
-              .setDescription("Published https CSV/text URL (treated as a secret)")
-              .setRequired(true)
-          )
+          .setName("list")
+          .setDescription("List this server's packs and a short freshness summary")
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName("preview")
+          .setDescription("Show a safe sample (header + rows; secrets/URLs redacted)")
           .addStringOption((option) =>
             option
               .setName("name")
-              .setDescription("Short pack name (default: plays)")
+              .setDescription("Pack name (omit if this server has one pack)")
               .setRequired(false)
           )
-          .addStringOption((option) =>
-            option
-              .setName("kind")
-              .setDescription("When to attach this pack (default: plays)")
-              .setRequired(false)
-              .addChoices(
-                { name: "Play tracker (games/stats questions)", value: "plays" },
-                { name: "General notes (house rules / named pack)", value: "general" }
-              )
-          )
-      )
-      .addSubcommand((subcommand) =>
-        subcommand.setName("list").setDescription("List this server's context packs (URLs hidden)")
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName("remove")
-          .setDescription("Remove a context pack")
-          .addStringOption((option) =>
-            option.setName("name").setDescription("Pack name to remove").setRequired(true)
-          )
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName("refresh")
-          .setDescription("Re-download a pack now and show fetch result + row count")
-          .addStringOption((option) =>
-            option
-              .setName("name")
-              .setDescription("Pack name (omit to refresh all)")
-              .setRequired(false)
-          )
-      )
+      );
+    addPackNameSubcommand(this.data, "detach", "Detach a context pack from this server");
+    addPackNameSubcommand(this.data, "clear", "Remove a context pack");
+    addPackNameSubcommand(this.data, "remove", "Remove a context pack");
+    this.data.addSubcommand((subcommand) =>
+      subcommand
+        .setName("refresh")
+        .setDescription("Re-download a pack now and show fetch result + row count")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Pack name (omit to refresh all)")
+            .setRequired(false)
+        )
+    )
       .addSubcommand((subcommand) =>
         subcommand
           .setName("status")
@@ -141,14 +193,29 @@ class Context extends SlashCommand {
         return;
       }
 
+      if (!canViewContextDashboard(this.client, interaction)) {
+        await interaction.reply({
+          content: "Context pack management is only for server administrators.",
+          ephemeral: true,
+        });
+        return;
+      }
+
       switch (interaction.options.getSubcommand()) {
         case "add":
+        case "set":
+        case "attach":
           await this.add(interaction);
           break;
         case "list":
           await this.list(interaction);
           break;
+        case "preview":
+          await this.preview(interaction);
+          break;
         case "remove":
+        case "clear":
+        case "detach":
           await this.remove(interaction);
           break;
         case "refresh":
@@ -161,7 +228,7 @@ class Context extends SlashCommand {
           await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
       }
     } catch (e) {
-      this.client.logger.log(e?.message || String(e), "error");
+      this.client.logger.log(scrubErrorMessage(e), "error");
       const payload = {
         content: "Something went wrong with that context command.",
         ephemeral: true,
@@ -175,6 +242,7 @@ class Context extends SlashCommand {
   }
 
   async add(interaction) {
+    const verbs = WRITE_DONE[interaction.options.getSubcommand()] || WRITE_DONE.add;
     const result = upsertGuildPack(this.packs(interaction), {
       name: interaction.options.getString("name") || "plays",
       kind: interaction.options.getString("kind") || "plays",
@@ -185,6 +253,7 @@ class Context extends SlashCommand {
       return;
     }
 
+    await interaction.deferReply({ ephemeral: true });
     this.savePacks(interaction, result.packs);
     this.packService()?.invalidate(result.pack.url);
 
@@ -194,43 +263,133 @@ class Context extends SlashCommand {
       ? `Reachable (${fetched.last_row_count ?? "?"} rows, ${fetched.bytes} bytes). Chat will attach it on matching questions.`
       : "Saved, but the fetch did not succeed just now. Chat will retry when a matching question comes in.";
 
-    await interaction.reply({
+    await interaction.editReply({
       content: [
         result.replaced
-          ? `Updated context pack \`${result.pack.name}\` (${result.pack.kind}).`
-          : `Added context pack \`${result.pack.name}\` (${result.pack.kind}).`,
+          ? `${verbs.replaced} context pack \`${result.pack.name}\` (${result.pack.kind}).`
+          : `${verbs.created} context pack \`${result.pack.name}\` (${result.pack.kind}).`,
         `URL stored as ${redactUrl(result.pack.url)} — the full URL is not shown here and should not be pasted in public channels.`,
         check,
       ].join("\n"),
-      ephemeral: true,
     });
   }
 
   async list(interaction) {
-    const packs = this.packs(interaction);
-    if (packs.length === 0) {
+    const snapshot = this.statusSnapshot(interaction.guild);
+    if (snapshot.missing) {
       await interaction.reply({
         content:
-          "No context packs on this server yet. Publish a sheet as CSV, then `/context add url:<published-csv>`. See CONTEXT_PACKS.md.",
+          "No context packs on this server yet. Publish a sheet as CSV, then `/context attach url:<published-csv>`. See CONTEXT_PACKS.md.",
         ephemeral: true,
       });
       return;
     }
 
-    const lines = packs.map((pack) => `- \`${pack.name}\` (${pack.kind}) — ${redactUrl(pack.url)}`);
+    const lines = snapshot.packs.map(
+      (pack) =>
+        `- \`${pack.name}\` (${pack.kind}) — ${redactUrl(pack.url)} — ${formatShortFreshness(pack)}`
+    );
     await interaction.reply({
       content: [
-        `Context packs (${packs.length}/${MAX_PACKS_PER_GUILD}):`,
+        `Context packs (${snapshot.packs.length}/${MAX_PACKS_PER_GUILD}):`,
         lines.join("\n"),
         `Kinds: ${PACK_KINDS.join(", ")}.`,
-        "Admins: `/context status` for last fetch / rows / URL / errors.",
+        "`/context preview` for a sample. `/context status` for last fetch / rows / URL / errors.",
       ].join("\n"),
       ephemeral: true,
     });
   }
 
+  findPack(packs, rawName) {
+    const named = validatePackName(rawName);
+    if (named.error) return named;
+    const pack = packs.find((item) => item.name === named.name);
+    if (!pack) return { error: `No context pack named \`${named.name}\`.`, name: named.name };
+    return { pack, name: named.name };
+  }
+
+  async preview(interaction) {
+    const packs = this.packs(interaction);
+    if (packs.length === 0) {
+      await interaction.reply({
+        content: "No context packs to preview. Attach one with `/context attach`.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const rawName = interaction.options.getString("name");
+    let pack = packs[0];
+    if (rawName) {
+      const found = this.findPack(packs, rawName);
+      if (found.error) {
+        await interaction.reply({ content: found.error, ephemeral: true });
+        return;
+      }
+      pack = found.pack;
+    } else if (packs.length > 1) {
+      const names = packs.map((item) => `\`${item.name}\``).join(", ");
+      await interaction.reply({
+        content: `This server has multiple packs (${names}). Pass \`name\` to preview one.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const fetched = await this.packService()?.fetchUrl(pack.url);
+    if (fetched) this.rememberFetch(interaction.guild.id, pack.name, fetched);
+    if (!fetched) {
+      await interaction.editReply({
+        content: `\`${pack.name}\`: context pack service is not available.`,
+      });
+      return;
+    }
+
+    const body = fetched.text;
+    if (!body) {
+      const detail = fetched.last_error || fetched.error || "unknown error";
+      const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
+      await interaction.editReply({
+        content: `Could not preview \`${pack.name}\`: ${kind} — ${detail}.`,
+      });
+      return;
+    }
+
+    const preview = formatPackPreview(body);
+    if (preview.error && !preview.snippet) {
+      await interaction.editReply({
+        content: `Could not preview \`${pack.name}\`: parse error — ${preview.error}.`,
+      });
+      return;
+    }
+
+    const rows = fetched.last_row_count ?? preview.rowsTotal;
+    const source = fetched.fromCache
+      ? "cache"
+      : fetched.serving_stale
+        ? "stale cache"
+        : "live fetch";
+    const lines = [
+      `Preview of \`${pack.name}\` (${pack.kind}) — ${rows} row${rows === 1 ? "" : "s"} · ${source}.`,
+    ];
+    if (!liveFetchOk(fetched)) {
+      const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
+      const detail = fetched.last_error || fetched.error || "unknown error";
+      lines.push(`Latest fetch: ${kind} — ${detail}.`);
+    }
+    lines.push(
+      preview.truncated
+        ? `Showing header + ${preview.rowsShown} row(s), char-capped. Secrets and URLs redacted.`
+        : "Secrets and URLs redacted. Full URL is not shown."
+    );
+    lines.push("", "```csv", preview.snippet, "```");
+    await interaction.editReply({ content: clipPreviewReply(lines.join("\n")) });
+  }
+
   async remove(interaction) {
     const packs = this.packs(interaction);
+    const verb = REMOVE_DONE[interaction.options.getSubcommand()] || REMOVE_DONE.remove;
     const result = removeGuildPack(packs, interaction.options.getString("name", true));
     if (result.error) {
       await interaction.reply({ content: result.error, ephemeral: true });
@@ -240,7 +399,7 @@ class Context extends SlashCommand {
     this.savePacks(interaction, result.packs);
     if (removed?.url) this.packService()?.invalidate(removed.url);
     await interaction.reply({
-      content: `Removed context pack \`${result.name}\`.`,
+      content: `${verb} context pack \`${result.name}\`.`,
       ephemeral: true,
     });
   }
@@ -370,7 +529,7 @@ class Context extends SlashCommand {
         await this.client.guilds.fetch();
       } catch (e) {
         this.client.logger.log(
-          `context status: guilds.fetch failed, using cache (${this.client.guilds.cache.size} guilds): ${e}`,
+          `context status: guilds.fetch failed, using cache (${this.client.guilds.cache.size} guilds): ${scrubErrorMessage(e)}`,
           "warn"
         );
       }
@@ -428,7 +587,7 @@ class Context extends SlashCommand {
         const next = this.statusPayload(this.statusSnapshot(interaction.guild));
         await interaction.editReply(next);
       } catch (e) {
-        this.client.logger.log(e?.message || String(e), "error");
+        this.client.logger.log(scrubErrorMessage(e), "error");
       }
     });
 

@@ -29,34 +29,46 @@ Upload a `.csv` (or `.tsv` / plain text table) and use an `https://` object URL.
 
 ## 2. Register the URL on the Discord server
 
-Anyone in the server can register a pack:
+**Server administrators** (and the bot owner / configured admin IDs) can manage packs from Discord. The command is hidden from everyone else.
 
 ```
-/context add url:<published-csv> name:plays kind:plays
+/context attach url:<published-csv> name:plays kind:plays
 ```
+
+`set` and `add` do the same thing as `attach`.
 
 - `name` defaults to `plays`. Use a short slug (`plays`, `house-rules`). You can register more than one pack later.
 - `kind:plays` attaches on **games/stats** questions (plays, wins, scores, game night, “have we played X”).
 - `kind:general` attaches for house-rules / named-pack questions, or when the pack name is mentioned.
 
-Other commands (all ephemeral):
+Other admin commands (all ephemeral):
 
 ```
 /context list
+/context preview
+/context preview name:plays
 /context status
 /context status all:True
+/context detach name:plays
+/context clear name:plays
 /context remove name:plays
 /context refresh
 /context refresh name:plays
 ```
 
-`/context add`, `/context list`, and `/context refresh` hide the published URL as `https://host/…` so it is not pasted into a public channel by accident.
+`/context list` shows each pack plus a short freshness line (healthy / stale / broken, row count, last fetch). URLs are shown as `https://host/…`.
 
-`/context status` is **admin-only** (server Administrator, or the bot owner / configured admin IDs). It is the freshness dashboard: per pack, the published URL, whether it is configured, last successful fetch, last result (`ok` / HTTP error / parse error / timeout), cached row count, and cache TTL/expiry. Missing (no pack) is visually distinct from configured-but-broken. The reply is always ephemeral. Bot owner can pass `all:True` to scan every joined server (same per-pack details, including URLs).
+`/context preview` fetches (or uses the 10-minute cache) and shows a **safe sample**: header row + a few data rows, char-capped, with URLs / emails / obvious tokens redacted. The full published URL is never echoed.
+
+`/context attach`, `/context list`, `/context preview`, and `/context refresh` hide the published URL as `https://host/…` so it is not pasted into a public channel by accident.
+
+`/context status` is the freshness dashboard: per pack, the published URL, whether it is configured, last successful fetch, last result (`ok` / HTTP error / parse error / timeout), cached row count, and cache TTL/expiry. Missing (no pack) is visually distinct from configured-but-broken. The reply is always ephemeral. Bot owner can pass `all:True` to scan every joined server (same per-pack details, including URLs).
 
 `/context refresh` (and the **Refresh now** buttons on `/context status`) re-download immediately instead of waiting for the 10-minute cache TTL, then report ok/error + row count.
 
-The bot does a one-time fetch when you add a pack so you can see whether the URL is reachable. A failure there does not unset the pack; chat will retry later. Last fetch metadata (`last_ok_at`, `last_error`, `last_row_count`) is stored on the guild pack so the dashboard still works after a process restart.
+The bot does a one-time fetch when you attach a pack so you can see whether the URL is reachable. A failure there does not unset the pack; chat will retry later. Last fetch metadata (`last_ok_at`, `last_error`, `last_row_count`) is stored on the guild pack so the dashboard still works after a process restart.
+
+`detach` / `clear` / `remove` all drop the pack from this server.
 
 ## 3. What a play-tracker CSV should look like
 

@@ -30,6 +30,11 @@ import {
   classifyFetchError,
   persistGuildPackStatus,
   pickPackStatus,
+  formatPackPreview,
+  redactPreviewText,
+  splitCsvLine,
+  PREVIEW_MAX_ROWS,
+  PREVIEW_MAX_CHARS,
 } from "../modules/contextPacks.js";
 
 const PLAYS_CSV = [
@@ -972,5 +977,40 @@ describe("pinned HTTPS agent lookup", () => {
     } finally {
       server.close();
     }
+  });
+});
+
+describe("safe pack preview", () => {
+  it("shows header plus a char-capped sample of rows", () => {
+    const preview = formatPackPreview(PLAYS_CSV, { maxRows: 2 });
+    assert.match(preview.snippet, /^Date,Game,Players,Winner/);
+    assert.match(preview.snippet, /Azul/);
+    assert.match(preview.snippet, /Catan/);
+    assert.doesNotMatch(preview.snippet, /Wingspan/);
+    assert.equal(preview.rowsShown, 2);
+    assert.equal(preview.rowsTotal, 3);
+    assert.equal(preview.truncated, true);
+    assert.equal(PREVIEW_MAX_ROWS, 8);
+    assert.ok(PREVIEW_MAX_CHARS > 100);
+  });
+
+  it("redacts obvious secrets, emails, and URLs without echoing pack tokens", () => {
+    const csv = [
+      "Date,api_key,email,notes",
+      `2026-01-04,sk-abcdefghijklmnopqrstuvwxyz,will@example.com,see ${SECRET_URL}`,
+      "2026-01-11,AIzaSyD-thisIsAFakeGoogleKey12345,other@example.com,ok",
+    ].join("\n");
+    const preview = formatPackPreview(csv);
+    assert.match(preview.snippet, /Date,api_key,email,notes/);
+    assert.match(preview.snippet, /\[redacted\]/);
+    assert.doesNotMatch(preview.snippet, /sk-abcdefghijklmnopqrstuvwxyz/);
+    assert.doesNotMatch(preview.snippet, /AIzaSyD/);
+    assert.doesNotMatch(preview.snippet, /will@example\.com/);
+    assert.doesNotMatch(preview.snippet, /other@example\.com/);
+    assert.doesNotMatch(preview.snippet, /2PACX/);
+    assert.doesNotMatch(preview.snippet, /SecretToken/);
+    assert.match(preview.snippet, /https:\/\/docs\.google\.com\/…/);
+    assert.equal(redactPreviewText(`token ${SECRET_URL}`).includes("2PACX"), false);
+    assert.deepEqual(splitCsvLine('Azul,"Shane, Will",ok'), ["Azul", "Shane, Will", "ok"]);
   });
 });
