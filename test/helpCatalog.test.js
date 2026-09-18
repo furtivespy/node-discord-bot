@@ -87,6 +87,7 @@ describe("help catalog", () => {
     assert.ok(!names.includes("test"));
     assert.ok(!names.includes("config"));
     assert.ok(!names.includes("starboard"));
+    assert.ok(!names.includes("usage"));
     assert.ok(!names.includes("rule34"));
     for (const stale of PREFIX_ERA_NAMES) {
       assert.ok(!names.includes(stale), `prefix-era ${stale} should not appear in /help`);
@@ -136,6 +137,7 @@ describe("help catalog", () => {
     assert.ok(!sfw.includes("config"));
     assert.ok(admin.includes("config"));
     assert.ok(admin.includes("starboard"));
+    assert.ok(admin.includes("usage"));
     assert.ok(owner.includes("people"));
     assert.ok(owner.includes("settings"));
   });
@@ -185,6 +187,7 @@ describe("help catalog", () => {
     assert.equal(categoryIdFor(slashcommands.get("context")), "chat");
     assert.equal(categoryIdFor(slashcommands.get("config")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("starboard")), "admin");
+    assert.equal(categoryIdFor(slashcommands.get("usage")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("wiki")), "info");
     assert.equal(categoryIdFor(slashcommands.get("roll")), "games");
     assert.equal(categoryIdFor(slashcommands.get("help")), "util");

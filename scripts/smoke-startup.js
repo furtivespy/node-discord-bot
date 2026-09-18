@@ -138,6 +138,19 @@ async function main() {
   }
 
   try {
+    const usage = slash && slash.loaded.find((c) => c.name === 'usage')
+    assert(usage, '/usage module did not load')
+    assert(usage.data?.name === 'usage', 'slash payload name is not usage')
+    assert(usage.data?.default_member_permissions, '/usage should be admin-only')
+    assert(usage.data?.dm_permission === false, '/usage should be guild-only')
+    const allOpt = (usage.data.options || []).find((o) => o.name === 'all')
+    assert(allOpt, '/usage missing all option')
+    pass('slash command load + /usage schema')
+  } catch (e) {
+    fail('slash command load + /usage schema', e)
+  }
+
+  try {
     const prefix = await loadJsModules('commands')
     if (prefix.errors.length) throw new Error(prefix.errors.join('\n'))
     const names = prefix.loaded.map((c) => c.name)
