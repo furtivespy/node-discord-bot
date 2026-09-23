@@ -135,9 +135,11 @@ describe("help catalog", () => {
     assert.ok(nsfw.includes("boobs"));
     assert.ok(nsfw.includes("rule34"));
     assert.ok(!sfw.includes("config"));
+    assert.ok(!sfw.includes("context"));
     assert.ok(admin.includes("config"));
     assert.ok(admin.includes("starboard"));
     assert.ok(admin.includes("usage"));
+    assert.ok(admin.includes("context"));
     assert.ok(owner.includes("people"));
     assert.ok(owner.includes("settings"));
   });
@@ -203,6 +205,8 @@ describe("help catalog", () => {
     const context = formatCommandDetails(slashcommands.get("context"));
     assert.ok(context.includes("status"));
     assert.ok(context.includes("refresh"));
+    assert.ok(context.includes("preview"));
+    assert.ok(context.includes("attach"));
     assert.match(context, /freshness/i);
   });
 
