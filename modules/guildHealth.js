@@ -114,8 +114,10 @@ function createImageGenProbe({ now = () => Date.now() } = {}) {
   }
 
   function snapshot(guildId) {
-    if (guildId && byGuild.has(String(guildId))) {
-      return { ...byGuild.get(String(guildId)) };
+    if (guildId) {
+      const entry = byGuild.get(String(guildId));
+      // Per-guild /status must not inherit another guild's last result.
+      return entry ? { ...entry } : emptyImageProbe();
     }
     return { ...processWide };
   }

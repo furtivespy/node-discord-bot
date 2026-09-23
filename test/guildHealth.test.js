@@ -174,6 +174,45 @@ describe("guild health snapshot", () => {
     assert.doesNotMatch(imageText, /AIzaSy/);
   });
 
+  it("does not leak guild A's last image-gen result into guild B", () => {
+    const client = mockClient({
+      packs: [],
+      slashNote: { ok: true, loaded: 12, registered: 12, at: 1, scope: "global" },
+    });
+    client.imageGenProbe.record("guild-1", {
+      ok: false,
+      error: "quota exceeded",
+      at: 1_700_000_300_000,
+    });
+
+    const a = client.imageGenProbe.snapshot("guild-1");
+    assert.equal(a.last_result, "error");
+    assert.equal(a.last_error, "quota exceeded");
+
+    const bProbe = client.imageGenProbe.snapshot("guild-2");
+    assert.equal(bProbe.last_result, null);
+    assert.equal(bProbe.last_attempt_at, null);
+    assert.equal(bProbe.last_ok_at, null);
+    assert.equal(bProbe.last_error_at, null);
+    assert.equal(bProbe.last_error, null);
+
+    const b = collectGuildHealth(client, { id: "guild-2", name: "Beta Den" });
+    assert.equal(b.image.last_result, null);
+    assert.equal(b.image.last_attempt_at, null);
+    assert.equal(b.image.okCount, 0);
+    assert.equal(b.image.failCount, 0);
+    assert.equal(b.image.health, HEALTH.never);
+    assert.equal(b.health, HEALTH.healthy);
+
+    client.usagePulse.recordEvent("guild-2", FEATURE_EVENTS.IMAGE_GEN_SUCCESS);
+    const bPulse = collectGuildHealth(client, { id: "guild-2", name: "Beta Den" });
+    assert.equal(bPulse.image.last_result, null);
+    assert.equal(bPulse.image.okCount, 1);
+    assert.equal(bPulse.image.failCount, 0);
+    assert.equal(bPulse.image.health, HEALTH.healthy);
+    assert.equal(bPulse.health, HEALTH.healthy);
+  });
+
   it("does not turn overall yellow just because no pack is configured and image-gen is idle", () => {
     const snap = collectGuildHealth(
       mockClient({
