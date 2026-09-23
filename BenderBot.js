@@ -20,6 +20,7 @@ import config from "./config.js";
 import permLevels from "./config.permissionLevels.js";
 import createBugsnagLogger from "./modules/bugsnagLogger.js";
 import { rememberSlashCommandIds } from "./modules/guildHelpFeatures.js";
+import { createUsagePulse, noteSlashUse } from "./modules/usagePulse.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
@@ -57,6 +58,13 @@ class BenderBot extends Client {
       autoFetch: true,
       dataDir: enmapDataDir,
     });
+    this.usageStore = new Enmap({
+      name: "usagePulse",
+      cloneLevel: "deep",
+      fetchAll: false,
+      autoFetch: true,
+      dataDir: enmapDataDir,
+    });
 
     this.commands = new Collection();
     this.slashcommands = new Collection();
@@ -65,6 +73,10 @@ class BenderBot extends Client {
     this.guildDBs = {};
 
     this.logger = createBugsnagLogger(this.config.bugsnagKey, this.config.releaseStage);
+    this.usagePulse = createUsagePulse({
+      store: this.usageStore,
+      logger: this.logger,
+    });
 
     // add geminiAI module
     this.geminiAI = createGeminiAI(this)
@@ -376,6 +388,12 @@ const init = async () => {
       });
       client.logger.log(`guild members cached`);
 
+      try {
+        client.usagePulse.start();
+      } catch (e) {
+        client.logger.log(e, "warn");
+      }
+
       //Register Slash Commands
       const cmds = client.slashcommands.map((sc) => sc.data.toJSON());
       const rest = new REST({
@@ -652,6 +670,8 @@ client.on("interactionCreate", async (interaction) => {
 
   if (!command) return;
 
+  noteSlashUse(client.usagePulse, interaction);
+
   try {
     await command.execute(interaction);
   } catch (error) {
@@ -671,9 +691,26 @@ client
   .on("error", (e) => client.logger.error(e))
   .on("warn", (info) => client.logger.warn(info));
 
+function flushUsagePulse() {
+  try {
+    client.usagePulse?.flush();
+  } catch {}
+}
+
+process.on("beforeExit", flushUsagePulse);
+process.on("SIGTERM", () => {
+  flushUsagePulse();
+  process.exit(0);
+});
+process.on("SIGINT", () => {
+  flushUsagePulse();
+  process.exit(0);
+});
+
 process.on("uncaughtException", (err) => {
   const errorMsg = err.stack.replace(new RegExp(`${__dirname}/`, "g"), "./");
   console.error("Uncaught Exception: ", errorMsg);
+  flushUsagePulse();
   // Always best practice to let the code crash on uncaught exceptions.
   // Because you should be catching them anyway.
   process.exit(1);
