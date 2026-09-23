@@ -12,6 +12,7 @@ import {
   formatHealthDescription,
   inferImageGenHealth,
   rememberSlashRegistration,
+  scrubHealthDetail,
 } from "../modules/guildHealth.js";
 import { createGeminiAI } from "../modules/geminiai.js";
 
@@ -163,6 +164,7 @@ describe("guild health snapshot", () => {
       error: `request to ${SECRET_URL} failed with key ${SECRET_KEY}`,
       at: 1_700_000_200_000,
     });
+    assert.doesNotMatch(imageFail.imageGenProbe.snapshot("guild-1").last_error, /AIzaSy|2PACX/);
     const imageSnap = collectGuildHealth(imageFail, { id: "guild-1", name: "Alpha Pub" });
     assert.equal(imageSnap.image.health, HEALTH.broken);
     assert.equal(imageSnap.health, HEALTH.broken);
@@ -275,6 +277,13 @@ describe("guild health snapshot", () => {
     );
   });
 
+  it("scrubs URLs and API-key-shaped tokens from health details", () => {
+    const text = scrubHealthDetail(`request to ${SECRET_URL} failed with key ${SECRET_KEY}`);
+    assert.match(text, /request to/);
+    assert.doesNotMatch(text, /2PACX/);
+    assert.doesNotMatch(text, /AIzaSy/);
+  });
+
   it("formats cheap durations", () => {
     assert.equal(formatDuration(12_000), "12s");
     assert.equal(formatDuration(5 * 60 * 1000), "5m");
@@ -302,15 +311,15 @@ describe("image-gen probe hook", () => {
     assert.equal(client.imageGenProbe.snapshot("guild-1").last_result, "ok");
 
     ai.AI2.models.generateContent = async () => {
-      throw new Error(`boom for a secret prompt at ${SECRET_URL}`);
+      throw new Error(`boom at ${SECRET_URL} key ${SECRET_KEY}`);
     };
-    const fail = await ai.generateImageNew("another secret", { guildId: "guild-1" });
+    const fail = await ai.generateImageNew("another secret prompt", { guildId: "guild-1" });
     assert.equal(fail, null);
     const last = client.imageGenProbe.snapshot("guild-1");
     assert.equal(last.last_result, "error");
     assert.match(last.last_error, /boom/);
     assert.doesNotMatch(last.last_error, /2PACX/);
-    assert.doesNotMatch(JSON.stringify(last), /another secret/);
-    assert.doesNotMatch(JSON.stringify(last), /a secret prompt/);
+    assert.doesNotMatch(last.last_error, /AIzaSy/);
+    assert.doesNotMatch(JSON.stringify(last), /another secret prompt/);
   });
 });

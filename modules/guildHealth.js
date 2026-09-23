@@ -21,8 +21,20 @@ import {
 } from "./contextPackFreshness.js";
 import { FEATURE_EVENTS } from "./usagePulse.js";
 import { imageGenAvailable } from "./guildHelpFeatures.js";
-import { isBotAdmin, splitDiscordMessages } from "./guildConfigOverview.js";
+import { isBotAdmin, looksLikeSecretValue, splitDiscordMessages } from "./guildConfigOverview.js";
 import { scrubErrorMessage } from "./contextPacks.js";
+
+const SECRET_IN_TEXT_RE =
+  /\b(?:sk-[A-Za-z0-9_-]+|ghp_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|gho_[A-Za-z0-9]+|xox[baprs]-[A-Za-z0-9-]+|AIza[0-9A-Za-z_-]+|ya29\.[0-9A-Za-z._-]+|EAA[A-Za-z0-9]+|AKIA[0-9A-Z]{16}|Bearer\s+\S+)/gi;
+
+function scrubHealthDetail(error) {
+  let message = scrubErrorMessage(error);
+  message = message.replace(SECRET_IN_TEXT_RE, "[redacted]");
+  message = message.replace(/\b[A-Za-z0-9+/=._-]{32,}\b/g, (token) =>
+    looksLikeSecretValue(token) ? "[redacted]" : token
+  );
+  return message.slice(0, 180);
+}
 
 const OVERALL_LINE = {
   healthy: "🟢 healthy",
@@ -81,7 +93,7 @@ function applyImageResult(entry, { ok, error, at }) {
   } else {
     next.last_error_at = at;
     next.last_result = "error";
-    next.last_error = scrubErrorMessage(error || "image generation failed");
+    next.last_error = scrubHealthDetail(error || "image generation failed");
   }
   return next;
 }
@@ -113,7 +125,7 @@ function createImageGenProbe({ now = () => Date.now() } = {}) {
 
 function rememberSlashRegistration(client, note = {}) {
   if (!client) return;
-  const error = note.error == null ? null : scrubErrorMessage(note.error);
+  const error = note.error == null ? null : scrubHealthDetail(note.error);
   client.slashRegistration = {
     at: note.at ?? Date.now(),
     ok: Boolean(note.ok),
@@ -337,7 +349,7 @@ function formatImageLine(row) {
     : "no attempt this process";
   const lines = [`${mark} — last ${last}`, rate];
   if (row.last_error && row.last_result && row.last_result !== "ok") {
-    lines.push(`Error: ${scrubErrorMessage(row.last_error)}`);
+    lines.push(`Error: ${scrubHealthDetail(row.last_error)}`);
   }
   return lines.join("\n");
 }
@@ -433,5 +445,6 @@ export {
   formatHealthDescription,
   formatAllGuildsHealth,
   healthEmbedColor,
+  scrubHealthDetail,
   splitDiscordMessages,
 };
