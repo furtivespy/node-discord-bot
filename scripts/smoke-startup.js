@@ -129,7 +129,7 @@ async function main() {
     assert(context, '/context module did not load')
     assert(context.data?.name === 'context', 'slash payload name is not context')
     const subcommands = (context.data.options || []).map((o) => o.name)
-    for (const name of ['add', 'list', 'refresh', 'remove']) {
+    for (const name of ['add', 'attach', 'set', 'list', 'preview', 'refresh', 'remove', 'clear', 'detach', 'status']) {
       assert(subcommands.includes(name), `/context missing subcommand ${name}`)
     }
     pass('slash command load + /context schema')
