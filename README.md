@@ -50,6 +50,43 @@ Tokens, API keys, and full published CSV / context-pack URLs are never printed
 are labeled `(default)` or `unset`. If Discord’s guild list cannot be refreshed,
 the report warns that it is using the cached guilds only.
 
+## Admin health / status
+
+`/status` is a single-screen **green / yellow / red** health check for the
+server you run it in: process/Discord uptime, last slash-command register note,
+context-pack last refresh (same freshness fields as `/context status`, without
+pack URLs), and image-gen last result plus the 7-day ok/fail counts from
+`/usage`. It always replies **ephemerally**.
+
+This answers “is it working right now?” `/config overview` answers “what’s
+configured?” `/context status` is the detailed pack freshness dashboard
+(including published URLs). `/status` composes those pack-health fields; it
+does not store a second copy.
+
+**Who can use it**
+
+- Server **Administrator**
+- `config.json` `botOwnerId`
+- optional `admins` or `adminIds` arrays in `config.json`
+- the Discord application owner, if `appInfo.owner` is a user
+
+The command is Discord-admin-visible (`default_member_permissions`) and
+guild-only. Non-admins who somehow invoke it get an ephemeral permission
+error. Bot owner / configured admin IDs can pass `all:True` to scan every
+joined server.
+
+**How to run**
+
+1. Deploy a build that includes this command, then restart so slash commands
+   re-register.
+2. In any server, run `/status`.
+3. Optional (bot owner): `/status all:True`.
+
+The embed never prints tokens, API keys, image prompts, or published CSV /
+context-pack URLs. Scrubbed error text may appear when a check failed. Image-gen
+“last error” is an in-memory probe for this process; 7-day rates come from the
+existing usage pulse.
+
 ## Dependency updates
 
 Dependabot version updates live in [`.github/dependabot.yml`](.github/dependabot.yml). Once that file is on `master` **and** Dependabot is enabled in GitHub, weekly PRs show up from the `dependabot` bot:

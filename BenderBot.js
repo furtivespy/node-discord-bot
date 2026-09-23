@@ -20,6 +20,7 @@ import config from "./config.js";
 import permLevels from "./config.permissionLevels.js";
 import createBugsnagLogger from "./modules/bugsnagLogger.js";
 import { rememberSlashCommandIds } from "./modules/guildHelpFeatures.js";
+import { createImageGenProbe, rememberSlashRegistration } from "./modules/guildHealth.js";
 import { createUsagePulse, noteSlashUse } from "./modules/usagePulse.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +78,7 @@ class BenderBot extends Client {
       store: this.usageStore,
       logger: this.logger,
     });
+    this.imageGenProbe = createImageGenProbe();
 
     // add geminiAI module
     this.geminiAI = createGeminiAI(this)
@@ -400,6 +402,31 @@ const init = async () => {
         version: "10",
       }).setToken(client.config.token);
 
+      const registerScope =
+        client.config.clientId == "548570412959662080" ? "guild" : "global";
+      const onSlashRegistered = (response) => {
+        rememberSlashCommandIds(client, response);
+        const registered = Array.isArray(response)
+          ? response.length
+          : response?.size ?? cmds.length;
+        rememberSlashRegistration(client, {
+          ok: true,
+          loaded: cmds.length,
+          registered,
+          scope: registerScope,
+        });
+        client.logger.log("Successfully registered application commands.");
+      };
+      const onSlashRegisterFailed = (error) => {
+        rememberSlashRegistration(client, {
+          ok: false,
+          loaded: cmds.length,
+          scope: registerScope,
+          error,
+        });
+        client.logger.error(error);
+      };
+
       if (client.config.clientId == "548570412959662080") {
         //Test Server
         rest
@@ -412,22 +439,16 @@ const init = async () => {
               body: cmds,
             }
           )
-          .then((response) => {
-            rememberSlashCommandIds(client, response);
-            client.logger.log("Successfully registered application commands.");
-          })
-          .catch((error) => client.logger.error(error));
+          .then(onSlashRegistered)
+          .catch(onSlashRegisterFailed);
       } else {
         //Prod Server
         rest
           .put(Routes.applicationCommands(client.config.clientId), {
             body: cmds,
           })
-          .then((response) => {
-            rememberSlashCommandIds(client, response);
-            client.logger.log("Successfully registered application commands.");
-          })
-          .catch((error) => client.logger.error(error));
+          .then(onSlashRegistered)
+          .catch(onSlashRegisterFailed);
       }
 
       client.chatBackfill.onReady();

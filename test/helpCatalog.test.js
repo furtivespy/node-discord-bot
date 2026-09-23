@@ -139,6 +139,7 @@ describe("help catalog", () => {
     assert.ok(admin.includes("config"));
     assert.ok(admin.includes("starboard"));
     assert.ok(admin.includes("usage"));
+    assert.ok(admin.includes("status"));
     assert.ok(admin.includes("context"));
     assert.ok(owner.includes("people"));
     assert.ok(owner.includes("settings"));
@@ -190,6 +191,7 @@ describe("help catalog", () => {
     assert.equal(categoryIdFor(slashcommands.get("config")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("starboard")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("usage")), "admin");
+    assert.equal(categoryIdFor(slashcommands.get("status")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("wiki")), "info");
     assert.equal(categoryIdFor(slashcommands.get("roll")), "games");
     assert.equal(categoryIdFor(slashcommands.get("help")), "util");

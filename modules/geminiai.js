@@ -19,6 +19,7 @@ import formattingInstructions from "./prompt_components/formatting_instructions.
 import capabilitiesTemplate from "./prompt_components/capabilities.js";
 import { extractImageCallout } from "./imageCallout.js";
 import { createContextPackService, persistGuildPackStatus, scrubErrorMessage } from "./contextPacks.js";
+import { recordImageGenResult } from "./guildHealth.js";
 
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
@@ -489,18 +490,34 @@ class GeminiAI {
         const parts = result?.candidates?.[0]?.content?.parts;
         if (!parts) {
           console.error("No candidates or parts found in image response");
+          recordImageGenResult(this.client, {
+            ok: false,
+            error: "no image candidates",
+            guildId: options.guildId,
+          });
           return null;
         }
 
         const inlineDataPart = parts.find((part) => part.inlineData);
         if (!inlineDataPart) {
           console.error("No inlineData found in image response parts");
+          recordImageGenResult(this.client, {
+            ok: false,
+            error: "no image data",
+            guildId: options.guildId,
+          });
           return null;
         }
 
+        recordImageGenResult(this.client, { ok: true, guildId: options.guildId });
         return this.createAttachmentFromInlineData(inlineDataPart.inlineData);
       } catch (error) {
         console.error("Error generating image:", error);
+        recordImageGenResult(this.client, {
+          ok: false,
+          error,
+          guildId: options.guildId,
+        });
         return null;
       }
     }
@@ -769,7 +786,7 @@ class GeminiAI {
 
   let imageResponse = null;
   if (image) {
-    imageResponse = await this.generateImageNew(`generate an image of ${image}`);
+    imageResponse = await this.generateImageNew(`generate an image of ${image}`, { guildId });
     try {
       this.client.usagePulse?.recordEvent(
         guildId,
