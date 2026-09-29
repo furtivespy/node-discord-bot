@@ -151,6 +151,19 @@ async function main() {
   }
 
   try {
+    const status = slash && slash.loaded.find((c) => c.name === 'status')
+    assert(status, '/status module did not load')
+    assert(status.data?.name === 'status', 'slash payload name is not status')
+    assert(status.data?.default_member_permissions, '/status should be admin-only')
+    assert(status.data?.dm_permission === false, '/status should be guild-only')
+    const statusAll = (status.data.options || []).find((o) => o.name === 'all')
+    assert(statusAll, '/status missing all option')
+    pass('slash command load + /status schema')
+  } catch (e) {
+    fail('slash command load + /status schema', e)
+  }
+
+  try {
     const prefix = await loadJsModules('commands')
     if (prefix.errors.length) throw new Error(prefix.errors.join('\n'))
     const names = prefix.loaded.map((c) => c.name)

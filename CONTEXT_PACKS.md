@@ -64,6 +64,8 @@ Other admin commands (all ephemeral):
 
 `/context status` is the freshness dashboard: per pack, the published URL, whether it is configured, last successful fetch, last result (`ok` / HTTP error / parse error / timeout), cached row count, and cache TTL/expiry. Missing (no pack) is visually distinct from configured-but-broken. The reply is always ephemeral. Bot owner can pass `all:True` to scan every joined server (same per-pack details, including URLs).
 
+Admins can also run `/status` for a single-screen green/yellow/red health view (commands, last pack refresh, image-gen). It **reuses the same pack-health fields** as this dashboard and does **not** print the published URL — use `/context status` when you need the sheet link. See the “Admin health / status” section in README.md for who can run it.
+
 `/context refresh` (and the **Refresh now** buttons on `/context status`) re-download immediately instead of waiting for the 10-minute cache TTL, then report ok/error + row count.
 
 The bot does a one-time fetch when you attach a pack so you can see whether the URL is reachable. A failure there does not unset the pack; chat will retry later. Last fetch metadata (`last_ok_at`, `last_error`, `last_row_count`) is stored on the guild pack so the dashboard still works after a process restart.
