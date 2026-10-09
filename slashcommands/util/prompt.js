@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from '@discordjs/builders';
 
 import SlashCommand from '../../base/SlashCommand.js';
+import { splitForDiscord } from '../../modules/splitForDiscord.js';
 class Prompt extends SlashCommand {
   constructor(client){
     super(client, {
@@ -27,17 +28,12 @@ class Prompt extends SlashCommand {
 
 		try {
 			const response = await interaction.client.geminiAI.runPrompt(prompt)
-      let msg = interaction
-      if (response[0].length >= 0) {
-        msg = await interaction.editReply(response[0]);
+      const pieces = (Array.isArray(response) ? response : [response])
+        .flatMap((chunk) => splitForDiscord(chunk))
+      let msg = await interaction.editReply(pieces[0])
+      for (let i = 1; i < pieces.length; i++) {
+        msg = await msg.reply(pieces[i])
       }
-			if (response.length > 1) {
-				for (let i = 1; i < response.length; i++) {
-          if (response[i].length >= 0) {
-					  msg = await msg.reply(response[i]);
-          }
-				}
-			}
 
 		} catch (error) {
 			console.error('Error in /prompt command:', error);

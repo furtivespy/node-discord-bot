@@ -1,4 +1,5 @@
 import Command from '../../base/Command.js';
+import { splitForDiscord } from '../../modules/splitForDiscord.js';
 class Chatbot extends Command {
     constructor(client){
         super(client, {
@@ -43,13 +44,16 @@ class Chatbot extends Command {
                         const {response, imageResponse} = await this.client.geminiAI.generateContent(contents, message)
                         const parts = response.split('||SEPARATE||').map(chunk => chunk.trim()).filter(Boolean)
                         for (let i = 0; i < parts.length; i++) {
-                            const thought = i === 0
+                            const processed = i === 0
                                 ? keepFirstMentions(parts[i], message.guild)
                                 : replaceMentionsWithNicks(parts[i], message.guild)
-                            await message.channel.send({
-                                content: thought.slice(0, 2000),
-                                allowedMentions: mentionOptions(thought, i === 0)
-                            })
+                            const thoughts = splitForDiscord(processed)
+                            for (const thought of thoughts) {
+                                await message.channel.send({
+                                    content: thought,
+                                    allowedMentions: mentionOptions(thought, i === 0)
+                                })
+                            }
                         }
                         if (imageResponse) {
                             await message.channel.send({files: [imageResponse]})
