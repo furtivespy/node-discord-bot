@@ -29,7 +29,7 @@ export const PERSONALITY_CHECK_PROMPTS = [
     label: "Multi-person thread",
     text: `[10/9/2026, 3:20:01 PM] Alex (id: <@111>): we're thinking Saturday 7pm for game night, Azul or Wingspan
 [10/9/2026, 3:20:44 PM] Sam (id: <@222>): I can do Saturday but not until 8, and I will fight for Wingspan
-[10/9/2026, 3:21:10 PM] Riley (id: <@333>): 8 works. I can host. Bender can you just recap what we landed on?`,
+[10/9/2026, 3:21:10 PM] Riley (id: <@333>): 8 works. I can host. can you just recap what we landed on?`,
   },
   {
     id: "bad_day",

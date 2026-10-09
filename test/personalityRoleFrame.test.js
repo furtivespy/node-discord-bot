@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +81,8 @@ function makeAi() {
 }
 
 function makeMessage(personalityKey) {
+  const displayName =
+    (personalityKey && PERSONALITY_NAMES[personalityKey]) || "Bender";
   return {
     settings: personalityKey
       ? { ai_selected_personality: personalityKey }
@@ -90,7 +93,7 @@ function makeMessage(personalityKey) {
       members: {
         cache: {
           get() {
-            return { displayName: "Bender" };
+            return { displayName };
           },
         },
       },
@@ -189,5 +192,37 @@ describe("FUR-106 role frame + personality keys", () => {
     for (const prompt of PERSONALITY_CHECK_PROMPTS) {
       assert.ok(prompt.text.includes("(id: <@"));
     }
+    const thread = PERSONALITY_CHECK_PROMPTS.find((prompt) => prompt.id === "thread");
+    assert.equal(
+      /\bBender\b/.test(thread.text),
+      false,
+      "thread prompt should address the bot without hardcoding the Bender nick"
+    );
+  });
+
+  it("personality-check dumps pasteable markdown grouped by personality and exits 0", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/personality-check.js"],
+      { encoding: "utf8", cwd: join(__dirname, "..") }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^# Personality check — assembled prompts/m);
+    assert.match(result.stdout, /### The Chicago Pope \(`chicago_pope`\)/);
+    assert.match(result.stdout, /### Anxious Philosopher \(`anxious_philosopher`\)/);
+    assert.match(result.stdout, /### Factual question \(`factual`\)/);
+  });
+
+  it("personality-check --live without a key exits 2", () => {
+    const env = { ...process.env };
+    delete env.GEMINI_API_KEY;
+    delete env.GEMINI_KEY;
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/personality-check.js", "--live"],
+      { encoding: "utf8", cwd: join(__dirname, ".."), env }
+    );
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /No Gemini API key available/);
   });
 });
