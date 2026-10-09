@@ -16,6 +16,38 @@ function assertWithinLimit(chunks, limit = DISCORD_CONTENT_LIMIT) {
   }
 }
 
+function openerLang(chunk) {
+  const open = /^(`{3,}|~{3,})(\S*)[^\n]*\n/.exec(chunk);
+  return open ? open[2] : null;
+}
+
+function nonFenceLines(text) {
+  return text.split("\n").filter((line) => !/^( {0,3})(`{3,}|~{3,})/.test(line));
+}
+
+function unwrapFenceContinuations(chunks) {
+  if (chunks.length === 0) return "";
+  // Strip only the closer ticks; a preceding newline is source text when the
+  // cut landed on a line boundary (closeSuffix then emits ticks with no extra \n).
+  const closeRe = /(`{3,}|~{3,})\s*$/;
+  const openRe = /^(`{3,}|~{3,})[^\n]*\n/;
+  let out = chunks[0];
+  let lang = openerLang(chunks[0]);
+  for (let i = 1; i < chunks.length; i++) {
+    const curr = chunks[i];
+    const currLang = openerLang(curr);
+    const close = closeRe.exec(out);
+    const open = openRe.exec(curr);
+    if (close && open && currLang === lang && lang !== null) {
+      out = out.slice(0, close.index) + curr.slice(open[0].length);
+    } else {
+      out += curr;
+      if (currLang !== null) lang = currLang;
+    }
+  }
+  return out;
+}
+
 describe("splitForDiscord", () => {
   it("returns an empty array for empty input", () => {
     assert.deepEqual(splitForDiscord(""), []);
@@ -47,6 +79,7 @@ describe("splitForDiscord", () => {
     assert.equal(chunks.length, 3);
     assertWithinLimit(chunks);
     assert.deepEqual(wordsOf(chunks.join(" ")), wordsOf(text));
+    assert.equal(chunks.join("").replaceAll(" ", ""), text.replaceAll(" ", ""));
     assert.ok(
       chunks.every((chunk) => wordsOf(chunk).every((word) => word === "word")),
       "expected cuts at a space or better, not a mid-word hard cut"
@@ -68,6 +101,7 @@ describe("splitForDiscord", () => {
     assert.equal(sent[0], short);
     assert.equal(sent.at(-1), tail);
     assert.deepEqual(wordsOf(sent.join(" ")), wordsOf(parts.join(" ")));
+    assert.equal(sent.join("").replaceAll(" ", ""), parts.join("").replaceAll(" ", ""));
     assertWithinLimit(sent);
   });
 
@@ -96,6 +130,85 @@ describe("splitForDiscord", () => {
     );
     assert.match(chunks[0], /Intro paragraph/);
     assert.match(chunks.at(-1), /Outro/);
+  });
+
+  it("does not double-close a fence that ends with ``` and no trailing newline", () => {
+    const line = "const value = 1; // comment on this line of sample code\n";
+    const text = `\`\`\`js\n${line.repeat(80)}\`\`\``;
+    assert.ok(text.length > DISCORD_CONTENT_LIMIT);
+    assert.equal(text.endsWith("\n"), false);
+
+    const chunks = splitForDiscord(text);
+    assert.ok(chunks.length >= 2);
+    assertWithinLimit(chunks);
+    assert.equal(
+      chunks.at(-1).endsWith("```\n```"),
+      false,
+      "last chunk must not append a second closer"
+    );
+    assert.match(chunks.at(-1), /```$/);
+    assert.equal(unwrapFenceContinuations(chunks), text);
+  });
+
+  it("splits two sequential fences across chunks without doubling closers", () => {
+    const jsLine = "const value = 1; // javascript sample line\n";
+    const pyLine = "value = 1  # python sample line here\n";
+    const text = `\`\`\`js\n${jsLine.repeat(80)}\`\`\`\n\`\`\`py\n${pyLine.repeat(80)}\`\`\``;
+    assert.ok(text.length > DISCORD_CONTENT_LIMIT * 2);
+
+    const chunks = splitForDiscord(text);
+    assert.ok(chunks.length >= 3);
+    assertWithinLimit(chunks);
+    for (const [i, chunk] of chunks.entries()) {
+      assert.equal(
+        /\n```\n```$/.test(chunk),
+        false,
+        `chunk ${i} ends with a doubled closer`
+      );
+    }
+    assert.ok(chunks.some((chunk) => chunk.includes("```js")));
+    assert.ok(chunks.some((chunk) => chunk.includes("```py")));
+    assert.deepEqual(nonFenceLines(chunks.join("")), nonFenceLines(text));
+  });
+
+  it("does not emit an empty first message for ```js\\n plus a 3000-char first code line", () => {
+    const text = "```js\n" + "x".repeat(3000) + "\n```";
+    const chunks = splitForDiscord(text);
+    assert.ok(chunks.length >= 2);
+    assertWithinLimit(chunks);
+    assert.notEqual(chunks[0], "```js\n```");
+    assert.ok(chunks[0].includes("x"), "first chunk should contain code, not an empty fence");
+    assert.equal(
+      unwrapFenceContinuations(chunks).replaceAll("\n", ""),
+      text.replaceAll("\n", "")
+    );
+  });
+
+  it("preserves a blank line inside a fence across a cut", () => {
+    const text =
+      "```js\n" +
+      "const a = 1;\n".repeat(80) +
+      "\n" +
+      "const b = 2;\n".repeat(80) +
+      "```";
+    const chunks = splitForDiscord(text);
+    assert.ok(chunks.length >= 2);
+    assertWithinLimit(chunks);
+    assert.equal(unwrapFenceContinuations(chunks), text);
+  });
+
+  it("does not drop text when a fence prefix leaves little room for the closer", () => {
+    const lang = "L".repeat(1990);
+    const payload = "PAYLOAD_UNIQUE_xyz";
+    const text = "```" + lang + "\n" + payload.repeat(30) + "\n```";
+    const chunks = splitForDiscord(text);
+    assertWithinLimit(chunks);
+    const recovered = chunks
+      .map((chunk) =>
+        chunk.replace(/^```[\s\S]*?\n/, "").replace(/\n?```$/, "")
+      )
+      .join("");
+    assert.equal(recovered.replaceAll("\n", ""), payload.repeat(30));
   });
 
   it("hard-cuts a no-space string over 2000 characters without dropping text", () => {
@@ -131,5 +244,6 @@ describe("splitForDiscord", () => {
     const chunks = splitForDiscord(replaced);
     assertWithinLimit(chunks);
     assert.deepEqual(wordsOf(chunks.join(" ")), wordsOf(replaced));
+    assert.equal(chunks.join("").replaceAll(" ", ""), replaced.replaceAll(" ", ""));
   });
 });

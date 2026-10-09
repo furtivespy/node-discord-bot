@@ -41,10 +41,8 @@ function applyFenceLine(line, fence) {
 
 function fenceAfter(text, initialFence = null) {
   let fence = initialFence;
-  const lines = text.split("\n");
-  const completeCount = text.endsWith("\n") ? lines.length : lines.length - 1;
-  for (let i = 0; i < completeCount; i++) {
-    fence = applyFenceLine(lines[i], fence);
+  for (const line of text.split("\n")) {
+    fence = applyFenceLine(line, fence);
   }
   return fence;
 }
@@ -88,10 +86,31 @@ function closeSuffix(fence, body) {
   return body.endsWith("\n") ? fence.ticks : `\n${fence.ticks}`;
 }
 
+function maxCloserLen(fence) {
+  return fence ? fence.ticks.length + 1 : 0;
+}
+
 function emitChunk(prefix, body, closeFence) {
-  const trimmed = body.trimEnd();
-  const closer = closeFence ? closeSuffix(closeFence, trimmed) : "";
-  return prefix + trimmed + closer;
+  // Keep fence body intact (blank lines, indentation). Trim only prose cuts.
+  const payload = closeFence ? body : body.trimEnd();
+  const closer = closeFence ? closeSuffix(closeFence, payload) : "";
+  return prefix + payload + closer;
+}
+
+function isFenceWrapperOnly(body) {
+  if (body.length === 0) return false;
+  const lines = body.split("\n");
+  let sawFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (parseFenceLine(line)) {
+      sawFence = true;
+      continue;
+    }
+    if (line === "" && i === lines.length - 1 && body.endsWith("\n")) continue;
+    return false;
+  }
+  return sawFence;
 }
 
 function takeChunk(remaining, inheritedFence, limit) {
@@ -105,28 +124,61 @@ function takeChunk(remaining, inheritedFence, limit) {
     return { take: safeTake, fence, chunk };
   };
 
+  const raw = (take) => {
+    const safeTake = Math.max(1, Math.min(take, remaining.length));
+    const body = remaining.slice(0, safeTake);
+    return { take: safeTake, fence: fenceAfter(body, inheritedFence), chunk: body };
+  };
+
   const whole = build(remaining.length);
   if (whole.chunk.length <= limit) return whole;
 
-  const maxRaw = Math.max(1, limit - prefix.length);
-  let take = findCutIndex(remaining, maxRaw);
-  if (take < 1) take = Math.min(maxRaw, remaining.length);
-  let result = build(take);
+  const roomFor = (fence) => limit - prefix.length - maxCloserLen(fence);
+
+  // Prefix + closer leave no room for body: send source text so take matches
+  // what was emitted. Never slice the wrapped chunk independently of take.
+  if (roomFor(inheritedFence) <= 0) {
+    return raw(limit);
+  }
+
+  const cutForRoom = (room, minTake = 0) => {
+    const budget = Math.max(minTake > 0 ? minTake + 1 : 0, room);
+    const windowLimit = Math.max(1, budget - minTake);
+    const extra = findCutIndex(remaining.slice(minTake), windowLimit);
+    if (extra < 1) {
+      return Math.min(Math.max(budget, minTake + 1), remaining.length);
+    }
+    return minTake + extra;
+  };
+
+  let result = build(cutForRoom(roomFor(inheritedFence)));
+
+  if (result.chunk.length > limit && result.fence) {
+    result = build(cutForRoom(roomFor(result.fence)));
+  }
+
+  for (let i = 0; i < 8; i++) {
+    if (!isFenceWrapperOnly(remaining.slice(0, result.take))) break;
+    if (result.take >= remaining.length) break;
+    const fenceGuess = result.fence || inheritedFence;
+    if (roomFor(fenceGuess) <= result.take) {
+      return raw(limit);
+    }
+    const nextTake = cutForRoom(roomFor(fenceGuess), result.take);
+    if (nextTake <= result.take) break;
+    result = build(nextTake);
+  }
 
   while (result.chunk.length > limit && result.take > 1) {
     const overflow = result.chunk.length - limit;
     const reduced = Math.max(1, result.take - overflow);
     const recut = findCutIndex(remaining, reduced);
     const nextTake = recut > 0 && recut < result.take ? recut : reduced;
-    if (nextTake >= result.take) {
-      result = build(result.take - 1);
-    } else {
-      result = build(nextTake);
-    }
+    result = build(nextTake >= result.take ? result.take - 1 : nextTake);
   }
 
   if (result.chunk.length > limit) {
-    return { ...result, chunk: result.chunk.slice(0, limit) };
+    return raw(limit);
   }
   return result;
 }
@@ -158,7 +210,8 @@ export function splitForDiscord(text, limit = DISCORD_CONTENT_LIMIT) {
     const { take, fence, chunk } = takeChunk(remaining, inheritedFence, maxLen);
     if (chunk.trim().length > 0) chunks.push(chunk);
 
-    remaining = remaining.slice(Math.max(take, 1)).trimStart();
+    remaining = remaining.slice(Math.max(take, 1));
+    if (!fence) remaining = remaining.trimStart();
     inheritedFence = fence;
 
     if (remaining.length >= before) break;
