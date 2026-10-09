@@ -13,6 +13,7 @@ import personalityPirateQm from "./prompt_components/personality_pirate_qm.js";
 import personalityAnxiousPhilosopher from "./prompt_components/personality_anxious_philosopher.js";
 import personalityChicagoPope from "./prompt_components/personality_chicago_pope.js";
 import personalityBender from "./prompt_components/personality_bender.js";
+import roleFrame from "./prompt_components/role_frame.js";
 import identityTemplate from "./prompt_components/identity.js";
 import chatInstructionsTemplate from "./prompt_components/chat_instructions.js";
 import formattingInstructions from "./prompt_components/formatting_instructions.js";
@@ -296,8 +297,9 @@ class GeminiAI {
       const chatInstructions = chatInstructionsTemplate(tools);
       const capabilities = capabilitiesTemplate(tools);
 
-      // Construct the full instruction string, joining components with a space.
+      // Role frame first so helpfulness outranks the character (FUR-106).
       const instructions = [
+        roleFrame,
         personality,
         identity,
         chatInstructions,
