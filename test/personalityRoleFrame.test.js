@@ -1,12 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createGeminiAI } from "../modules/geminiai.js";
 import roleFrame from "../modules/prompt_components/role_frame.js";
 import { PERSONALITY_NAMES } from "../modules/guildConfigOverview.js";
+import { fence } from "../scripts/personality-check.js";
 import SetPersonality from "../slashcommands/util/setpersonality.js";
 import {
   PERSONALITY_CHECK_PROMPTS,
@@ -213,16 +215,51 @@ describe("FUR-106 role frame + personality keys", () => {
     assert.match(result.stdout, /### Factual question \(`factual`\)/);
   });
 
+  it("anxious philosopher keeps skip-asides on how-tos and does not demo an aside after a recipe", () => {
+    const text = readFileSync(
+      join(PROMPT_DIR, "personality_anxious_philosopher.js"),
+      "utf8"
+    );
+    assert.match(
+      text,
+      /Skip the aside on practical how-tos, code, and anything someone needs done/
+    );
+    assert.equal(
+      /after a recipe|brownies/i.test(text),
+      false,
+      "do not teach an aside after a practical how-to"
+    );
+  });
+
+  it("fence chooses a longer run than any backticks in the content", () => {
+    assert.equal(fence("hello"), "```\nhello\n```");
+    const nested = fence("use:\n```js\nconst x = 1;\n```\n");
+    assert.ok(nested.startsWith("````\n"));
+    assert.ok(nested.endsWith("\n````"));
+    assert.match(nested, /```js/);
+    const longer = fence("already has ```` ticks");
+    assert.ok(longer.startsWith("`````\n"));
+    assert.ok(longer.endsWith("\n`````"));
+  });
+
   it("personality-check --live without a key exits 2", () => {
+    const dir = mkdtempSync(join(tmpdir(), "personality-check-"));
+    const emptyConfig = join(dir, "config.json");
+    writeFileSync(emptyConfig, "{}\n");
     const env = { ...process.env };
     delete env.GEMINI_API_KEY;
     delete env.GEMINI_KEY;
-    const result = spawnSync(
-      process.execPath,
-      ["scripts/personality-check.js", "--live"],
-      { encoding: "utf8", cwd: join(__dirname, ".."), env }
-    );
-    assert.equal(result.status, 2);
-    assert.match(result.stderr, /No Gemini API key available/);
+    env.PERSONALITY_CHECK_CONFIG = emptyConfig;
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/personality-check.js", "--live"],
+        { encoding: "utf8", cwd: join(__dirname, ".."), env, timeout: 10_000 }
+      );
+      assert.equal(result.status, 2, result.stderr);
+      assert.match(result.stderr, /No Gemini API key available/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -11,15 +11,16 @@
  *   GEMINI_API_KEY=… node scripts/personality-check.js --live
  *   GEMINI_API_KEY=… node scripts/personality-check.js --live --all
  *
- * Key lookup: GEMINI_API_KEY, GEMINI_KEY, or <repo>/config.json geminiKey
- * (path is relative to the repo root, not the current working directory).
+ * Key lookup: GEMINI_API_KEY, GEMINI_KEY, or config.json geminiKey.
+ * Config path is <repo>/config.json, or PERSONALITY_CHECK_CONFIG if set
+ * (not the current working directory).
  *
  * --live exits 0 only when every call returns non-empty text. Failures and
  * empty replies exit 1. A missing or unreadable key exits 2.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createGeminiAI } from "../modules/geminiai.js";
 import { PERSONALITY_NAMES } from "../modules/guildConfigOverview.js";
 import {
@@ -29,21 +30,25 @@ import {
 import roleFrame from "../modules/prompt_components/role_frame.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const CONFIG_PATH = join(REPO_ROOT, "config.json");
 
 const live = process.argv.includes("--live");
 const dumpAll = process.argv.includes("--all");
 
+function configPath() {
+  return process.env.PERSONALITY_CHECK_CONFIG?.trim() || join(REPO_ROOT, "config.json");
+}
+
 function readConfigKey() {
-  if (!existsSync(CONFIG_PATH)) return { key: "", error: null };
+  const path = configPath();
+  if (!existsSync(path)) return { key: "", error: null };
   try {
-    const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    const config = JSON.parse(readFileSync(path, "utf8"));
     const key = typeof config.geminiKey === "string" ? config.geminiKey.trim() : "";
     return { key, error: null };
   } catch (error) {
     return {
       key: "",
-      error: `Could not read ${CONFIG_PATH}: ${error?.message || error}`,
+      error: `Could not read ${path}: ${error?.message || error}`,
     };
   }
 }
@@ -93,8 +98,12 @@ function assembledPrompt(personalityKey) {
   return ai.getSystemInstructions(makeMessage(personalityKey));
 }
 
-function fence(text) {
-  return `\`\`\`\n${text}\n\`\`\``;
+export function fence(text) {
+  const str = String(text ?? "");
+  const runs = str.match(/`+/g) || [];
+  const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
+  const ticks = "`".repeat(Math.max(3, longest + 1));
+  return `${ticks}\n${str}\n${ticks}`;
 }
 
 function printAssembledPrompts(keys) {
@@ -199,28 +208,44 @@ async function runLive(apiKey, keys) {
   }
 }
 
-const keys = dumpAll
-  ? Object.keys(PERSONALITY_NAMES)
-  : PERSONALITY_CHECK_SAMPLE_KEYS;
-
-if (!live) {
-  printAssembledPrompts(keys);
-  process.stderr.write(
-    "Skipping live Gemini calls (pass --live and provide GEMINI_API_KEY / GEMINI_KEY / config.json geminiKey).\n"
-  );
-  process.exit(0);
+function isCliEntry() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return pathToFileURL(resolve(entry)).href === import.meta.url;
+  } catch {
+    return false;
+  }
 }
 
-const resolved = resolveGeminiKey();
-if (resolved.error) {
-  console.error(resolved.error);
-  process.exit(2);
-}
-if (!resolved.key) {
-  console.error(
-    "No Gemini API key available. Live samples were not generated. Set GEMINI_API_KEY or GEMINI_KEY, or add geminiKey to config.json at the repo root."
-  );
-  process.exit(2);
+async function main() {
+  const keys = dumpAll
+    ? Object.keys(PERSONALITY_NAMES)
+    : PERSONALITY_CHECK_SAMPLE_KEYS;
+
+  if (!live) {
+    printAssembledPrompts(keys);
+    process.stderr.write(
+      "Skipping live Gemini calls (pass --live and provide GEMINI_API_KEY / GEMINI_KEY / config.json geminiKey).\n"
+    );
+    process.exit(0);
+  }
+
+  const resolved = resolveGeminiKey();
+  if (resolved.error) {
+    console.error(resolved.error);
+    process.exit(2);
+  }
+  if (!resolved.key) {
+    console.error(
+      "No Gemini API key available. Live samples were not generated. Set GEMINI_API_KEY or GEMINI_KEY, or add geminiKey to config.json at the repo root."
+    );
+    process.exit(2);
+  }
+
+  await runLive(resolved.key, keys);
 }
 
-await runLive(resolved.key, keys);
+if (isCliEntry()) {
+  await main();
+}
