@@ -22,14 +22,15 @@ function openerLang(chunk) {
 }
 
 function nonFenceLines(text) {
-  return text.split("\n").filter((line) => !/^( {0,3})(`{3,}|~{3,})/.test(line));
+  return text.split("\n").filter(
+    (line) => line !== "" && !/^( {0,3})(`{3,}|~{3,})/.test(line)
+  );
 }
 
 function unwrapFenceContinuations(chunks) {
   if (chunks.length === 0) return "";
-  // Strip only the closer ticks; a preceding newline is source text when the
-  // cut landed on a line boundary (closeSuffix then emits ticks with no extra \n).
-  const closeRe = /(`{3,}|~{3,})\s*$/;
+  // Added closers are always `\n``` `; that newline is wrapper, not source.
+  const closeRe = /\n(`{3,}|~{3,})\s*$/;
   const openRe = /^(`{3,}|~{3,})[^\n]*\n/;
   let out = chunks[0];
   let lang = openerLang(chunks[0]);
@@ -182,6 +183,29 @@ describe("splitForDiscord", () => {
       unwrapFenceContinuations(chunks).replaceAll("\n", ""),
       text.replaceAll("\n", "")
     );
+  });
+
+  it("does not glue an empty fence onto a nearly-full prose chunk", () => {
+    const text = "p".repeat(1990) + "\n```js\n" + "x".repeat(3000) + "\n```";
+    const chunks = splitForDiscord(text);
+    assert.ok(chunks.length >= 2);
+    assertWithinLimit(chunks);
+    assert.equal(
+      /```js\n```$/.test(chunks[0]),
+      false,
+      "chunk 0 must not end with an empty fence"
+    );
+    assert.equal(unwrapFenceContinuations(chunks), text);
+  });
+
+  it("does not emit an empty first message for a fence opener followed by a blank line", () => {
+    const text = "```js\n\n" + "x".repeat(3000) + "\n```";
+    const chunks = splitForDiscord(text);
+    assert.ok(chunks.length >= 2);
+    assertWithinLimit(chunks);
+    assert.notEqual(chunks[0], "```js\n\n```");
+    assert.ok(chunks[0].includes("x"), "first chunk should contain code, not an empty fence");
+    assert.equal(unwrapFenceContinuations(chunks), text);
   });
 
   it("preserves a blank line inside a fence across a cut", () => {

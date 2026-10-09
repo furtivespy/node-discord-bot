@@ -30,10 +30,6 @@ class Prompt extends SlashCommand {
 			const response = await interaction.client.geminiAI.runPrompt(prompt)
       const pieces = (Array.isArray(response) ? response : [response])
         .flatMap((chunk) => splitForDiscord(chunk))
-      if (pieces.length === 0) {
-        await interaction.editReply("Sorry, I didn't get a response. Please try again later.")
-        return
-      }
       let msg = await interaction.editReply(pieces[0])
       for (let i = 1; i < pieces.length; i++) {
         msg = await msg.reply(pieces[i])

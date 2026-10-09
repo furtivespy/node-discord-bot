@@ -81,46 +81,60 @@ function openPrefix(fence) {
   return `${fence.ticks}${fence.lang}\n`;
 }
 
-function closeSuffix(fence, body) {
+function closeSuffix(fence) {
   if (!fence) return "";
-  return body.endsWith("\n") ? fence.ticks : `\n${fence.ticks}`;
+  // Always put the closer on its own line so Discord treats it as a fence.
+  // The leading newline is wrapper, not source: unwrap strips `\n``` `.
+  return `\n${fence.ticks}`;
 }
 
 function maxCloserLen(fence) {
   return fence ? fence.ticks.length + 1 : 0;
 }
 
-function emitChunk(prefix, body, closeFence) {
-  // Keep fence body intact (blank lines, indentation). Trim only prose cuts.
-  const payload = closeFence ? body : body.trimEnd();
-  const closer = closeFence ? closeSuffix(closeFence, payload) : "";
-  return prefix + payload + closer;
-}
-
-function isFenceWrapperOnly(body) {
-  if (body.length === 0) return false;
+// If this take would close an open fence that has no non-whitespace code body,
+// return the opener index in `body` (0 at start of body; -1 if inherited).
+// Return null when the cut is fine.
+function emptyOpenFenceOpenerIndex(body, inheritedFence) {
+  let fence = inheritedFence;
+  let openerIndex = inheritedFence ? -1 : null;
+  let hasBody = !inheritedFence;
+  let offset = 0;
   const lines = body.split("\n");
-  let sawFence = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (parseFenceLine(line)) {
-      sawFence = true;
-      continue;
+    const nextFence = applyFenceLine(line, fence);
+    if (!fence && nextFence) {
+      openerIndex = offset;
+      hasBody = false;
+    } else if (fence && !nextFence) {
+      openerIndex = null;
+      hasBody = true;
+    } else if (nextFence && line.trim() !== "") {
+      hasBody = true;
     }
-    if (line === "" && i === lines.length - 1 && body.endsWith("\n")) continue;
-    return false;
+    fence = nextFence;
+    offset += line.length;
+    if (i < lines.length - 1) offset += 1;
   }
-  return sawFence;
+  if (fence && !hasBody) return openerIndex;
+  return null;
 }
 
 function takeChunk(remaining, inheritedFence, limit) {
   const prefix = openPrefix(inheritedFence);
 
-  const build = (take) => {
+  const build = (take, { keepNewlineBeforeOpener = false } = {}) => {
     const safeTake = Math.max(0, Math.min(take, remaining.length));
     const body = remaining.slice(0, safeTake);
     const fence = fenceAfter(body, inheritedFence);
-    const chunk = emitChunk(prefix, body, fence);
+    const payload = fence
+      ? body
+      : keepNewlineBeforeOpener
+        ? body.replace(/[ \t]+$/, "")
+        : body.trimEnd();
+    const closer = fence ? closeSuffix(fence) : "";
+    const chunk = prefix + payload + closer;
     return { take: safeTake, fence, chunk };
   };
 
@@ -153,19 +167,43 @@ function takeChunk(remaining, inheritedFence, limit) {
 
   let result = build(cutForRoom(roomFor(inheritedFence)));
 
+  const emptyOpenerAt = (take) =>
+    emptyOpenFenceOpenerIndex(remaining.slice(0, take), inheritedFence);
+
+  // Empty open fence: move the cut before the opener when that leaves a
+  // previous chunk, otherwise keep taking until this chunk has body.
+  // Do this before shrinking for closer overflow, or findCutIndex can land
+  // on the same newline and trimEnd the line-break before the fence.
+  const openerAt = emptyOpenerAt(result.take);
+  if (openerAt !== null && openerAt > 0) {
+    result = build(openerAt, { keepNewlineBeforeOpener: true });
+  }
+
   if (result.chunk.length > limit && result.fence) {
     result = build(cutForRoom(roomFor(result.fence)));
+    const recutOpener = emptyOpenerAt(result.take);
+    if (recutOpener !== null && recutOpener > 0) {
+      result = build(recutOpener, { keepNewlineBeforeOpener: true });
+    }
   }
 
   for (let i = 0; i < 8; i++) {
-    if (!isFenceWrapperOnly(remaining.slice(0, result.take))) break;
+    if (emptyOpenerAt(result.take) === null) break;
     if (result.take >= remaining.length) break;
     const fenceGuess = result.fence || inheritedFence;
     if (roomFor(fenceGuess) <= result.take) {
       return raw(limit);
     }
     const nextTake = cutForRoom(roomFor(fenceGuess), result.take);
-    if (nextTake <= result.take) break;
+    if (nextTake <= result.take) {
+      const hard = Math.min(remaining.length, result.take + 1);
+      const hardResult = build(hard);
+      if (hard > result.take && hardResult.chunk.length <= limit) {
+        result = hardResult;
+        continue;
+      }
+      break;
+    }
     result = build(nextTake);
   }
 
@@ -173,12 +211,26 @@ function takeChunk(remaining, inheritedFence, limit) {
     const overflow = result.chunk.length - limit;
     const reduced = Math.max(1, result.take - overflow);
     const recut = findCutIndex(remaining, reduced);
-    const nextTake = recut > 0 && recut < result.take ? recut : reduced;
-    result = build(nextTake >= result.take ? result.take - 1 : nextTake);
+    let nextTake = recut > 0 && recut < result.take ? recut : reduced;
+    if (nextTake >= result.take) nextTake = result.take - 1;
+    // Don't recut onto an empty open fence; keep the body that overflowed.
+    if (emptyOpenerAt(nextTake) !== null) {
+      nextTake = reduced < result.take ? reduced : result.take - 1;
+    }
+    const recutOpener = emptyOpenerAt(nextTake);
+    result =
+      recutOpener !== null && recutOpener > 0
+        ? build(recutOpener, { keepNewlineBeforeOpener: true })
+        : build(nextTake);
   }
 
   if (result.chunk.length > limit) {
     return raw(limit);
+  }
+
+  const stillEmpty = emptyOpenerAt(result.take);
+  if (stillEmpty !== null && stillEmpty > 0) {
+    return build(stillEmpty, { keepNewlineBeforeOpener: true });
   }
   return result;
 }
