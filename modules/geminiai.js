@@ -24,13 +24,59 @@ import { recordImageGenResult } from "./guildHealth.js";
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
 const GROUNDING_NONE = "none";
-const GOOGLE_SEARCH_TOOLS = [{ googleSearch: {} }];
 const GROUNDING_CHOICES = new Set([
   GROUNDING_FILE_SEARCH,
   GROUNDING_GOOGLE_SEARCH,
   GROUNDING_NONE,
 ]);
 const NON_SEQUITUR_PREFIX = "Please try to include an idea from this group of random thoughts:";
+
+function cloneGoogleSearchTools() {
+  return [{ googleSearch: {} }];
+}
+
+function compareHistoryMessages(a, b) {
+  const ta = a?.createdTimestamp ?? 0;
+  const tb = b?.createdTimestamp ?? 0;
+  if (ta !== tb) return ta - tb;
+  try {
+    const ia = BigInt(String(a.id));
+    const ib = BigInt(String(b.id));
+    if (ia < ib) return -1;
+    if (ia > ib) return 1;
+  } catch {
+    // fall through
+  }
+  return String(a?.id ?? "").localeCompare(String(b?.id ?? ""));
+}
+
+/**
+ * Recent-history window for one reply: messages at or before the trigger
+ * (by snowflake / timestamp), including the trigger even if the fetch
+ * omitted it. Later same-channel messages are excluded so overlapping
+ * replies cannot adopt each other's question.
+ */
+function historyWindowFromFetch(history, triggerMessage) {
+  const values = history?.values ? history.values() : history || [];
+  if (!triggerMessage?.id) {
+    return Array.from(values).sort(compareHistoryMessages);
+  }
+  const triggerId = BigInt(String(triggerMessage.id));
+  const inWindow = [];
+  for (const msg of values) {
+    if (!msg?.id) continue;
+    try {
+      if (BigInt(String(msg.id)) <= triggerId) inWindow.push(msg);
+    } catch {
+      inWindow.push(msg);
+    }
+  }
+  inWindow.sort(compareHistoryMessages);
+  if (!inWindow.some((msg) => String(msg.id) === String(triggerMessage.id))) {
+    inWindow.push(triggerMessage);
+  }
+  return inWindow;
+}
 
 function describeError(error) {
   const parts = [error?.message || String(error)];
@@ -84,39 +130,105 @@ class GeminiAI {
       ];
     }
 
-    fileSearchReady(message) {
-      if (!message.guild) return false;
+    fileSearchReady(messageOrSnapshot) {
+      if (messageOrSnapshot?.isReplySnapshot) {
+        return Boolean(messageOrSnapshot.fileSearchReady);
+      }
+      if (!messageOrSnapshot?.guild) return false;
       try {
-        return this.client.getDatabase(message.guild.id).hasFileSearchReady();
+        return this.client.getDatabase(messageOrSnapshot.guild.id).hasFileSearchReady();
       } catch (error) {
         this.client.logger.log(error, "warn");
         return false;
       }
     }
 
-    chatTools(message, grounding = GROUNDING_GOOGLE_SEARCH) {
+    chatTools(messageOrSnapshot, grounding = GROUNDING_GOOGLE_SEARCH) {
       if (grounding === GROUNDING_NONE) return [];
-      if (grounding === GROUNDING_FILE_SEARCH && message.guild) {
-        try {
-          const store = this.client.getDatabase(message.guild.id).getFileSearchStore();
-          if (store) return [{ fileSearch: { fileSearchStoreNames: [store] } }];
-        } catch (error) {
-          this.client.logger.log(error, "warn");
+      if (grounding === GROUNDING_FILE_SEARCH) {
+        if (messageOrSnapshot?.fileSearchStore) {
+          return [{ fileSearch: { fileSearchStoreNames: [messageOrSnapshot.fileSearchStore] } }];
+        }
+        const guild = messageOrSnapshot?.guild;
+        if (guild) {
+          try {
+            const store = this.client.getDatabase(guild.id).getFileSearchStore();
+            if (store) return [{ fileSearch: { fileSearchStoreNames: [store] } }];
+          } catch (error) {
+            this.client.logger.log(error, "warn");
+          }
         }
       }
-      return GOOGLE_SEARCH_TOOLS;
+      return cloneGoogleSearchTools();
     }
 
-    async generateContent(contents, message) {
+    snapshotReply(message) {
+      const settings = message?.settings || {};
+      const guild = message?.guild;
+      let botname = "Bender";
+      try {
+        botname =
+          guild?.members?.cache?.get(this.client.user.id)?.displayName || botname;
+      } catch {
+        // keep default
+      }
+      const contextPacks = Array.isArray(settings.context_packs)
+        ? settings.context_packs.map((pack) => ({ ...pack }))
+        : [];
+      let fileSearchReady = false;
+      let fileSearchStore = null;
+      if (guild) {
+        fileSearchReady = this.fileSearchReady(message);
+        if (fileSearchReady) {
+          try {
+            fileSearchStore = this.client.getDatabase(guild.id).getFileSearchStore() || null;
+          } catch (error) {
+            this.client.logger.log(error, "warn");
+          }
+        }
+      }
+      return Object.freeze({
+        isReplySnapshot: true,
+        triggerId: message?.id != null ? String(message.id) : "",
+        content: message?.content ?? "",
+        channelId: message?.channel?.id ?? null,
+        authorId: message?.author?.id ?? null,
+        createdTimestamp: message?.createdTimestamp ?? 0,
+        guildId: guild?.id ?? message?.guildId ?? null,
+        guildName: guild?.name ?? "Default Guild",
+        guild: guild ? { id: guild.id, name: guild.name } : null,
+        botname,
+        clientId: this.client.user?.id,
+        peopleById: new Map(this.getPeopleMap(message)),
+        peopleRoster: this.buildPeopleRoster(message),
+        fileSearchReady,
+        fileSearchStore,
+        settings: Object.freeze({
+          prefix: settings.prefix,
+          ai_selected_personality: settings.ai_selected_personality || "bender",
+          context_packs: Object.freeze(contextPacks),
+        }),
+      });
+    }
+
+    asReplySnapshot(messageOrSnapshot) {
+      if (messageOrSnapshot?.isReplySnapshot) return messageOrSnapshot;
+      return this.snapshotReply(messageOrSnapshot);
+    }
+
+    async generateContent(contents, messageOrSnapshot) {
         // Grounding stays XOR (google_search OR file_search OR none). Guild CSV
         // packs are ordinary prompt text, attached after the router chooses.
-        const grounding = this.fileSearchReady(message)
+        // `messageOrSnapshot` must be this reply's frozen snapshot (or a live
+        // message, which is snapshotted here). Concurrent replies never share it.
+        const snapshot = this.asReplySnapshot(messageOrSnapshot);
+        const grounding = snapshot.fileSearchReady
           ? await this.chooseGrounding(this.routerContents(contents))
           : GROUNDING_GOOGLE_SEARCH;
-        const tools = this.chatTools(message, grounding);
-        const packed = await this.attachGuildContextPacks(contents, message);
+        const tools = this.chatTools(snapshot, grounding);
+        const packed = await this.attachGuildContextPacks(contents, snapshot);
         try {
-          return await this.generateContentWithTools(packed.contents, message, tools, packed.note);
+          return await this.generateContentWithTools(packed.contents, snapshot, tools, packed.note);
         } catch (error) {
           const hasFileSearch = tools.some((tool) => tool.fileSearch);
           if (hasFileSearch && !isNetworkFetchError(error)) {
@@ -124,7 +236,12 @@ class GeminiAI {
               `Gemini File Search request failed (${describeError(error)}); retrying without File Search`,
               "warn"
             );
-            return await this.generateContentWithTools(packed.contents, message, GOOGLE_SEARCH_TOOLS, packed.note);
+            return await this.generateContentWithTools(
+              packed.contents,
+              snapshot,
+              cloneGoogleSearchTools(),
+              packed.note
+            );
           }
           throw new Error(`Gemini request failed: ${describeError(error)}`, { cause: error });
         }
@@ -232,10 +349,11 @@ class GeminiAI {
       }
     }
 
-    async generateContentWithTools(contents, message, tools, extraInstruction = "") {
+    async generateContentWithTools(contents, messageOrSnapshot, tools, extraInstruction = "") {
+        const snapshot = this.asReplySnapshot(messageOrSnapshot);
         const config = {
           safetySettings: this.chatSafetySettings(),
-          systemInstruction: this.getSystemInstructions(message, tools, extraInstruction),
+          systemInstruction: this.getSystemInstructions(snapshot, tools, extraInstruction),
         };
         if (tools.length > 0) config.tools = tools;
         const result = await this.AI2.models.generateContent({
@@ -243,16 +361,16 @@ class GeminiAI {
           contents,
           config,
         })
-        let botname = message.guild.members.cache.get(this.client.user.id).displayName
-        return await this.processResponse(result, botname, { guildId: message?.guild?.id })
+        return await this.processResponse(result, snapshot.botname, { guildId: snapshot.guildId })
     }
 
-    getSystemInstructions(message, tools = [], extraInstruction = "") {
-      const botname = message.guild.members.cache.get(this.client.user.id).displayName;
-      const clientId = this.client.user.id;
+    getSystemInstructions(messageOrSnapshot, tools = [], extraInstruction = "") {
+      const snapshot = this.asReplySnapshot(messageOrSnapshot);
+      const botname = snapshot.botname;
+      const clientId = snapshot.clientId;
 
       // New block for loading personality based on ai_selected_personality setting
-      const selectedPersonalityKey = message.settings.ai_selected_personality || "bender";
+      const selectedPersonalityKey = snapshot.settings?.ai_selected_personality || "bender";
       let personality;
 
       switch (selectedPersonalityKey) {
@@ -266,7 +384,7 @@ class GeminiAI {
           personality = personalityDwarfCraftsman;
           break;
         case "ship_computer":
-          personality = personalityShipComputer(message.guild ? message.guild.name : "Default Guild"); // Added a fallback for guild name
+          personality = personalityShipComputer(snapshot.guildName || "Default Guild"); // Added a fallback for guild name
           break;
         case "educator_joy":
           personality = personalityEducatorJoy;
@@ -278,7 +396,7 @@ class GeminiAI {
           personality = personalityShakespeare;
           break;
         case "pirate_qm": // New case
-          personality = personalityPirateQm(message.guild ? message.guild.name : "Default Guild");
+          personality = personalityPirateQm(snapshot.guildName || "Default Guild");
           break;
         case "anxious_philosopher": // New case
           personality = personalityAnxiousPhilosopher;
@@ -292,7 +410,7 @@ class GeminiAI {
           break;
       }
       // End of new block
-      const identity = identityTemplate(botname, clientId, this.buildPeopleRoster(message));
+      const identity = identityTemplate(botname, clientId, snapshot.peopleRoster);
       const chatInstructions = chatInstructionsTemplate(tools);
       const capabilities = capabilitiesTemplate(tools);
 
@@ -310,26 +428,29 @@ class GeminiAI {
     }
 
     buildPeopleRoster(message) {
-      if (!message.guild) return "";
+      if (!message?.guild) return "";
       const people = this.client.getDatabase(message.guild.id).listPeople();
       if (people.length === 0) return "";
       return people.map((person) => `- <@${person.user_id}> is ${person.real_name}`).join("\n");
     }
 
     getPeopleMap(message) {
-      if (!message.guild) return new Map();
+      if (!message?.guild) return new Map();
       return this.client.getDatabase(message.guild.id).getPeopleMap();
     }
 
     async buildContext(message, nonSequitur) {
+      // Snapshot settings/author/channel/personality before any await so a
+      // concurrent reply cannot clobber this request's view of the trigger.
+      const snapshot = this.snapshotReply(message);
       const history = await message.channel.messages.fetch({ limit: 40 });
-      const chronological = Array.from(history.values()).reverse();
-      const botId = this.client.user.id;
-      const peopleById = this.getPeopleMap(message);
+      const chronological = historyWindowFromFetch(history, message);
+      const botId = snapshot.clientId;
+      const peopleById = snapshot.peopleById;
       const turns = [];
 
       for (const discordMessage of chronological) {
-        if (discordMessage.content && discordMessage.content[0] == message.settings.prefix) continue;
+        if (discordMessage.content && discordMessage.content[0] == snapshot.settings.prefix) continue;
         const text = liveMessageText(discordMessage);
         if (!text) continue;
 
@@ -353,14 +474,14 @@ class GeminiAI {
 
       this.attachNonSequitur(turns, nonSequitur);
       this.ensureValidTurnSequence(turns);
-      return turns;
+      return { contents: turns, snapshot };
     }
 
     formatHistoryLine(message, discordMessage, role, peopleById = new Map(), text = liveMessageText(discordMessage)) {
       if (role === "model") {
         return text;
       }
-      const member = message.guild.members.cache.get(discordMessage.author.id);
+      const member = message?.guild?.members?.cache?.get(discordMessage.author.id);
       const name = member?.displayName || discordMessage.author.globalName || discordMessage.author.username;
       const realName = peopleById.get(discordMessage.author.id);
       const speaker = realName
@@ -368,7 +489,8 @@ class GeminiAI {
         : name
           ? `${name} (id: <@${discordMessage.author.id}>)`
           : `(id: <@${discordMessage.author.id}>)`;
-      return `[${discordMessage.createdAt.toLocaleString()}] ${speaker}: ${text}`;
+      const createdAt = discordMessage.createdAt || new Date(discordMessage.createdTimestamp || 0);
+      return `[${createdAt.toLocaleString()}] ${speaker}: ${text}`;
     }
 
     attachNonSequitur(turns, nonSequitur) {
@@ -799,4 +921,4 @@ class GeminiAI {
 }
 }
 
-export { createGeminiAI };
+export { createGeminiAI, historyWindowFromFetch };

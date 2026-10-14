@@ -40,8 +40,8 @@ class Chatbot extends Command {
 
                     if (message.mentions.users.has(this.client.user.id)) {
                         console.log("responding...")
-                        const contents = await this.client.geminiAI.buildContext(message, words)
-                        const {response, imageResponse} = await this.client.geminiAI.generateContent(contents, message)
+                        const { contents, snapshot } = await this.client.geminiAI.buildContext(message, words)
+                        const {response, imageResponse} = await this.client.geminiAI.generateContent(contents, snapshot)
                         const parts = response.split('||SEPARATE||').map(chunk => chunk.trim()).filter(Boolean)
                         for (let i = 0; i < parts.length; i++) {
                             const processed = i === 0
