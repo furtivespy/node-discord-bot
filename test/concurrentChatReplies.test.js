@@ -152,7 +152,7 @@ function installDelayedGemini(ai, { hold, onCall } = {}) {
         const recorded = {
           contents: structuredClone(req.contents),
           systemInstruction: req.config?.systemInstruction,
-          guildHint: req.config?.systemInstruction,
+          tools: req.config?.tools,
         };
         if (typeof onCall === "function") onCall(recorded, req);
         if (hold) await hold.promise;
@@ -204,6 +204,64 @@ describe("historyWindowFromFetch", () => {
     assert.deepEqual(
       missing.map((msg) => msg.id),
       ["10", "20"]
+    );
+  });
+
+  it("does not fall back to the full fetch or throw when the trigger id is missing or unparseable", () => {
+    const older = { id: "10", createdTimestamp: 10, content: "older" };
+    const later = { id: "30", createdTimestamp: 30, content: "later" };
+    const fetched = collectionFromNewest([later, older]);
+
+    assert.deepEqual(
+      historyWindowFromFetch(fetched, { id: "" }).map((msg) => msg.id),
+      [""]
+    );
+    assert.deepEqual(
+      historyWindowFromFetch(fetched, { id: "nope" }).map((msg) => msg.id),
+      ["nope"]
+    );
+    assert.deepEqual(
+      historyWindowFromFetch(fetched, { id: "20.5" }).map((msg) => msg.id),
+      ["20.5"]
+    );
+    assert.deepEqual(historyWindowFromFetch(fetched, null), []);
+    assert.deepEqual(historyWindowFromFetch(fetched, undefined), []);
+  });
+
+  it("excludes unparseable history ids instead of treating them as in-window", () => {
+    const older = { id: "10", createdTimestamp: 10 };
+    const trigger = { id: "20", createdTimestamp: 20 };
+    const garbage = { id: "nope", createdTimestamp: 99 };
+    const window = historyWindowFromFetch([garbage, trigger, older], trigger);
+    assert.deepEqual(
+      window.map((msg) => msg.id),
+      ["10", "20"]
+    );
+  });
+
+  it("filters and sorts by snowflake, not createdTimestamp, and re-sorts after backfill", () => {
+    const sneaky = { id: "15", createdTimestamp: 50 };
+    const trigger = { id: "20", createdTimestamp: 20 };
+    const laterSnowflake = { id: "30", createdTimestamp: 5 };
+    const window = historyWindowFromFetch(
+      [laterSnowflake, sneaky, trigger],
+      trigger
+    );
+    assert.deepEqual(
+      window.map((msg) => msg.id),
+      ["15", "20"]
+    );
+
+    const backfilled = historyWindowFromFetch(
+      [
+        { id: "15", createdTimestamp: 50 },
+        { id: "5", createdTimestamp: 80 },
+      ],
+      trigger
+    );
+    assert.deepEqual(
+      backfilled.map((msg) => msg.id),
+      ["5", "15", "20"]
     );
   });
 });
@@ -394,7 +452,7 @@ describe("concurrent chat reply isolation", () => {
     const hold = deferred();
     const bothHeld = deferred();
     let held = 0;
-    installDelayedGemini(client.geminiAI, {
+    const calls = installDelayedGemini(client.geminiAI, {
       hold,
       onCall() {
         held += 1;
@@ -439,7 +497,7 @@ describe("concurrent chat reply isolation", () => {
       author: makeAuthor("u1", "Pat"),
       channel: ch1,
       guild: guild1,
-      settings: defaultSettings(),
+      settings: defaultSettings({ ai_selected_personality: "detective" }),
       createdTimestamp: T0,
     });
     const msg2 = makeMessage({
@@ -448,7 +506,7 @@ describe("concurrent chat reply isolation", () => {
       author: makeAuthor("u2", "Quinn"),
       channel: ch2,
       guild: guild2,
-      settings: defaultSettings(),
+      settings: defaultSettings({ ai_selected_personality: "shakespeare" }),
       createdTimestamp: T0 + 10,
     });
     live1.push(msg1);
@@ -468,6 +526,21 @@ describe("concurrent chat reply isolation", () => {
     assert.doesNotMatch(from1[0].content, /Japan/);
     assert.match(from2[0].content, /capital of Japan/);
     assert.doesNotMatch(from2[0].content, /France/);
+
+    const franceCall = calls.find((call) => /capital of France/.test(allText(call.contents)));
+    const japanCall = calls.find((call) => /capital of Japan/.test(allText(call.contents)));
+    assert.ok(franceCall, "expected a Gemini request for France");
+    assert.ok(japanCall, "expected a Gemini request for Japan");
+    assert.doesNotMatch(allText(franceCall.contents), /Japan/);
+    assert.doesNotMatch(allText(franceCall.contents), /Quinn Two/);
+    assert.match(allText(franceCall.contents), /Pat One/);
+    assert.match(franceCall.systemInstruction, /hardboiled detective/);
+    assert.doesNotMatch(franceCall.systemInstruction, /Shakespearean/);
+    assert.doesNotMatch(allText(japanCall.contents), /France/);
+    assert.doesNotMatch(allText(japanCall.contents), /Pat One/);
+    assert.match(allText(japanCall.contents), /Quinn Two/);
+    assert.match(japanCall.systemInstruction, /Shakespearean/);
+    assert.doesNotMatch(japanCall.systemInstruction, /hardboiled detective/);
     assert.deepEqual(instanceRequestFields(client.geminiAI), before);
   });
 
@@ -476,7 +549,7 @@ describe("concurrent chat reply isolation", () => {
     const hold = deferred();
     const bothHeld = deferred();
     let held = 0;
-    installDelayedGemini(client.geminiAI, {
+    const calls = installDelayedGemini(client.geminiAI, {
       hold,
       onCall() {
         held += 1;
@@ -547,6 +620,18 @@ describe("concurrent chat reply isolation", () => {
     assert.ok(otter, "expected a reply about otters");
     assert.ok(telescope, "expected a reply about telescopes");
     assert.doesNotMatch(otter, /telescopes/);
+    assert.doesNotMatch(telescope, /otters/);
+
+    const otterCall = calls.find((call) => /otters/.test(triggerLine(call.contents)));
+    const telescopeCall = calls.find((call) => /telescopes/.test(triggerLine(call.contents)));
+    assert.ok(otterCall, "expected a Gemini request whose question is otters");
+    assert.ok(telescopeCall, "expected a Gemini request whose question is telescopes");
+    assert.doesNotMatch(allText(otterCall.contents), /telescopes/);
+    assert.doesNotMatch(triggerLine(otterCall.contents), /telescopes/);
+    assert.match(triggerLine(telescopeCall.contents), /telescopes/);
+    assert.doesNotMatch(triggerLine(telescopeCall.contents), /otters/);
+    assert.match(otterCall.systemInstruction, /Bender from Futurama/);
+    assert.match(telescopeCall.systemInstruction, /Bender from Futurama/);
   });
 
   it("does not mutate a shared people map or grow per-request instance state during a reply", async () => {
@@ -555,15 +640,15 @@ describe("concurrent chat reply isolation", () => {
       peopleByGuild: { g: sharedPeople },
     });
     const ai = client.geminiAI;
-    const dbMap = client.getDatabase("g").getPeopleMap();
-    const hold = deferred();
-    installDelayedGemini(ai, {
-      hold,
-      onCall() {
-        dbMap.set("u-injected", "Should not appear in snapshot");
-        sharedPeople.push({ user_id: "u-injected", real_name: "Injected" });
-      },
-    });
+    const attachHold = deferred();
+    const attaching = deferred();
+    const origAttach = ai.contextPacks.attachIfNeeded.bind(ai.contextPacks);
+    ai.contextPacks.attachIfNeeded = async (contents, snap) => {
+      attaching.resolve();
+      await attachHold.promise;
+      return origAttach(contents, snap);
+    };
+    const calls = installDelayedGemini(ai);
 
     const guild = makeGuild({
       id: "g",
@@ -594,14 +679,293 @@ describe("concurrent chat reply isolation", () => {
     const before = instanceRequestFields(ai);
     const { contents, snapshot } = await ai.buildContext(msg, null);
     const pending = ai.generateContent(contents, snapshot);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    hold.resolve();
+    await attaching.promise;
+    snapshot.peopleById.set("u-injected", "Should not appear in snapshot");
+    sharedPeople.push({ user_id: "u-injected", real_name: "Injected" });
+    attachHold.resolve();
     const { response } = await pending;
 
     assert.match(snapshot.peopleRoster, /Ada/);
     assert.doesNotMatch(snapshot.peopleRoster, /Injected/);
-    assert.equal(snapshot.peopleById.get("u-injected"), undefined);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].systemInstruction, /Ada/);
+    assert.doesNotMatch(calls[0].systemInstruction, /Injected/);
     assert.match(response, /hello Ada/);
     assert.deepEqual(instanceRequestFields(ai), before);
+  });
+
+  it("history lines use nicks and trigger text frozen before fetch, not the live Discord message", async () => {
+    const client = makeClient();
+    const ai = client.geminiAI;
+    const guild = makeGuild({
+      id: "guild-1",
+      name: "Alpha",
+      members: [{ id: "u-a", displayName: "Alice" }],
+    });
+    const live = [];
+    const firstFetch = deferred();
+    const firstFetchStarted = deferred();
+    const channel = {
+      id: "chan-1",
+      nsfw: false,
+      messages: {
+        async fetch() {
+          firstFetchStarted.resolve();
+          await firstFetch.promise;
+          return collectionFromNewest(live);
+        },
+      },
+    };
+    const msg = makeMessage({
+      id: "100",
+      content: "<@bot-1> original question",
+      author: makeAuthor("u-a", "Alice"),
+      channel,
+      guild,
+      settings: defaultSettings(),
+      createdTimestamp: T0,
+    });
+    live.push(msg);
+    const pending = ai.buildContext(msg, null);
+    await firstFetchStarted.promise;
+    msg.content = "<@bot-1> HACKED content";
+    guild.members.cache.get("u-a").displayName = "HACKEDNICK";
+    firstFetch.resolve();
+    const ctx = await pending;
+
+    assert.match(allText(ctx.contents), /original question/);
+    assert.match(allText(ctx.contents), /Alice/);
+    assert.doesNotMatch(allText(ctx.contents), /HACKED/);
+  });
+
+  it("empty-window fallback formats the frozen trigger, not a live-edited Discord message", async () => {
+    const client = makeClient();
+    const ai = client.geminiAI;
+    const guild = makeGuild({
+      id: "guild-1",
+      name: "Alpha",
+      members: [{ id: "u-a", displayName: "Alice" }],
+    });
+    const live = [];
+    const firstFetch = deferred();
+    const firstFetchStarted = deferred();
+    const channel = {
+      id: "chan-1",
+      nsfw: false,
+      messages: {
+        async fetch() {
+          firstFetchStarted.resolve();
+          await firstFetch.promise;
+          return collectionFromNewest(live);
+        },
+      },
+    };
+    const msg = makeMessage({
+      id: "100",
+      content: "!original",
+      author: makeAuthor("u-a", "Alice"),
+      channel,
+      guild,
+      settings: defaultSettings(),
+      createdTimestamp: T0,
+    });
+    live.push(msg);
+    const pending = ai.buildContext(msg, null);
+    await firstFetchStarted.promise;
+    msg.content = "!HACKED";
+    guild.members.cache.get("u-a").displayName = "HACKEDNICK";
+    live.push(
+      makeMessage({
+        id: "200",
+        content: "<@bot-1> later",
+        author: makeAuthor("u-a", "Alice"),
+        channel,
+        guild,
+        settings: defaultSettings(),
+        createdTimestamp: T0 + 1000,
+      })
+    );
+    firstFetch.resolve();
+    const ctx = await pending;
+
+    assert.match(allText(ctx.contents), /!original/);
+    assert.match(allText(ctx.contents), /Alice/);
+    assert.doesNotMatch(allText(ctx.contents), /HACKED/);
+    assert.doesNotMatch(allText(ctx.contents), /later/);
+  });
+
+  it("does not read live getFileSearchStore after chooseGrounding when the snapshot store is missing", async () => {
+    let store = null;
+    let storeReads = 0;
+    const client = makeClient();
+    client.getDatabase = () => ({
+      hasFileSearchReady: () => true,
+      getFileSearchStore() {
+        storeReads += 1;
+        return store;
+      },
+      listPeople: () => [],
+      getPeopleMap: () => new Map(),
+      markovInput() {},
+      makeSentence: () => "",
+    });
+    const ai = client.geminiAI;
+    const recordedTools = [];
+    ai.AI2 = {
+      models: {
+        async generateContent(req) {
+          if (req.config?.responseSchema) {
+            store = "fileSearchStores/leaked";
+            return { text: JSON.stringify({ grounding: "file_search" }) };
+          }
+          recordedTools.push(req.config?.tools);
+          return {
+            candidates: [{ content: { parts: [{ text: "ok" }] } }],
+          };
+        },
+      },
+    };
+    const guild = makeGuild({
+      id: "g",
+      name: "G",
+      members: [{ id: "u-a", displayName: "Ada" }],
+    });
+    const live = [];
+    const channel = {
+      id: "c",
+      nsfw: false,
+      messages: {
+        async fetch() {
+          return collectionFromNewest(live);
+        },
+      },
+    };
+    const msg = makeMessage({
+      id: "9",
+      content: "<@bot-1> hello Ada",
+      author: makeAuthor("u-a", "Ada"),
+      channel,
+      guild,
+      settings: defaultSettings(),
+      createdTimestamp: T0,
+    });
+    live.push(msg);
+
+    const { contents, snapshot } = await ai.buildContext(msg, null);
+    const readsAfterSnapshot = storeReads;
+    assert.equal(snapshot.fileSearchReady, true);
+    assert.equal(snapshot.fileSearchStore, null);
+    await ai.generateContent(contents, snapshot);
+    assert.equal(storeReads, readsAfterSnapshot);
+    assert.equal(recordedTools.length, 1);
+    assert.ok(recordedTools[0][0].googleSearch);
+    assert.equal(Boolean(recordedTools[0][0].fileSearch), false);
+  });
+
+  it("mention rewrite after generateContent uses snapshot nicks, not the live cache", async () => {
+    const client = makeClient();
+    const ai = client.geminiAI;
+    const hold = deferred();
+    const entered = deferred();
+    ai.AI2 = {
+      models: {
+        async generateContent() {
+          entered.resolve();
+          await hold.promise;
+          return {
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "<@111> hello <@111>" }],
+                },
+              },
+            ],
+          };
+        },
+      },
+    };
+    const bot = new Chatbot(client);
+    const sent = [];
+    const live = [];
+    const guild = makeGuild({
+      id: "g",
+      name: "G",
+      members: [{ id: "111", displayName: "Will" }],
+    });
+    const channel = {
+      id: "c",
+      nsfw: false,
+      messages: {
+        async fetch() {
+          return collectionFromNewest(live);
+        },
+      },
+      async send(payload) {
+        sent.push(payload.content);
+      },
+    };
+    const msg = makeMessage({
+      id: "9",
+      content: "<@bot-1> ping Will",
+      author: makeAuthor("111", "Will"),
+      channel,
+      guild,
+      settings: defaultSettings(),
+      createdTimestamp: T0,
+    });
+    live.push(msg);
+
+    const running = bot.run(msg, [], 0);
+    await entered.promise;
+    guild.members.cache.get("111").displayName = "HACKEDNICK";
+    hold.resolve();
+    await running;
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0], "<@111> hello Will");
+    assert.doesNotMatch(sent[0], /HACKEDNICK/);
+  });
+
+  it("unparseable trigger ids isolate to the frozen trigger instead of throwing or leaking later lines", async () => {
+    const client = makeClient();
+    const ai = client.geminiAI;
+    const guild = makeGuild({
+      id: "g",
+      name: "G",
+      members: [{ id: "u-a", displayName: "Ada" }],
+    });
+    const live = [];
+    const channel = {
+      id: "c",
+      nsfw: false,
+      messages: {
+        async fetch() {
+          return collectionFromNewest(live);
+        },
+      },
+    };
+    const msg = makeMessage({
+      id: "nope",
+      content: "<@bot-1> only this question",
+      author: makeAuthor("u-a", "Ada"),
+      channel,
+      guild,
+      settings: defaultSettings(),
+      createdTimestamp: T0,
+    });
+    const later = makeMessage({
+      id: "30",
+      content: "<@bot-1> leaked later question",
+      author: makeAuthor("u-a", "Ada"),
+      channel,
+      guild,
+      settings: defaultSettings(),
+      createdTimestamp: T0 + 1000,
+    });
+    live.push(msg, later);
+
+    const ctx = await ai.buildContext(msg, null);
+    assert.match(allText(ctx.contents), /only this question/);
+    assert.doesNotMatch(allText(ctx.contents), /leaked later question/);
   });
 });

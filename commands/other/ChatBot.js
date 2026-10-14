@@ -45,8 +45,8 @@ class Chatbot extends Command {
                         const parts = response.split('||SEPARATE||').map(chunk => chunk.trim()).filter(Boolean)
                         for (let i = 0; i < parts.length; i++) {
                             const processed = i === 0
-                                ? keepFirstMentions(parts[i], message.guild)
-                                : replaceMentionsWithNicks(parts[i], message.guild)
+                                ? keepFirstMentions(parts[i], snapshot.displayNamesById)
+                                : replaceMentionsWithNicks(parts[i], snapshot.displayNamesById)
                             const thoughts = splitForDiscord(processed)
                             for (const thought of thoughts) {
                                 await message.channel.send({
@@ -71,22 +71,21 @@ class Chatbot extends Command {
 
 const USER_MENTION = /<@!?(\d+)>/g
 
-function nickFor(guild, userId) {
-    const member = guild?.members.cache.get(userId)
-    return member?.displayName || member?.user?.globalName || member?.user?.username || userId
+function nickFor(nicks, userId) {
+    return nicks?.get?.(String(userId)) || userId
 }
 
-function keepFirstMentions(text, guild) {
+function keepFirstMentions(text, nicks) {
     const seen = new Set()
     return text.replace(USER_MENTION, (match, id) => {
-        if (seen.has(id)) return nickFor(guild, id)
+        if (seen.has(id)) return nickFor(nicks, id)
         seen.add(id)
         return match
     })
 }
 
-function replaceMentionsWithNicks(text, guild) {
-    return text.replace(USER_MENTION, (_, id) => nickFor(guild, id))
+function replaceMentionsWithNicks(text, nicks) {
+    return text.replace(USER_MENTION, (_, id) => nickFor(nicks, id))
 }
 
 function mentionOptions(text, allowUserPings) {

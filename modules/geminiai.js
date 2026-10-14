@@ -35,46 +35,86 @@ function cloneGoogleSearchTools() {
   return [{ googleSearch: {} }];
 }
 
-function compareHistoryMessages(a, b) {
-  const ta = a?.createdTimestamp ?? 0;
-  const tb = b?.createdTimestamp ?? 0;
-  if (ta !== tb) return ta - tb;
+function snowflakeId(value) {
+  if (value == null || value === "") return null;
+  const text = String(value);
+  if (!/^\d+$/.test(text)) return null;
   try {
-    const ia = BigInt(String(a.id));
-    const ib = BigInt(String(b.id));
+    return BigInt(text);
+  } catch {
+    return null;
+  }
+}
+
+function compareHistoryMessages(a, b) {
+  const ia = snowflakeId(a?.id);
+  const ib = snowflakeId(b?.id);
+  if (ia != null && ib != null) {
     if (ia < ib) return -1;
     if (ia > ib) return 1;
-  } catch {
-    // fall through
+    return 0;
   }
+  if (ia != null) return -1;
+  if (ib != null) return 1;
   return String(a?.id ?? "").localeCompare(String(b?.id ?? ""));
+}
+
+function memberDisplayName(member) {
+  return member?.displayName || member?.user?.globalName || member?.user?.username || "";
+}
+
+function snapshotDisplayNames(message) {
+  const names = new Map();
+  const cache = message?.guild?.members?.cache;
+  if (cache && typeof cache.entries === "function") {
+    for (const [id, member] of cache.entries()) {
+      const nick = memberDisplayName(member);
+      if (id != null && nick) names.set(String(id), nick);
+    }
+  }
+  const author = message?.author;
+  if (author?.id && !names.has(String(author.id))) {
+    const nick = memberDisplayName(message.member) || author.globalName || author.username;
+    if (nick) names.set(String(author.id), nick);
+  }
+  return names;
+}
+
+function frozenTriggerFromSnapshot(snapshot) {
+  return {
+    id: snapshot.triggerId,
+    content: snapshot.content,
+    author: snapshot.author,
+    createdTimestamp: snapshot.createdTimestamp,
+    createdAt: snapshot.createdAt,
+  };
 }
 
 /**
  * Recent-history window for one reply: messages at or before the trigger
- * (by snowflake / timestamp), including the trigger even if the fetch
- * omitted it. Later same-channel messages are excluded so overlapping
- * replies cannot adopt each other's question.
+ * (by snowflake), including the trigger even if the fetch omitted it.
+ * Later same-channel messages are excluded so overlapping replies cannot
+ * adopt each other's question. A missing or unparseable trigger id never
+ * falls back to the full fetch (that was the original leak) and does not
+ * throw.
  */
 function historyWindowFromFetch(history, triggerMessage) {
   const values = history?.values ? history.values() : history || [];
-  if (!triggerMessage?.id) {
-    return Array.from(values).sort(compareHistoryMessages);
+  const triggerId = snowflakeId(triggerMessage?.id);
+  if (triggerId == null) {
+    return triggerMessage ? [triggerMessage] : [];
   }
-  const triggerId = BigInt(String(triggerMessage.id));
   const inWindow = [];
   for (const msg of values) {
-    if (!msg?.id) continue;
-    try {
-      if (BigInt(String(msg.id)) <= triggerId) inWindow.push(msg);
-    } catch {
-      inWindow.push(msg);
-    }
+    const id = snowflakeId(msg?.id);
+    if (id == null) continue;
+    if (id <= triggerId) inWindow.push(msg);
   }
-  inWindow.sort(compareHistoryMessages);
-  if (!inWindow.some((msg) => String(msg.id) === String(triggerMessage.id))) {
+  const triggerKey = String(triggerMessage.id);
+  if (!inWindow.some((msg) => String(msg.id) === triggerKey)) {
     inWindow.push(triggerMessage);
   }
+  inWindow.sort(compareHistoryMessages);
   return inWindow;
 }
 
@@ -130,34 +170,20 @@ class GeminiAI {
       ];
     }
 
-    fileSearchReady(messageOrSnapshot) {
-      if (messageOrSnapshot?.isReplySnapshot) {
-        return Boolean(messageOrSnapshot.fileSearchReady);
-      }
-      if (!messageOrSnapshot?.guild) return false;
+    fileSearchReady(message) {
+      if (!message?.guild) return false;
       try {
-        return this.client.getDatabase(messageOrSnapshot.guild.id).hasFileSearchReady();
+        return this.client.getDatabase(message.guild.id).hasFileSearchReady();
       } catch (error) {
         this.client.logger.log(error, "warn");
         return false;
       }
     }
 
-    chatTools(messageOrSnapshot, grounding = GROUNDING_GOOGLE_SEARCH) {
+    chatTools(snapshot, grounding = GROUNDING_GOOGLE_SEARCH) {
       if (grounding === GROUNDING_NONE) return [];
-      if (grounding === GROUNDING_FILE_SEARCH) {
-        if (messageOrSnapshot?.fileSearchStore) {
-          return [{ fileSearch: { fileSearchStoreNames: [messageOrSnapshot.fileSearchStore] } }];
-        }
-        const guild = messageOrSnapshot?.guild;
-        if (guild) {
-          try {
-            const store = this.client.getDatabase(guild.id).getFileSearchStore();
-            if (store) return [{ fileSearch: { fileSearchStoreNames: [store] } }];
-          } catch (error) {
-            this.client.logger.log(error, "warn");
-          }
-        }
+      if (grounding === GROUNDING_FILE_SEARCH && snapshot?.fileSearchStore) {
+        return [{ fileSearch: { fileSearchStoreNames: [snapshot.fileSearchStore] } }];
       }
       return cloneGoogleSearchTools();
     }
@@ -165,10 +191,13 @@ class GeminiAI {
     snapshotReply(message) {
       const settings = message?.settings || {};
       const guild = message?.guild;
+      const displayNamesById = snapshotDisplayNames(message);
       let botname = "Bender";
       try {
         botname =
-          guild?.members?.cache?.get(this.client.user.id)?.displayName || botname;
+          displayNamesById.get(String(this.client.user.id)) ||
+          memberDisplayName(guild?.members?.cache?.get(this.client.user.id)) ||
+          botname;
       } catch {
         // keep default
       }
@@ -187,18 +216,29 @@ class GeminiAI {
           }
         }
       }
+      const author = message?.author
+        ? Object.freeze({
+            id: message.author.id,
+            username: message.author.username,
+            globalName: message.author.globalName,
+          })
+        : null;
       return Object.freeze({
         isReplySnapshot: true,
         triggerId: message?.id != null ? String(message.id) : "",
         content: message?.content ?? "",
+        triggerText: liveMessageText(message),
         channelId: message?.channel?.id ?? null,
-        authorId: message?.author?.id ?? null,
+        authorId: author?.id ?? null,
+        author,
         createdTimestamp: message?.createdTimestamp ?? 0,
+        createdAt: message?.createdAt || new Date(message?.createdTimestamp || 0),
         guildId: guild?.id ?? message?.guildId ?? null,
         guildName: guild?.name ?? "Default Guild",
         guild: guild ? { id: guild.id, name: guild.name } : null,
         botname,
         clientId: this.client.user?.id,
+        displayNamesById,
         peopleById: new Map(this.getPeopleMap(message)),
         peopleRoster: this.buildPeopleRoster(message),
         fileSearchReady,
@@ -211,17 +251,12 @@ class GeminiAI {
       });
     }
 
-    asReplySnapshot(messageOrSnapshot) {
-      if (messageOrSnapshot?.isReplySnapshot) return messageOrSnapshot;
-      return this.snapshotReply(messageOrSnapshot);
-    }
-
-    async generateContent(contents, messageOrSnapshot) {
+    async generateContent(contents, snapshot) {
         // Grounding stays XOR (google_search OR file_search OR none). Guild CSV
         // packs are ordinary prompt text, attached after the router chooses.
-        // `messageOrSnapshot` must be this reply's frozen snapshot (or a live
-        // message, which is snapshotted here). Concurrent replies never share it.
-        const snapshot = this.asReplySnapshot(messageOrSnapshot);
+        // `snapshot` is this reply's frozen bag from buildContext. Concurrent
+        // replies never share it, and generation does not re-snapshot a live
+        // Discord message.
         const grounding = snapshot.fileSearchReady
           ? await this.chooseGrounding(this.routerContents(contents))
           : GROUNDING_GOOGLE_SEARCH;
@@ -349,8 +384,7 @@ class GeminiAI {
       }
     }
 
-    async generateContentWithTools(contents, messageOrSnapshot, tools, extraInstruction = "") {
-        const snapshot = this.asReplySnapshot(messageOrSnapshot);
+    async generateContentWithTools(contents, snapshot, tools, extraInstruction = "") {
         const config = {
           safetySettings: this.chatSafetySettings(),
           systemInstruction: this.getSystemInstructions(snapshot, tools, extraInstruction),
@@ -364,8 +398,7 @@ class GeminiAI {
         return await this.processResponse(result, snapshot.botname, { guildId: snapshot.guildId })
     }
 
-    getSystemInstructions(messageOrSnapshot, tools = [], extraInstruction = "") {
-      const snapshot = this.asReplySnapshot(messageOrSnapshot);
+    getSystemInstructions(snapshot, tools = [], extraInstruction = "") {
       const botname = snapshot.botname;
       const clientId = snapshot.clientId;
 
@@ -440,22 +473,26 @@ class GeminiAI {
     }
 
     async buildContext(message, nonSequitur) {
-      // Snapshot settings/author/channel/personality before any await so a
+      // Snapshot settings/author/channel/personality/nicks before any await so a
       // concurrent reply cannot clobber this request's view of the trigger.
       const snapshot = this.snapshotReply(message);
+      const frozenTrigger = frozenTriggerFromSnapshot(snapshot);
       const history = await message.channel.messages.fetch({ limit: 40 });
-      const chronological = historyWindowFromFetch(history, message);
+      const chronological = historyWindowFromFetch(history, frozenTrigger).map((msg) =>
+        snapshot.triggerId && String(msg.id) === snapshot.triggerId ? frozenTrigger : msg
+      );
       const botId = snapshot.clientId;
       const peopleById = snapshot.peopleById;
       const turns = [];
 
       for (const discordMessage of chronological) {
         if (discordMessage.content && discordMessage.content[0] == snapshot.settings.prefix) continue;
-        const text = liveMessageText(discordMessage);
+        const isTrigger = snapshot.triggerId && String(discordMessage.id) === snapshot.triggerId;
+        const text = isTrigger ? snapshot.triggerText : liveMessageText(discordMessage);
         if (!text) continue;
 
-        const role = discordMessage.author.id === botId ? "model" : "user";
-        const line = this.formatHistoryLine(message, discordMessage, role, peopleById, text);
+        const role = discordMessage.author?.id === botId ? "model" : "user";
+        const line = this.formatHistoryLine(snapshot, discordMessage, role, peopleById, text);
         const last = turns[turns.length - 1];
 
         if (last && last.role === role) {
@@ -468,7 +505,15 @@ class GeminiAI {
       if (turns.length === 0) {
         turns.push({
           role: "user",
-          parts: [{ text: this.formatHistoryLine(message, message, "user", peopleById) }],
+          parts: [{
+            text: this.formatHistoryLine(
+              snapshot,
+              frozenTrigger,
+              "user",
+              peopleById,
+              snapshot.triggerText
+            ),
+          }],
         });
       }
 
@@ -477,13 +522,17 @@ class GeminiAI {
       return { contents: turns, snapshot };
     }
 
-    formatHistoryLine(message, discordMessage, role, peopleById = new Map(), text = liveMessageText(discordMessage)) {
+    formatHistoryLine(snapshot, discordMessage, role, peopleById = new Map(), text) {
+      if (text === undefined) text = liveMessageText(discordMessage);
       if (role === "model") {
         return text;
       }
-      const member = message?.guild?.members?.cache?.get(discordMessage.author.id);
-      const name = member?.displayName || discordMessage.author.globalName || discordMessage.author.username;
-      const realName = peopleById.get(discordMessage.author.id);
+      const authorId = discordMessage.author?.id;
+      const name =
+        snapshot?.displayNamesById?.get(String(authorId)) ||
+        discordMessage.author?.globalName ||
+        discordMessage.author?.username;
+      const realName = peopleById.get(authorId);
       const speaker = realName
         ? `${name} (${realName}, id: <@${discordMessage.author.id}>)`
         : name
