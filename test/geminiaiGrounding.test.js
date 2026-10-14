@@ -19,10 +19,10 @@ describe("GeminiAI grounding XOR + context packs", () => {
 
   it("still picks exactly one grounding tool", () => {
     const ai = makeAi();
-    const message = { guild: { id: "1" } };
-    const google = ai.chatTools(message, "google_search");
-    const files = ai.chatTools(message, "file_search");
-    const none = ai.chatTools(message, "none");
+    const snapshot = { fileSearchStore: "fileSearchStores/test" };
+    const google = ai.chatTools(snapshot, "google_search");
+    const files = ai.chatTools(snapshot, "file_search");
+    const none = ai.chatTools(snapshot, "none");
 
     assert.equal(google.length, 1);
     assert.ok(google[0].googleSearch);
@@ -33,6 +33,21 @@ describe("GeminiAI grounding XOR + context packs", () => {
     assert.equal(Boolean(files[0].googleSearch), false);
 
     assert.deepEqual(none, []);
+  });
+
+  it("file_search with a missing snapshot store does not query the live guild DB", () => {
+    const ai = makeAi();
+    let reads = 0;
+    const original = ai.client.getDatabase.bind(ai.client);
+    ai.client.getDatabase = (...args) => {
+      reads += 1;
+      return original(...args);
+    };
+    const tools = ai.chatTools({ fileSearchStore: null, guild: { id: "1" } }, "file_search");
+    assert.equal(reads, 0);
+    assert.equal(tools.length, 1);
+    assert.ok(tools[0].googleSearch);
+    assert.equal(Boolean(tools[0].fileSearch), false);
   });
 
   it("attaches guild CSV after routing without changing tools", async () => {
@@ -58,7 +73,7 @@ describe("GeminiAI grounding XOR + context packs", () => {
       settings: { context_packs: [{ name: "plays", kind: "plays", url: secret }] },
     };
     const packed = await ai.attachGuildContextPacks(contents, message);
-    const tools = ai.chatTools({ guild: { id: "1" } }, "google_search");
+    const tools = ai.chatTools({ fileSearchStore: "fileSearchStores/test" }, "google_search");
 
     assert.match(packed.contents[0].parts[0].text, /Azul,Shane/);
     assert.match(packed.note, /not a grounding tool/);

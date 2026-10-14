@@ -24,13 +24,99 @@ import { recordImageGenResult } from "./guildHealth.js";
 const GROUNDING_FILE_SEARCH = "file_search";
 const GROUNDING_GOOGLE_SEARCH = "google_search";
 const GROUNDING_NONE = "none";
-const GOOGLE_SEARCH_TOOLS = [{ googleSearch: {} }];
 const GROUNDING_CHOICES = new Set([
   GROUNDING_FILE_SEARCH,
   GROUNDING_GOOGLE_SEARCH,
   GROUNDING_NONE,
 ]);
 const NON_SEQUITUR_PREFIX = "Please try to include an idea from this group of random thoughts:";
+
+function cloneGoogleSearchTools() {
+  return [{ googleSearch: {} }];
+}
+
+function snowflakeId(value) {
+  if (value == null || value === "") return null;
+  const text = String(value);
+  if (!/^\d+$/.test(text)) return null;
+  try {
+    return BigInt(text);
+  } catch {
+    return null;
+  }
+}
+
+function compareHistoryMessages(a, b) {
+  const ia = snowflakeId(a?.id);
+  const ib = snowflakeId(b?.id);
+  if (ia != null && ib != null) {
+    if (ia < ib) return -1;
+    if (ia > ib) return 1;
+    return 0;
+  }
+  if (ia != null) return -1;
+  if (ib != null) return 1;
+  return String(a?.id ?? "").localeCompare(String(b?.id ?? ""));
+}
+
+function memberDisplayName(member) {
+  return member?.displayName || member?.user?.globalName || member?.user?.username || "";
+}
+
+function snapshotDisplayNames(message) {
+  const names = new Map();
+  const cache = message?.guild?.members?.cache;
+  if (cache && typeof cache.entries === "function") {
+    for (const [id, member] of cache.entries()) {
+      const nick = memberDisplayName(member);
+      if (id != null && nick) names.set(String(id), nick);
+    }
+  }
+  const author = message?.author;
+  if (author?.id && !names.has(String(author.id))) {
+    const nick = memberDisplayName(message.member) || author.globalName || author.username;
+    if (nick) names.set(String(author.id), nick);
+  }
+  return names;
+}
+
+function frozenTriggerFromSnapshot(snapshot) {
+  return {
+    id: snapshot.triggerId,
+    content: snapshot.content,
+    author: snapshot.author,
+    createdTimestamp: snapshot.createdTimestamp,
+    createdAt: snapshot.createdAt,
+  };
+}
+
+/**
+ * Recent-history window for one reply: messages at or before the trigger
+ * (by snowflake), including the trigger even if the fetch omitted it.
+ * Later same-channel messages are excluded so overlapping replies cannot
+ * adopt each other's question. A missing or unparseable trigger id never
+ * falls back to the full fetch (that was the original leak) and does not
+ * throw.
+ */
+function historyWindowFromFetch(history, triggerMessage) {
+  const values = history?.values ? history.values() : history || [];
+  const triggerId = snowflakeId(triggerMessage?.id);
+  if (triggerId == null) {
+    return triggerMessage ? [triggerMessage] : [];
+  }
+  const inWindow = [];
+  for (const msg of values) {
+    const id = snowflakeId(msg?.id);
+    if (id == null) continue;
+    if (id <= triggerId) inWindow.push(msg);
+  }
+  const triggerKey = String(triggerMessage.id);
+  if (!inWindow.some((msg) => String(msg.id) === triggerKey)) {
+    inWindow.push(triggerMessage);
+  }
+  inWindow.sort(compareHistoryMessages);
+  return inWindow;
+}
 
 function describeError(error) {
   const parts = [error?.message || String(error)];
@@ -85,7 +171,7 @@ class GeminiAI {
     }
 
     fileSearchReady(message) {
-      if (!message.guild) return false;
+      if (!message?.guild) return false;
       try {
         return this.client.getDatabase(message.guild.id).hasFileSearchReady();
       } catch (error) {
@@ -94,29 +180,90 @@ class GeminiAI {
       }
     }
 
-    chatTools(message, grounding = GROUNDING_GOOGLE_SEARCH) {
+    chatTools(snapshot, grounding = GROUNDING_GOOGLE_SEARCH) {
       if (grounding === GROUNDING_NONE) return [];
-      if (grounding === GROUNDING_FILE_SEARCH && message.guild) {
-        try {
-          const store = this.client.getDatabase(message.guild.id).getFileSearchStore();
-          if (store) return [{ fileSearch: { fileSearchStoreNames: [store] } }];
-        } catch (error) {
-          this.client.logger.log(error, "warn");
-        }
+      if (grounding === GROUNDING_FILE_SEARCH && snapshot?.fileSearchStore) {
+        return [{ fileSearch: { fileSearchStoreNames: [snapshot.fileSearchStore] } }];
       }
-      return GOOGLE_SEARCH_TOOLS;
+      return cloneGoogleSearchTools();
     }
 
-    async generateContent(contents, message) {
+    snapshotReply(message) {
+      const settings = message?.settings || {};
+      const guild = message?.guild;
+      const displayNamesById = snapshotDisplayNames(message);
+      let botname = "Bender";
+      try {
+        botname =
+          displayNamesById.get(String(this.client.user.id)) ||
+          memberDisplayName(guild?.members?.cache?.get(this.client.user.id)) ||
+          botname;
+      } catch {
+        // keep default
+      }
+      const contextPacks = Array.isArray(settings.context_packs)
+        ? settings.context_packs.map((pack) => ({ ...pack }))
+        : [];
+      let fileSearchReady = false;
+      let fileSearchStore = null;
+      if (guild) {
+        fileSearchReady = this.fileSearchReady(message);
+        if (fileSearchReady) {
+          try {
+            fileSearchStore = this.client.getDatabase(guild.id).getFileSearchStore() || null;
+          } catch (error) {
+            this.client.logger.log(error, "warn");
+          }
+        }
+      }
+      const author = message?.author
+        ? Object.freeze({
+            id: message.author.id,
+            username: message.author.username,
+            globalName: message.author.globalName,
+          })
+        : null;
+      return Object.freeze({
+        isReplySnapshot: true,
+        triggerId: message?.id != null ? String(message.id) : "",
+        content: message?.content ?? "",
+        triggerText: liveMessageText(message),
+        channelId: message?.channel?.id ?? null,
+        authorId: author?.id ?? null,
+        author,
+        createdTimestamp: message?.createdTimestamp ?? 0,
+        createdAt: message?.createdAt || new Date(message?.createdTimestamp || 0),
+        guildId: guild?.id ?? message?.guildId ?? null,
+        guildName: guild?.name ?? "Default Guild",
+        guild: guild ? { id: guild.id, name: guild.name } : null,
+        botname,
+        clientId: this.client.user?.id,
+        displayNamesById,
+        peopleById: new Map(this.getPeopleMap(message)),
+        peopleRoster: this.buildPeopleRoster(message),
+        fileSearchReady,
+        fileSearchStore,
+        settings: Object.freeze({
+          prefix: settings.prefix,
+          ai_selected_personality: settings.ai_selected_personality || "bender",
+          context_packs: Object.freeze(contextPacks),
+        }),
+      });
+    }
+
+    async generateContent(contents, snapshot) {
         // Grounding stays XOR (google_search OR file_search OR none). Guild CSV
         // packs are ordinary prompt text, attached after the router chooses.
-        const grounding = this.fileSearchReady(message)
+        // `snapshot` is this reply's frozen bag from buildContext. Concurrent
+        // replies never share it, and generation does not re-snapshot a live
+        // Discord message.
+        const grounding = snapshot.fileSearchReady
           ? await this.chooseGrounding(this.routerContents(contents))
           : GROUNDING_GOOGLE_SEARCH;
-        const tools = this.chatTools(message, grounding);
-        const packed = await this.attachGuildContextPacks(contents, message);
+        const tools = this.chatTools(snapshot, grounding);
+        const packed = await this.attachGuildContextPacks(contents, snapshot);
         try {
-          return await this.generateContentWithTools(packed.contents, message, tools, packed.note);
+          return await this.generateContentWithTools(packed.contents, snapshot, tools, packed.note);
         } catch (error) {
           const hasFileSearch = tools.some((tool) => tool.fileSearch);
           if (hasFileSearch && !isNetworkFetchError(error)) {
@@ -124,7 +271,12 @@ class GeminiAI {
               `Gemini File Search request failed (${describeError(error)}); retrying without File Search`,
               "warn"
             );
-            return await this.generateContentWithTools(packed.contents, message, GOOGLE_SEARCH_TOOLS, packed.note);
+            return await this.generateContentWithTools(
+              packed.contents,
+              snapshot,
+              cloneGoogleSearchTools(),
+              packed.note
+            );
           }
           throw new Error(`Gemini request failed: ${describeError(error)}`, { cause: error });
         }
@@ -232,10 +384,10 @@ class GeminiAI {
       }
     }
 
-    async generateContentWithTools(contents, message, tools, extraInstruction = "") {
+    async generateContentWithTools(contents, snapshot, tools, extraInstruction = "") {
         const config = {
           safetySettings: this.chatSafetySettings(),
-          systemInstruction: this.getSystemInstructions(message, tools, extraInstruction),
+          systemInstruction: this.getSystemInstructions(snapshot, tools, extraInstruction),
         };
         if (tools.length > 0) config.tools = tools;
         const result = await this.AI2.models.generateContent({
@@ -243,16 +395,15 @@ class GeminiAI {
           contents,
           config,
         })
-        let botname = message.guild.members.cache.get(this.client.user.id).displayName
-        return await this.processResponse(result, botname, { guildId: message?.guild?.id })
+        return await this.processResponse(result, snapshot.botname, { guildId: snapshot.guildId })
     }
 
-    getSystemInstructions(message, tools = [], extraInstruction = "") {
-      const botname = message.guild.members.cache.get(this.client.user.id).displayName;
-      const clientId = this.client.user.id;
+    getSystemInstructions(snapshot, tools = [], extraInstruction = "") {
+      const botname = snapshot.botname;
+      const clientId = snapshot.clientId;
 
       // New block for loading personality based on ai_selected_personality setting
-      const selectedPersonalityKey = message.settings.ai_selected_personality || "bender";
+      const selectedPersonalityKey = snapshot.settings?.ai_selected_personality || "bender";
       let personality;
 
       switch (selectedPersonalityKey) {
@@ -266,7 +417,7 @@ class GeminiAI {
           personality = personalityDwarfCraftsman;
           break;
         case "ship_computer":
-          personality = personalityShipComputer(message.guild ? message.guild.name : "Default Guild"); // Added a fallback for guild name
+          personality = personalityShipComputer(snapshot.guildName || "Default Guild"); // Added a fallback for guild name
           break;
         case "educator_joy":
           personality = personalityEducatorJoy;
@@ -278,7 +429,7 @@ class GeminiAI {
           personality = personalityShakespeare;
           break;
         case "pirate_qm": // New case
-          personality = personalityPirateQm(message.guild ? message.guild.name : "Default Guild");
+          personality = personalityPirateQm(snapshot.guildName || "Default Guild");
           break;
         case "anxious_philosopher": // New case
           personality = personalityAnxiousPhilosopher;
@@ -292,7 +443,7 @@ class GeminiAI {
           break;
       }
       // End of new block
-      const identity = identityTemplate(botname, clientId, this.buildPeopleRoster(message));
+      const identity = identityTemplate(botname, clientId, snapshot.peopleRoster);
       const chatInstructions = chatInstructionsTemplate(tools);
       const capabilities = capabilitiesTemplate(tools);
 
@@ -310,31 +461,38 @@ class GeminiAI {
     }
 
     buildPeopleRoster(message) {
-      if (!message.guild) return "";
+      if (!message?.guild) return "";
       const people = this.client.getDatabase(message.guild.id).listPeople();
       if (people.length === 0) return "";
       return people.map((person) => `- <@${person.user_id}> is ${person.real_name}`).join("\n");
     }
 
     getPeopleMap(message) {
-      if (!message.guild) return new Map();
+      if (!message?.guild) return new Map();
       return this.client.getDatabase(message.guild.id).getPeopleMap();
     }
 
     async buildContext(message, nonSequitur) {
+      // Snapshot settings/author/channel/personality/nicks before any await so a
+      // concurrent reply cannot clobber this request's view of the trigger.
+      const snapshot = this.snapshotReply(message);
+      const frozenTrigger = frozenTriggerFromSnapshot(snapshot);
       const history = await message.channel.messages.fetch({ limit: 40 });
-      const chronological = Array.from(history.values()).reverse();
-      const botId = this.client.user.id;
-      const peopleById = this.getPeopleMap(message);
+      const chronological = historyWindowFromFetch(history, frozenTrigger).map((msg) =>
+        snapshot.triggerId && String(msg.id) === snapshot.triggerId ? frozenTrigger : msg
+      );
+      const botId = snapshot.clientId;
+      const peopleById = snapshot.peopleById;
       const turns = [];
 
       for (const discordMessage of chronological) {
-        if (discordMessage.content && discordMessage.content[0] == message.settings.prefix) continue;
-        const text = liveMessageText(discordMessage);
+        if (discordMessage.content && discordMessage.content[0] == snapshot.settings.prefix) continue;
+        const isTrigger = snapshot.triggerId && String(discordMessage.id) === snapshot.triggerId;
+        const text = isTrigger ? snapshot.triggerText : liveMessageText(discordMessage);
         if (!text) continue;
 
-        const role = discordMessage.author.id === botId ? "model" : "user";
-        const line = this.formatHistoryLine(message, discordMessage, role, peopleById, text);
+        const role = discordMessage.author?.id === botId ? "model" : "user";
+        const line = this.formatHistoryLine(snapshot, discordMessage, role, peopleById, text);
         const last = turns[turns.length - 1];
 
         if (last && last.role === role) {
@@ -347,28 +505,41 @@ class GeminiAI {
       if (turns.length === 0) {
         turns.push({
           role: "user",
-          parts: [{ text: this.formatHistoryLine(message, message, "user", peopleById) }],
+          parts: [{
+            text: this.formatHistoryLine(
+              snapshot,
+              frozenTrigger,
+              "user",
+              peopleById,
+              snapshot.triggerText
+            ),
+          }],
         });
       }
 
       this.attachNonSequitur(turns, nonSequitur);
       this.ensureValidTurnSequence(turns);
-      return turns;
+      return { contents: turns, snapshot };
     }
 
-    formatHistoryLine(message, discordMessage, role, peopleById = new Map(), text = liveMessageText(discordMessage)) {
+    formatHistoryLine(snapshot, discordMessage, role, peopleById = new Map(), text) {
+      if (text === undefined) text = liveMessageText(discordMessage);
       if (role === "model") {
         return text;
       }
-      const member = message.guild.members.cache.get(discordMessage.author.id);
-      const name = member?.displayName || discordMessage.author.globalName || discordMessage.author.username;
-      const realName = peopleById.get(discordMessage.author.id);
+      const authorId = discordMessage.author?.id;
+      const name =
+        snapshot?.displayNamesById?.get(String(authorId)) ||
+        discordMessage.author?.globalName ||
+        discordMessage.author?.username;
+      const realName = peopleById.get(authorId);
       const speaker = realName
         ? `${name} (${realName}, id: <@${discordMessage.author.id}>)`
         : name
           ? `${name} (id: <@${discordMessage.author.id}>)`
           : `(id: <@${discordMessage.author.id}>)`;
-      return `[${discordMessage.createdAt.toLocaleString()}] ${speaker}: ${text}`;
+      const createdAt = discordMessage.createdAt || new Date(discordMessage.createdTimestamp || 0);
+      return `[${createdAt.toLocaleString()}] ${speaker}: ${text}`;
     }
 
     attachNonSequitur(turns, nonSequitur) {
@@ -799,4 +970,4 @@ class GeminiAI {
 }
 }
 
-export { createGeminiAI };
+export { createGeminiAI, historyWindowFromFetch };
