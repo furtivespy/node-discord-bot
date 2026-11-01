@@ -22,7 +22,7 @@ RUN apt-get update -qq && \
       libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
 
 # Install Go-based magic-wormhole for downloading volume content for local development.
-RUN curl -fsSL -o /usr/local/bin/wormhole https://github.com/psanford/wormhole-william/releases/download/v1.0.6/wormhole-william-linux-amd64 && chmod +x /usr/local/bin/wormhole
+RUN curl -fsSL -o /usr/local/bin/wormhole https://github.com/psanford/wormhole-william/releases/download/v1.0.8/wormhole-william-linux-amd64 && chmod +x /usr/local/bin/wormhole
 
 # Install node modules
 COPY --link package-lock.json package.json .npmrc ./
