@@ -1,7 +1,5 @@
 import { EmbedBuilder, AttachmentBuilder } from "discord.js";
 
-import fetch from "node-fetch";
-
 import find from "lodash/find.js";
 import take from "lodash/take.js";
 

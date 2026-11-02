@@ -1,9 +1,75 @@
 import net from "node:net";
 import https from "node:https";
 import { promises as dnsPromises } from "node:dns";
-import nodeFetch from "node-fetch";
+import { Readable } from "node:stream";
 
-const DEFAULT_FETCH = (...args) => nodeFetch(...args);
+const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
+
+function nodeIncomingToFetchResponse(incoming, url) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(incoming.headers || {})) {
+    if (value == null || HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(key, item);
+    } else {
+      headers.set(key, String(value));
+    }
+  }
+  const response = new Response(Readable.toWeb(incoming), {
+    status: incoming.statusCode,
+    statusText: incoming.statusMessage,
+    headers,
+  });
+  Object.defineProperty(response, "url", { value: url, enumerable: true });
+  return response;
+}
+
+/**
+ * Native fetch has no node-fetch v2 `agent` option. Context-pack fetches pin
+ * DNS through `https.Agent#lookup` (SSRF / rebinding), so the default impl
+ * adapts `https.request` into a Fetch `Response` when an agent is provided.
+ * Other call sites use global `fetch` directly.
+ */
+function nativeContextPackFetch(url, options = {}) {
+  const { agent, signal, method = "GET", headers } = options;
+  if (!agent) {
+    return fetch(url, {
+      method,
+      headers,
+      signal,
+      redirect: options.redirect || "manual",
+    });
+  }
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    if (parsed.protocol !== "https:") {
+      reject(new Error("URL must be https."));
+      return;
+    }
+    const req = https.request(
+      parsed,
+      {
+        method,
+        headers,
+        agent,
+        signal,
+      },
+      (res) => {
+        resolve(nodeIncomingToFetchResponse(res, parsed.href));
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+const DEFAULT_FETCH = (...args) => nativeContextPackFetch(...args);
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes (within the 5–15 min target)
 const MAX_BYTES = 256 * 1024;
@@ -298,6 +364,65 @@ function createPinnedHttpsAgent(addresses) {
   });
 }
 
+async function discardResponseBody(response) {
+  const body = response?.body;
+  if (body && typeof body.cancel === "function") {
+    try {
+      await body.cancel();
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  if (typeof response?.arrayBuffer === "function") {
+    try {
+      await response.arrayBuffer();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+async function readResponseBodyLimited(response, maxBytes) {
+  const contentLengthRaw = response.headers?.get?.("content-length");
+  const contentLength = contentLengthRaw == null || contentLengthRaw === "" ? NaN : Number(contentLengthRaw);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await discardResponseBody(response);
+    throw new Error("body too large");
+  }
+
+  const body = response.body;
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
+        throw new Error("body too large");
+      }
+      chunks.push(value);
+    }
+    const buffer = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    return { text: buffer.toString("utf8"), bytes: buffer.byteLength };
+  }
+
+  const text = await response.text();
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error("body too large");
+  }
+  return { text, bytes };
+}
+
 function validateContextUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== "string") {
     return { error: "URL is required." };
@@ -572,7 +697,9 @@ function classifyFetchError(error) {
   if (
     error?.type === "request-timeout" ||
     error?.name === "AbortError" ||
-    /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT|HeadersTimeout|UND_ERR_CONNECT_TIMEOUT|request-timeout|AbortError/i.test(
+    error?.name === "TimeoutError" ||
+    error?.code === "ABORT_ERR" ||
+    /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT|HeadersTimeout|UND_ERR_CONNECT_TIMEOUT|request-timeout|AbortError|TimeoutError/i.test(
       text
     )
   ) {
@@ -763,6 +890,8 @@ function createContextPackService(options = {}) {
   const cache = options.cache || new Map();
   const statusByUrl = options.statusByUrl || new Map();
   const ttlMs = options.ttlMs || CACHE_TTL_MS;
+  const timeoutMs = options.timeoutMs || FETCH_TIMEOUT_MS;
+  const maxBytes = options.maxBytes || MAX_BYTES;
   const now = options.now || (() => Date.now());
   const logger = options.logger || { log() {} };
   const persistPackStatus = options.persistPackStatus;
@@ -855,9 +984,7 @@ function createContextPackService(options = {}) {
       const response = await fetchImpl(safe.url, {
         method: "GET",
         redirect: "manual",
-        follow: 0,
-        timeout: FETCH_TIMEOUT_MS,
-        size: MAX_BYTES,
+        signal: AbortSignal.timeout(timeoutMs),
         agent: safe.agent,
         headers: {
           Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
@@ -871,17 +998,18 @@ function createContextPackService(options = {}) {
       if (isRedirectStatus(response.status)) {
         const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
         if (!location) {
+          await discardResponseBody(response);
           throw new Error("redirect without location");
         }
         currentUrl = new URL(location, safe.url).href;
+        await discardResponseBody(response);
         continue;
       }
       if (!response.ok) {
+        await discardResponseBody(response);
         throw new Error(`HTTP ${response.status}`);
       }
-      const bytes = Number(response.headers?.get?.("content-length")) || 0;
-      const text = await response.text();
-      return { text, bytes };
+      return readResponseBodyLimited(response, maxBytes);
     }
     throw new Error("too many redirects");
   }
@@ -925,7 +1053,7 @@ function createContextPackService(options = {}) {
       if (/^\s*<(!DOCTYPE html|html)/i.test(body)) {
         throw new Error("HTML instead of CSV/text");
       }
-      if (Buffer.byteLength(body, "utf8") > MAX_BYTES) {
+      if (Buffer.byteLength(body, "utf8") > maxBytes) {
         throw new Error("body too large");
       }
       const entry = {
@@ -1041,6 +1169,7 @@ function createContextPackService(options = {}) {
 export {
   CACHE_TTL_MS,
   MAX_BYTES,
+  FETCH_TIMEOUT_MS,
   MAX_PROMPT_CHARS,
   MAX_PACKS_PER_GUILD,
   PACK_KINDS,

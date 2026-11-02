@@ -1,5 +1,4 @@
 import qs from 'node:querystring';
-import fetch from 'node-fetch';
 class Command {
     constructor(client, {
       name = null,

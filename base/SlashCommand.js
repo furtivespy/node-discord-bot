@@ -1,6 +1,3 @@
-import fetch from "node-fetch";
-
-
 class SlashCommand {
     constructor(client, {
       name = null,

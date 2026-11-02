@@ -1,6 +1,5 @@
 import SlashCommand from "../../base/SlashCommand.js";
 import { SlashCommandBuilder } from "discord.js";
-import fetch from "node-fetch";
 import wtf from "wtf_wikipedia";
 import SampleSize from "lodash/sampleSize.js";
 import isNull from "lodash/isNull.js";

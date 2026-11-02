@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import filter from 'lodash/filter.js';
 import sample from 'lodash/sample.js';
 

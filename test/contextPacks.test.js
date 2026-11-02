@@ -6,6 +6,8 @@ import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
   MAX_REDIRECTS,
+  FETCH_TIMEOUT_MS,
+  MAX_BYTES,
   redactUrl,
   scrubErrorMessage,
   isBlockedAddress,
@@ -75,6 +77,31 @@ function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {},
     },
     async text() {
       return text;
+    },
+  };
+}
+
+function streamResponse({ ok = true, status = 200, chunks = [], headers = {}, url } = {}) {
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+      }
+      controller.close();
+    },
+  });
+  return {
+    ok,
+    status,
+    url,
+    headers: {
+      get(name) {
+        return headers[String(name).toLowerCase()] ?? headers[name] ?? null;
+      },
+    },
+    body: stream,
+    async text() {
+      throw new Error("text() should not be used when a streamed body is present");
     },
   };
 }
@@ -537,6 +564,11 @@ describe("fetch + cache", () => {
     assert.equal(classifyFetchError(new Error("empty body")), "parse_error");
     assert.equal(classifyFetchError(new Error("HTML instead of CSV/text")), "parse_error");
     assert.equal(classifyFetchError({ type: "request-timeout", message: "network timeout" }), "timeout");
+    assert.equal(
+      classifyFetchError({ name: "TimeoutError", message: "The operation was aborted due to timeout" }),
+      "timeout"
+    );
+    assert.equal(classifyFetchError({ name: "AbortError", message: "This operation was aborted" }), "timeout");
     assert.equal(classifyFetchError(new Error("URL host is not allowed.")), "error");
   });
 
@@ -862,6 +894,161 @@ describe("SSRF protections on fetch", () => {
     assert.equal(MAX_REDIRECTS, 3);
     assert.equal(calls, 3);
     assert.match(result.error, /too many redirects/);
+  });
+
+  it("uses AbortSignal.timeout and manual redirects instead of node-fetch v2 options", async () => {
+    let captured;
+    const service = testService({
+      fetch: async (_url, opts) => {
+        captured = opts;
+        return mockResponse();
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, true);
+    assert.equal(captured.redirect, "manual");
+    assert.ok(captured.signal instanceof AbortSignal);
+    assert.equal(captured.timeout, undefined);
+    assert.equal(captured.size, undefined);
+    assert.equal(captured.follow, undefined);
+    assert.equal(Object.hasOwn(captured, "timeout"), false);
+    assert.equal(Object.hasOwn(captured, "size"), false);
+    assert.equal(Object.hasOwn(captured, "follow"), false);
+    assert.equal(FETCH_TIMEOUT_MS, 8000);
+    assert.equal(MAX_BYTES, 256 * 1024);
+  });
+
+  it("aborts a hung fetch via AbortSignal.timeout", async () => {
+    const service = testService({
+      timeoutMs: 50,
+      fetch: (_url, opts) =>
+        new Promise((_, reject) => {
+          assert.ok(opts.signal);
+          opts.signal.addEventListener("abort", () => {
+            const error = new Error("The operation was aborted due to timeout");
+            error.name = "TimeoutError";
+            reject(error);
+          });
+        }),
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, false);
+    assert.equal(result.last_result, "timeout");
+    assert.match(result.error, /timeout|aborted/i);
+  });
+
+  it("enforces a streamed body size cap without buffering the whole response", async () => {
+    let cancelled = false;
+    const maxBytes = 64;
+    const service = testService({
+      maxBytes,
+      fetch: async () => {
+        let pullCount = 0;
+        const stream = new ReadableStream({
+          pull(controller) {
+            pullCount += 1;
+            if (pullCount === 1) {
+              controller.enqueue(new Uint8Array(maxBytes));
+              return;
+            }
+            controller.enqueue(new Uint8Array(1).fill(65));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        });
+        return {
+          ok: true,
+          status: 200,
+          headers: {
+            get() {
+              return null;
+            },
+          },
+          body: stream,
+          async text() {
+            throw new Error("text() should not be used when a streamed body is present");
+          },
+        };
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /body too large/);
+    assert.equal(result.last_result, "parse_error");
+    assert.equal(cancelled, true);
+  });
+
+  it("rejects oversized Content-Length before reading the body", async () => {
+    let textCalled = false;
+    let cancelled = false;
+    const service = testService({
+      maxBytes: 32,
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        headers: {
+          get(name) {
+            return String(name).toLowerCase() === "content-length" ? "99999" : null;
+          },
+        },
+        body: {
+          getReader() {
+            throw new Error("body should not be read when Content-Length exceeds the cap");
+          },
+          async cancel() {
+            cancelled = true;
+          },
+        },
+        async text() {
+          textCalled = true;
+          return "x".repeat(99999);
+        },
+      }),
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /body too large/);
+    assert.equal(textCalled, false);
+    assert.equal(cancelled, true);
+  });
+
+  it("reads a streamed CSV body under the size cap", async () => {
+    const service = testService({
+      fetch: async () => streamResponse({ chunks: [PLAYS_CSV] }),
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, true);
+    assert.match(result.text, /Azul/);
+    assert.equal(result.last_row_count, 3);
+  });
+
+  it("still checks each redirect hop when the Location is a relative path", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url) === "https://example.com/start") {
+          return mockResponse({
+            ok: false,
+            status: 307,
+            headers: { location: "/next" },
+          });
+        }
+        if (String(url) === "https://example.com/next") {
+          return mockResponse({
+            ok: false,
+            status: 308,
+            headers: { location: "https://169.254.169.254/csv" },
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/start");
+    assert.equal(result.ok, false);
+    assert.deepEqual(requested, ["https://example.com/start", "https://example.com/next"]);
+    assert.doesNotMatch(result.error || "", /169\.254/);
   });
 
   it("tells the model when a stored private URL cannot be fetched instead of silently continuing", async () => {

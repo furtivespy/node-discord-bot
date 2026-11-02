@@ -2,8 +2,6 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import fetch from "node-fetch";
-
 import { EmbedBuilder } from "discord.js";
 
 
