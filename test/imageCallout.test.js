@@ -232,4 +232,42 @@ describe("processResponse image callouts", () => {
     assert.equal(response, reply);
     assert.equal(imageResponse, null);
   });
+
+  it("does not send thought parts to Discord", async () => {
+    const ai = stubGemini();
+    const { response, imageResponse } = await ai.processResponse({
+      candidates: [{
+        content: {
+          parts: [
+            { thought: true, text: "Internal plan: Generating image of a secret" },
+            { text: "Hello meatbag." },
+          ],
+        },
+      }],
+    }, "Bender");
+    assert.equal(response, "Hello meatbag.");
+    assert.equal(imageResponse, null);
+  });
+
+  it("does not extract an image callout from thought text", async () => {
+    const ai = stubGemini();
+    let generated = false;
+    ai.generateImageNew = async () => {
+      generated = true;
+      return { prompt: "should not run" };
+    };
+    const { response, imageResponse } = await ai.processResponse({
+      candidates: [{
+        content: {
+          parts: [
+            { thought: true, text: "Generating image of a classified schematic" },
+            { text: "Just chatting, meatbag." },
+          ],
+        },
+      }],
+    }, "Bender");
+    assert.equal(response, "Just chatting, meatbag.");
+    assert.equal(imageResponse, null);
+    assert.equal(generated, false);
+  });
 });
