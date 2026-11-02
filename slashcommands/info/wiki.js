@@ -48,6 +48,12 @@ class Wiki extends SlashCommand {
                 value: result,
               }))
             );
+          })
+          .catch(async (e) => {
+            this.client.logger.log(e, "error");
+            if (!interaction.responded) {
+              await interaction.respond([]).catch(() => {});
+            }
           });
       } else {
         wtf.extend(wtfMarkdown);

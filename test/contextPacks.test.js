@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import zlib from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -568,6 +569,7 @@ describe("fetch + cache", () => {
     assert.equal(classifyFetchError(new Error("HTTP 503")), "http_error");
     assert.equal(classifyFetchError(new Error("empty body")), "parse_error");
     assert.equal(classifyFetchError(new Error("HTML instead of CSV/text")), "parse_error");
+    assert.equal(classifyFetchError({ message: "compressed body" }), "parse_error");
     assert.equal(classifyFetchError({ type: "request-timeout", message: "network timeout" }), "timeout");
     assert.equal(
       classifyFetchError({ name: "TimeoutError", message: "The operation was aborted due to timeout" }),
@@ -901,7 +903,7 @@ describe("SSRF protections on fetch", () => {
     assert.match(result.error, /too many redirects/);
   });
 
-  it("uses AbortSignal.timeout and manual redirects instead of node-fetch v2 options", async () => {
+  it("uses a per-hop AbortSignal and manual redirects instead of node-fetch v2 options", async () => {
     let captured;
     const service = testService({
       fetch: async (_url, opts) => {
@@ -919,11 +921,12 @@ describe("SSRF protections on fetch", () => {
     assert.equal(Object.hasOwn(captured, "timeout"), false);
     assert.equal(Object.hasOwn(captured, "size"), false);
     assert.equal(Object.hasOwn(captured, "follow"), false);
+    assert.equal(captured.headers["Accept-Encoding"], "identity");
     assert.equal(FETCH_TIMEOUT_MS, 8000);
     assert.equal(MAX_BYTES, 256 * 1024);
   });
 
-  it("aborts a hung fetch via AbortSignal.timeout", async () => {
+  it("aborts a hung fetch via the per-hop timeout", async () => {
     const service = testService({
       timeoutMs: 50,
       fetch: (_url, opts) =>
@@ -940,6 +943,44 @@ describe("SSRF protections on fetch", () => {
     assert.equal(result.ok, false);
     assert.equal(result.last_result, "timeout");
     assert.match(result.error, /timeout|aborted/i);
+  });
+
+  it("aborts a hung DNS lookup via the per-hop timeout", { timeout: 3000 }, async () => {
+    let fetchCalls = 0;
+    const service = testService({
+      timeoutMs: 50,
+      lookup: () => new Promise(() => {}),
+      fetch: async () => {
+        fetchCalls += 1;
+        throw new Error("fetch should not run while DNS is hung");
+      },
+    });
+    const started = Date.now();
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    const elapsed = Date.now() - started;
+    assert.equal(result.ok, false);
+    assert.equal(result.last_result, "timeout");
+    assert.match(result.error, /timeout|aborted/i);
+    assert.equal(fetchCalls, 0);
+    assert.ok(elapsed < 1000, `DNS timeout took ${elapsed}ms`);
+  });
+
+  it("does not cache gzip, deflate, or br encoded CSV as a successful pack", async () => {
+    for (const encoding of ["gzip", "deflate", "br"]) {
+      const service = testService({
+        fetch: async () =>
+          streamResponse({
+            chunks: [PLAYS_CSV],
+            headers: { "content-encoding": encoding, "content-type": "text/csv" },
+          }),
+      });
+      const result = await service.fetchUrl("https://example.com/plays.csv");
+      assert.equal(result.ok, false, encoding);
+      assert.notEqual(result.last_result, "ok", encoding);
+      assert.equal(result.last_result, "parse_error", encoding);
+      assert.match(result.error, /compressed body/i, encoding);
+      assert.equal(result.text, undefined, encoding);
+    }
   });
 
   it("enforces a streamed body size cap without buffering the whole response", async () => {
@@ -1297,27 +1338,38 @@ describe("default nativeContextPackFetch against local HTTPS", () => {
   });
 
   it("does not crash the process on 204/205/304 or an out-of-range status", async () => {
-    await withLocalHttps(
-      (req, res) => {
-        const code = Number(String(req.url).slice(1)) || 204;
-        res.writeHead(code);
-        res.end();
-      },
-      async (port) => {
-        const service = liveService();
-        const expected = {
-          204: "parse_error",
-          205: "parse_error",
-          304: "http_error",
-          999: "http_error",
-        };
-        for (const [status, lastResult] of Object.entries(expected)) {
-          const result = await service.fetchUrl(`https://example.com:${port}/${status}`);
-          assert.equal(result.ok, false, `status ${status}`);
-          assert.equal(result.last_result, lastResult, `status ${status}`);
+    const uncaught = [];
+    const onUncaught = (error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      await withLocalHttps(
+        (req, res) => {
+          const code = Number(String(req.url).slice(1)) || 204;
+          res.writeHead(code);
+          res.end();
+        },
+        async (port) => {
+          const service = liveService();
+          const expected = {
+            204: "http_error",
+            205: "http_error",
+            304: "http_error",
+            999: "http_error",
+          };
+          for (const [status, lastResult] of Object.entries(expected)) {
+            const result = await service.fetchUrl(`https://example.com:${port}/${status}`);
+            assert.equal(result.ok, false, `status ${status}`);
+            assert.equal(result.last_result, lastResult, `status ${status}`);
+            assert.match(result.error, new RegExp(`HTTP ${status}`), `status ${status}`);
+          }
         }
-      }
-    );
+      );
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+    assert.equal(uncaught.length, 0, uncaught[0]?.stack || uncaught[0]?.message);
   });
 
   it("re-validates a redirect target before the next https.request", async () => {
@@ -1361,6 +1413,81 @@ describe("default nativeContextPackFetch against local HTTPS", () => {
     } finally {
       https.request = origRequest;
     }
+  });
+
+  it("rejects HTTP 204 as an empty-body HTTP error without an uncaught throw", { timeout: 3000 }, async () => {
+    const uncaught = [];
+    const onUncaught = (error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      await withLocalHttps(
+        (_req, res) => {
+          res.writeHead(204);
+          res.end();
+        },
+        async (port) => {
+          const result = await liveService({ timeoutMs: 1000 }).fetchUrl(
+            `https://example.com:${port}/plays.csv`
+          );
+          assert.equal(result.ok, false);
+          assert.equal(result.last_result, "http_error");
+          assert.match(result.error, /HTTP 204/i);
+        }
+      );
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+    assert.equal(uncaught.length, 0, uncaught[0]?.stack || uncaught[0]?.message);
+  });
+
+  it("rejects HTTP 304 as an empty-body HTTP error without an uncaught throw", { timeout: 3000 }, async () => {
+    const uncaught = [];
+    const onUncaught = (error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      await withLocalHttps(
+        (_req, res) => {
+          res.writeHead(304);
+          res.end();
+        },
+        async (port) => {
+          const result = await liveService({ timeoutMs: 1000 }).fetchUrl(
+            `https://example.com:${port}/plays.csv`
+          );
+          assert.equal(result.ok, false);
+          assert.equal(result.last_result, "http_error");
+          assert.match(result.error, /HTTP 304/i);
+        }
+      );
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+    assert.equal(uncaught.length, 0, uncaught[0]?.stack || uncaught[0]?.message);
+  });
+
+  it("does not cache gzip Content-Encoding CSV from the HTTPS adapter", async () => {
+    const gzipped = zlib.gzipSync(Buffer.from(PLAYS_CSV));
+    await withLocalHttps(
+      (_req, res) => {
+        res.writeHead(200, {
+          "Content-Type": "text/csv",
+          "Content-Encoding": "gzip",
+        });
+        res.end(gzipped);
+      },
+      async (port) => {
+        const result = await liveService().fetchUrl(`https://example.com:${port}/plays.csv`);
+        assert.equal(result.ok, false);
+        assert.notEqual(result.last_result, "ok");
+        assert.equal(result.last_result, "parse_error");
+        assert.match(result.error, /compressed body/i);
+        assert.equal(result.text, undefined);
+      }
+    );
   });
 });
 

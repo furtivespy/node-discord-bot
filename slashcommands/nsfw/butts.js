@@ -41,6 +41,9 @@ class Butts extends SlashCommand {
               },
             ],
           });
+        })
+        .catch((e) => {
+          this.client.logger.log(e, "error");
         });
     } catch (e) {
       this.client.logger.log(e, "error");

@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 
 const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+const COMPRESSED_ENCODINGS = new Set(["gzip", "x-gzip", "deflate", "br"]);
 
 function drainIncoming(incoming) {
   try {
@@ -12,6 +13,24 @@ function drainIncoming(incoming) {
   } catch {
     // ignore
   }
+}
+
+function isFetchNullBodyStatus(status) {
+  return NULL_BODY_STATUSES.has(Number(status));
+}
+
+function isValidFetchStatus(status) {
+  const code = Number(status);
+  return Number.isInteger(code) && code >= 200 && code <= 599;
+}
+
+function hasCompressedContentEncoding(header) {
+  if (!header) return false;
+  return String(header)
+    .split(",")
+    .map((part) => part.trim().split(";")[0].trim().toLowerCase())
+    .filter(Boolean)
+    .some((token) => COMPRESSED_ENCODINGS.has(token));
 }
 
 function nodeIncomingToFetchResponse(incoming, url) {
@@ -27,15 +46,15 @@ function nodeIncomingToFetchResponse(incoming, url) {
   const status = Number(incoming.statusCode);
   // Fetch Response forbids a body on 204/205/304 and statuses outside 200–599.
   // Throwing from the https.request callback is uncaughtException (process.exit).
-  if (!Number.isInteger(status) || status < 200 || status > 599) {
+  if (!isValidFetchStatus(status)) {
     drainIncoming(incoming);
-    throw new Error(`HTTP ${incoming.statusCode}`);
+    throw new Error(`HTTP ${incoming.statusCode ?? "invalid"}`);
   }
-  const body = NULL_BODY_STATUSES.has(status) ? null : Readable.toWeb(incoming);
+  const body = isFetchNullBodyStatus(status) ? null : Readable.toWeb(incoming);
   if (body == null) drainIncoming(incoming);
   const response = new Response(body, {
     status,
-    statusText: incoming.statusMessage,
+    statusText: incoming.statusMessage || "",
     headers,
   });
   Object.defineProperty(response, "url", { value: url, enumerable: true });
@@ -383,22 +402,55 @@ function createPinnedHttpsAgent(addresses, agentOptions = {}) {
   });
 }
 
-function abortReason(signal) {
-  if (signal?.reason instanceof Error) return signal.reason;
+function timeoutError() {
   const error = new Error("The operation was aborted due to timeout");
   error.name = "TimeoutError";
   return error;
+}
+
+function abortReason(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  return timeoutError();
 }
 
 function throwIfAborted(signal) {
   if (signal?.aborted) throw abortReason(signal);
 }
 
+function awaitWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    Promise.resolve(promise).catch(() => {});
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(abortReason(signal));
+          return;
+        }
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(abortReason(signal));
+          return;
+        }
+        reject(error);
+      }
+    );
+  });
+}
+
 function createHopTimeout(timeoutMs) {
   const controller = new AbortController();
-  const timeoutError = new Error("The operation was aborted due to timeout");
-  timeoutError.name = "TimeoutError";
-  const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
+  const error = timeoutError();
+  const timer = setTimeout(() => controller.abort(error), timeoutMs);
   return {
     signal: controller.signal,
     clear() {
@@ -761,7 +813,7 @@ function classifyFetchError(error) {
     return "timeout";
   }
   if (/\bHTTP\s+\d{3}\b/i.test(text)) return "http_error";
-  if (/empty body|HTML instead|body too large/i.test(text)) return "parse_error";
+  if (/empty body|HTML instead|body too large|compressed body/i.test(text)) return "parse_error";
   return "error";
 }
 
@@ -1014,7 +1066,8 @@ function createContextPackService(options = {}) {
     }
   }
 
-  async function assertSafeFetchTarget(rawUrl) {
+  async function assertSafeFetchTarget(rawUrl, signal) {
+    throwIfAborted(signal);
     const validated = validateContextUrl(rawUrl);
     if (validated.error) {
       throw new Error(validated.error);
@@ -1025,8 +1078,9 @@ function createContextPackService(options = {}) {
     if (net.isIP(host)) {
       addresses = [host];
     } else {
-      addresses = await lookupImpl(host);
+      addresses = await awaitWithSignal(Promise.resolve().then(() => lookupImpl(host)), signal);
     }
+    throwIfAborted(signal);
     if (!Array.isArray(addresses) || addresses.length === 0) {
       throw new Error("URL host could not be resolved.");
     }
@@ -1039,9 +1093,9 @@ function createContextPackService(options = {}) {
   async function fetchFollowingSafeRedirects(startUrl) {
     let currentUrl = startUrl;
     for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
-      const safe = await assertSafeFetchTarget(currentUrl);
       const hopTimeout = createHopTimeout(timeoutMs);
       try {
+        const safe = await assertSafeFetchTarget(currentUrl, hopTimeout.signal);
         const response = await fetchImpl(safe.url, {
           method: "GET",
           redirect: "manual",
@@ -1049,12 +1103,13 @@ function createContextPackService(options = {}) {
           agent: safe.agent,
           headers: {
             Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
+            "Accept-Encoding": "identity",
             "User-Agent": "BenderBot-context-packs",
           },
         });
         const finalUrl = response.url || safe.url;
         if (finalUrl && finalUrl !== safe.url) {
-          await assertSafeFetchTarget(finalUrl);
+          await assertSafeFetchTarget(finalUrl, hopTimeout.signal);
         }
         if (isRedirectStatus(response.status)) {
           const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
@@ -1066,9 +1121,13 @@ function createContextPackService(options = {}) {
           await discardResponseBody(response);
           continue;
         }
-        if (!response.ok) {
+        if (!response.ok || isFetchNullBodyStatus(response.status)) {
           await discardResponseBody(response);
           throw new Error(`HTTP ${response.status}`);
+        }
+        if (hasCompressedContentEncoding(response.headers?.get?.("content-encoding"))) {
+          await discardResponseBody(response);
+          throw new Error("compressed body");
         }
         return await readResponseBodyLimited(response, maxBytes, hopTimeout.signal);
       } finally {

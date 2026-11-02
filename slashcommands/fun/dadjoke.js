@@ -35,6 +35,9 @@ class DadJoke extends SlashCommand {
           color: 6192321,
         };
         interaction.editReply({ embeds: [embed] });
+      })
+      .catch((e) => {
+        this.client.logger.log(e, "error");
       });
   }
 }
