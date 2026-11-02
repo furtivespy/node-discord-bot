@@ -27,18 +27,15 @@ function nodeIncomingToFetchResponse(incoming, url) {
 /**
  * Native fetch has no node-fetch v2 `agent` option. Context-pack fetches pin
  * DNS through `https.Agent#lookup` (SSRF / rebinding), so the default impl
- * adapts `https.request` into a Fetch `Response` when an agent is provided.
+ * adapts `https.request` into a Fetch `Response`. Callers must pass the
+ * pinned agent from `assertSafeFetchTarget`; falling back to global `fetch`
+ * would re-resolve DNS and reopen a rebinding hole.
  * Other call sites use global `fetch` directly.
  */
 function nativeContextPackFetch(url, options = {}) {
   const { agent, signal, method = "GET", headers } = options;
   if (!agent) {
-    return fetch(url, {
-      method,
-      headers,
-      signal,
-      redirect: options.redirect || "manual",
-    });
+    throw new Error("pinned https.Agent is required");
   }
   return new Promise((resolve, reject) => {
     let parsed;
@@ -68,8 +65,6 @@ function nativeContextPackFetch(url, options = {}) {
     req.end();
   });
 }
-
-const DEFAULT_FETCH = (...args) => nativeContextPackFetch(...args);
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes (within the 5–15 min target)
 const MAX_BYTES = 256 * 1024;
@@ -358,10 +353,35 @@ function createPinnedLookup(addresses) {
   };
 }
 
-function createPinnedHttpsAgent(addresses) {
+function createPinnedHttpsAgent(addresses, agentOptions = {}) {
   return new https.Agent({
-    lookup: createPinnedLookup((addresses || []).filter((addr) => !isBlockedAddress(addr))),
+    ...agentOptions,
+    lookup: createPinnedLookup((addresses || []).filter((addr) => net.isIP(addr))),
   });
+}
+
+function abortReason(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  const error = new Error("The operation was aborted due to timeout");
+  error.name = "TimeoutError";
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+function createHopTimeout(timeoutMs) {
+  const controller = new AbortController();
+  const timeoutError = new Error("The operation was aborted due to timeout");
+  timeoutError.name = "TimeoutError";
+  const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear() {
+      clearTimeout(timer);
+    },
+  };
 }
 
 async function discardResponseBody(response) {
@@ -383,7 +403,8 @@ async function discardResponseBody(response) {
   }
 }
 
-async function readResponseBodyLimited(response, maxBytes) {
+async function readResponseBodyLimited(response, maxBytes, signal) {
+  throwIfAborted(signal);
   const contentLengthRaw = response.headers?.get?.("content-length");
   const contentLength = contentLengthRaw == null || contentLengthRaw === "" ? NaN : Number(contentLengthRaw);
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
@@ -396,26 +417,37 @@ async function readResponseBodyLimited(response, maxBytes) {
     const reader = body.getReader();
     const chunks = [];
     let received = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      received += value.byteLength;
-      if (received > maxBytes) {
-        try {
-          await reader.cancel();
-        } catch {
-          // ignore
+    const onAbort = () => {
+      reader.cancel().catch(() => {});
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      throwIfAborted(signal);
+      while (true) {
+        const { done, value } = await reader.read();
+        throwIfAborted(signal);
+        if (done) break;
+        if (!value) continue;
+        received += value.byteLength;
+        if (received > maxBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // ignore
+          }
+          throw new Error("body too large");
         }
-        throw new Error("body too large");
+        chunks.push(value);
       }
-      chunks.push(value);
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
     const buffer = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
     return { text: buffer.toString("utf8"), bytes: buffer.byteLength };
   }
 
   const text = await response.text();
+  throwIfAborted(signal);
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > maxBytes) {
     throw new Error("body too large");
@@ -885,7 +917,7 @@ function contextPackLoadFailureNote(failedPacks) {
 }
 
 function createContextPackService(options = {}) {
-  const fetchImpl = options.fetch || DEFAULT_FETCH;
+  const fetchImpl = options.fetch || nativeContextPackFetch;
   const lookupImpl = options.lookup || defaultLookup;
   const cache = options.cache || new Map();
   const statusByUrl = options.statusByUrl || new Map();
@@ -895,6 +927,10 @@ function createContextPackService(options = {}) {
   const now = options.now || (() => Date.now());
   const logger = options.logger || { log() {} };
   const persistPackStatus = options.persistPackStatus;
+  const extraAllowedAddresses = new Set(
+    (options.allowAddresses || []).map((addr) => normalizeHostname(addr))
+  );
+  const httpsAgentOptions = options.httpsAgentOptions || {};
 
   function cacheKey(url) {
     return url;
@@ -971,45 +1007,50 @@ function createContextPackService(options = {}) {
     if (!Array.isArray(addresses) || addresses.length === 0) {
       throw new Error("URL host could not be resolved.");
     }
-    if (addresses.some((addr) => isBlockedAddress(addr))) {
+    if (addresses.some((addr) => isBlockedAddress(addr) && !extraAllowedAddresses.has(normalizeHostname(addr)))) {
       throw new Error("URL host is not allowed.");
     }
-    return { url: validated.url, agent: createPinnedHttpsAgent(addresses) };
+    return { url: validated.url, agent: createPinnedHttpsAgent(addresses, httpsAgentOptions) };
   }
 
   async function fetchFollowingSafeRedirects(startUrl) {
     let currentUrl = startUrl;
     for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
       const safe = await assertSafeFetchTarget(currentUrl);
-      const response = await fetchImpl(safe.url, {
-        method: "GET",
-        redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs),
-        agent: safe.agent,
-        headers: {
-          Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
-          "User-Agent": "BenderBot-context-packs",
-        },
-      });
-      const finalUrl = response.url || safe.url;
-      if (finalUrl && finalUrl !== safe.url) {
-        await assertSafeFetchTarget(finalUrl);
-      }
-      if (isRedirectStatus(response.status)) {
-        const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
-        if (!location) {
-          await discardResponseBody(response);
-          throw new Error("redirect without location");
+      const hopTimeout = createHopTimeout(timeoutMs);
+      try {
+        const response = await fetchImpl(safe.url, {
+          method: "GET",
+          redirect: "manual",
+          signal: hopTimeout.signal,
+          agent: safe.agent,
+          headers: {
+            Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
+            "User-Agent": "BenderBot-context-packs",
+          },
+        });
+        const finalUrl = response.url || safe.url;
+        if (finalUrl && finalUrl !== safe.url) {
+          await assertSafeFetchTarget(finalUrl);
         }
-        currentUrl = new URL(location, safe.url).href;
-        await discardResponseBody(response);
-        continue;
+        if (isRedirectStatus(response.status)) {
+          const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
+          if (!location) {
+            await discardResponseBody(response);
+            throw new Error("redirect without location");
+          }
+          currentUrl = new URL(location, safe.url).href;
+          await discardResponseBody(response);
+          continue;
+        }
+        if (!response.ok) {
+          await discardResponseBody(response);
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return await readResponseBodyLimited(response, maxBytes, hopTimeout.signal);
+      } finally {
+        hopTimeout.clear();
       }
-      if (!response.ok) {
-        await discardResponseBody(response);
-        throw new Error(`HTTP ${response.status}`);
-      }
-      return readResponseBodyLimited(response, maxBytes);
     }
     throw new Error("too many redirects");
   }
@@ -1208,5 +1249,6 @@ export {
   contextPackLoadFailureNote,
   createPinnedLookup,
   createPinnedHttpsAgent,
+  nativeContextPackFetch,
   createContextPackService,
 };

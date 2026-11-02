@@ -1,7 +1,11 @@
-import { describe, it } from "node:test";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
@@ -27,6 +31,7 @@ import {
   contextPackSystemNote,
   createPinnedLookup,
   createPinnedHttpsAgent,
+  nativeContextPackFetch,
   createContextPackService,
   csvRowCount,
   classifyFetchError,
@@ -1133,6 +1138,13 @@ describe("pinned HTTPS agent lookup", () => {
     assert.notEqual(error.message, "Invalid IP address: undefined");
   });
 
+  it("throws if nativeContextPackFetch is called without a pinned agent", () => {
+    assert.throws(
+      () => nativeContextPackFetch("https://example.com/plays.csv", { method: "GET" }),
+      /pinned https\.Agent is required/
+    );
+  });
+
   it("pins TCP to the resolved address even when the URL hostname would rebind", async () => {
     const server = http.createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "text/plain" });
@@ -1163,6 +1175,167 @@ describe("pinned HTTPS agent lookup", () => {
       assert.match(body, /pinned-ok/);
     } finally {
       server.close();
+    }
+  });
+});
+
+describe("default nativeContextPackFetch against local HTTPS", () => {
+  let tlsCreds;
+
+  before(() => {
+    const dir = mkdtempSync(join(tmpdir(), "context-pack-tls-"));
+    const keyPath = join(dir, "key.pem");
+    const certPath = join(dir, "cert.pem");
+    const generated = spawnSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-keyout",
+        keyPath,
+        "-out",
+        certPath,
+        "-days",
+        "1",
+        "-nodes",
+        "-subj",
+        "/CN=example.com",
+        "-addext",
+        "subjectAltName=DNS:example.com",
+      ],
+      { encoding: "utf8" }
+    );
+    if (generated.status !== 0) {
+      throw new Error(`openssl failed: ${generated.stderr || generated.stdout}`);
+    }
+    tlsCreds = {
+      key: readFileSync(keyPath),
+      cert: readFileSync(certPath),
+    };
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function withLocalHttps(handler, run) {
+    const server = https.createServer(tlsCreds, handler);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    try {
+      return await run(port);
+    } finally {
+      server.closeAllConnections?.();
+      await new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  }
+
+  function liveService(overrides = {}) {
+    return createContextPackService({
+      lookup: async () => ["127.0.0.1"],
+      allowAddresses: ["127.0.0.1"],
+      httpsAgentOptions: { ca: tlsCreds.cert },
+      logger: { log() {} },
+      ...overrides,
+    });
+  }
+
+  it("uses the pinned agent so example.com traffic hits the loopback listener", async () => {
+    const seen = [];
+    await withLocalHttps(
+      (req, res) => {
+        seen.push({ host: req.headers.host, url: req.url });
+        res.writeHead(200, { "Content-Type": "text/csv" });
+        res.end(PLAYS_CSV);
+      },
+      async (port) => {
+        const result = await liveService().fetchUrl(`https://example.com:${port}/plays.csv`);
+        assert.equal(result.ok, true);
+        assert.match(result.text, /Azul/);
+        assert.equal(seen.length, 1);
+        assert.equal(seen[0].host, `example.com:${port}`);
+        assert.equal(seen[0].url, "/plays.csv");
+      }
+    );
+  });
+
+  it("aborts a hung socket via the per-hop timeout", { timeout: 3000 }, async () => {
+    await withLocalHttps(
+      () => {
+        // Accept the TLS connection and never write a response.
+      },
+      async (port) => {
+        const result = await liveService({ timeoutMs: 150 }).fetchUrl(`https://example.com:${port}/hang`);
+        assert.equal(result.ok, false);
+        assert.equal(result.last_result, "timeout");
+        assert.match(result.error, /timeout|aborted/i);
+      }
+    );
+  });
+
+  it("enforces the streamed body size cap on the DNS-pin path", async () => {
+    await withLocalHttps(
+      (_req, res) => {
+        res.writeHead(200, { "Content-Type": "text/csv" });
+        res.write("a".repeat(16));
+        setImmediate(() => {
+          res.write("b".repeat(16));
+          setImmediate(() => {
+            res.write("c".repeat(16));
+            res.end();
+          });
+        });
+      },
+      async (port) => {
+        const result = await liveService({ maxBytes: 32 }).fetchUrl(`https://example.com:${port}/big.csv`);
+        assert.equal(result.ok, false);
+        assert.match(result.error, /body too large/);
+        assert.equal(result.last_result, "parse_error");
+      }
+    );
+  });
+
+  it("re-validates a redirect target before the next https.request", async () => {
+    const events = [];
+    const origRequest = https.request;
+    https.request = function spyHttpsRequest(url, options, callback) {
+      if (url instanceof URL) events.push(`request:${url.pathname}`);
+      return origRequest.apply(this, arguments);
+    };
+    try {
+      await withLocalHttps(
+        (req, res) => {
+          if (req.url === "/start") {
+            res.writeHead(302, {
+              Location: `https://example.com:${req.socket.localPort}/plays.csv`,
+            });
+            res.end();
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/csv" });
+          res.end(PLAYS_CSV);
+        },
+        async (port) => {
+          const service = liveService({
+            lookup: async (host) => {
+              events.push(`lookup:${host}`);
+              return ["127.0.0.1"];
+            },
+          });
+          const result = await service.fetchUrl(`https://example.com:${port}/start`);
+          assert.equal(result.ok, true);
+          assert.match(result.text, /Azul/);
+          assert.deepEqual(events, [
+            "lookup:example.com",
+            "request:/start",
+            "lookup:example.com",
+            "request:/plays.csv",
+          ]);
+        }
+      );
+    } finally {
+      https.request = origRequest;
     }
   });
 });
