@@ -4,6 +4,15 @@ import { promises as dnsPromises } from "node:dns";
 import { Readable } from "node:stream";
 
 const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
+function drainIncoming(incoming) {
+  try {
+    incoming.resume();
+  } catch {
+    // ignore
+  }
+}
 
 function nodeIncomingToFetchResponse(incoming, url) {
   const headers = new Headers();
@@ -15,8 +24,17 @@ function nodeIncomingToFetchResponse(incoming, url) {
       headers.set(key, String(value));
     }
   }
-  const response = new Response(Readable.toWeb(incoming), {
-    status: incoming.statusCode,
+  const status = Number(incoming.statusCode);
+  // Fetch Response forbids a body on 204/205/304 and statuses outside 200–599.
+  // Throwing from the https.request callback is uncaughtException (process.exit).
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    drainIncoming(incoming);
+    throw new Error(`HTTP ${incoming.statusCode}`);
+  }
+  const body = NULL_BODY_STATUSES.has(status) ? null : Readable.toWeb(incoming);
+  if (body == null) drainIncoming(incoming);
+  const response = new Response(body, {
+    status,
     statusText: incoming.statusMessage,
     headers,
   });
@@ -58,7 +76,12 @@ function nativeContextPackFetch(url, options = {}) {
         signal,
       },
       (res) => {
-        resolve(nodeIncomingToFetchResponse(res, parsed.href));
+        try {
+          resolve(nodeIncomingToFetchResponse(res, parsed.href));
+        } catch (error) {
+          drainIncoming(res);
+          reject(error);
+        }
       }
     );
     req.on("error", reject);

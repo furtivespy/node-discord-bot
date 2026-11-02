@@ -1296,6 +1296,30 @@ describe("default nativeContextPackFetch against local HTTPS", () => {
     );
   });
 
+  it("does not crash the process on 204/205/304 or an out-of-range status", async () => {
+    await withLocalHttps(
+      (req, res) => {
+        const code = Number(String(req.url).slice(1)) || 204;
+        res.writeHead(code);
+        res.end();
+      },
+      async (port) => {
+        const service = liveService();
+        const expected = {
+          204: "parse_error",
+          205: "parse_error",
+          304: "http_error",
+          999: "http_error",
+        };
+        for (const [status, lastResult] of Object.entries(expected)) {
+          const result = await service.fetchUrl(`https://example.com:${port}/${status}`);
+          assert.equal(result.ok, false, `status ${status}`);
+          assert.equal(result.last_result, lastResult, `status ${status}`);
+        }
+      }
+    );
+  });
+
   it("re-validates a redirect target before the next https.request", async () => {
     const events = [];
     const origRequest = https.request;
