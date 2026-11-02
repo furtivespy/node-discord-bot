@@ -313,7 +313,7 @@ class GeminiAI {
     async chooseGrounding(contents) {
       try {
         const result = await this.AI2.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents,
           config: {
             temperature: 0,
@@ -392,7 +392,7 @@ class GeminiAI {
         };
         if (tools.length > 0) config.tools = tools;
         const result = await this.AI2.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents,
           config,
         })
@@ -583,7 +583,7 @@ class GeminiAI {
 
         try {
             const result = await this.AI2.models.generateContent({
-                model: "gemini-flash-latest",
+                model: "gemini-3.8-flash",
                 contents: prompt,
             });
             const {response} = await this.processResponse(result, "Bender");
@@ -605,7 +605,7 @@ class GeminiAI {
       try {
         //const result = await this.model.generateContent(this.buildBasicPrompt(prompt));
         const result = await this.AI2.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents: this.buildBasicPrompt(prompt),
         })
         const {response, imageResponse} = await this.processResponse(result, "Bender")
@@ -622,7 +622,7 @@ class GeminiAI {
     }
 
     /**
-     * Generate an image with Gemini Flash Image (Imagen 4 endpoints were shut down).
+     * Generate an image with Nano Banana 2.1 (Imagen 4 endpoints were shut down).
      */
     async generateImageNew(prompt, options = {}) {
       try {
@@ -630,7 +630,7 @@ class GeminiAI {
         console.log("Generating image with prompt: ", prompt);
 
         const result = await this.AI2.models.generateContent({
-          model: "gemini-3.1-flash-image",
+          model: "gemini-nano-banana-2.1",
           contents: prompt,
           config: {
             responseModalities: ["IMAGE"],

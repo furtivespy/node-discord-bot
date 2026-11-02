@@ -175,7 +175,7 @@ async function runLive(apiKey, keys) {
         // No maxOutputTokens cap: production generateContentWithTools
         // does not set one, and 512 silently cut how-to / code samples.
         const result = await genai.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents: [{ role: "user", parts: [{ text: prompt.text }] }],
           config: { systemInstruction, temperature: 0.7 },
         });
