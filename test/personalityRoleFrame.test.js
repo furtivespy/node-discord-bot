@@ -89,6 +89,7 @@ function makeMessage(personalityKey) {
     settings: personalityKey
       ? { ai_selected_personality: personalityKey }
       : {},
+    guildName: "Test Guild",
     guild: {
       id: "guild-1",
       name: "Test Guild",

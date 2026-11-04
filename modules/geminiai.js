@@ -32,6 +32,10 @@ const GROUNDING_CHOICES = new Set([
 ]);
 const NON_SEQUITUR_PREFIX = "Please try to include an idea from this group of random thoughts:";
 
+function isVisibleTextPart(part) {
+  return part && !part.thought && typeof part.text === "string" && part.text.trim() !== "";
+}
+
 function cloneGoogleSearchTools() {
   return [{ googleSearch: {} }];
 }
@@ -313,12 +317,11 @@ class GeminiAI {
     async chooseGrounding(contents) {
       try {
         const result = await this.AI2.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents,
           config: {
-            temperature: 0,
             maxOutputTokens: 128,
-            thinkingConfig: { thinkingBudget: 0 },
+            thinkingConfig: { thinkingLevel: "low" },
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -355,9 +358,13 @@ class GeminiAI {
     }
 
     routerResponseText(result) {
+      const parts = result?.candidates?.[0]?.content?.parts
+        || result?.response?.candidates?.[0]?.content?.parts;
+      if (Array.isArray(parts) && parts.length > 0) {
+        return parts.filter(isVisibleTextPart).map((part) => part.text.trim()).join("").trim();
+      }
       if (typeof result?.text === "string" && result.text.trim()) return result.text.trim();
-      const parts = result?.candidates?.[0]?.content?.parts || [];
-      return parts.map((part) => part.text).filter(Boolean).join("").trim();
+      return "";
     }
 
     routerResponsePreview(result) {
@@ -392,7 +399,7 @@ class GeminiAI {
         };
         if (tools.length > 0) config.tools = tools;
         const result = await this.AI2.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents,
           config,
         })
@@ -583,7 +590,7 @@ class GeminiAI {
 
         try {
             const result = await this.AI2.models.generateContent({
-                model: "gemini-flash-latest",
+                model: "gemini-3.8-flash",
                 contents: prompt,
             });
             const {response} = await this.processResponse(result, "Bender");
@@ -605,7 +612,7 @@ class GeminiAI {
       try {
         //const result = await this.model.generateContent(this.buildBasicPrompt(prompt));
         const result = await this.AI2.models.generateContent({
-          model: "gemini-flash-latest",
+          model: "gemini-3.8-flash",
           contents: this.buildBasicPrompt(prompt),
         })
         const {response, imageResponse} = await this.processResponse(result, "Bender")
@@ -622,7 +629,7 @@ class GeminiAI {
     }
 
     /**
-     * Generate an image with Gemini Flash Image (Imagen 4 endpoints were shut down).
+     * Generate an image with Nano Banana 2.1 (Imagen 4 endpoints were shut down).
      */
     async generateImageNew(prompt, options = {}) {
       try {
@@ -630,14 +637,12 @@ class GeminiAI {
         console.log("Generating image with prompt: ", prompt);
 
         const result = await this.AI2.models.generateContent({
-          model: "gemini-3.1-flash-image",
+          model: "gemini-nano-banana-2.1",
           contents: prompt,
           config: {
             responseModalities: ["IMAGE"],
-            responseFormat: {
-              image: {
-                aspectRatio,
-              },
+            imageConfig: {
+              aspectRatio,
             },
             safetySettings: [
               {
@@ -743,9 +748,7 @@ class GeminiAI {
   // --- Start: Modified text extraction to concatenate ALL text parts ---
   if (candidate) {
     if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-      const textParts = candidate.content.parts.filter(part =>
-        part && typeof part.text === 'string' && part.text.trim() !== ""
-      );
+      const textParts = candidate.content.parts.filter(isVisibleTextPart);
 
       if (textParts.length > 0) {
         // Concatenate the text from all found text parts, separated by a space
