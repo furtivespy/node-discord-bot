@@ -2,8 +2,6 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder, EmbedBuilder } from "@discordjs/builders";
 
-import fetch from "node-fetch";
-
 
 class Xkcd extends SlashCommand {
   constructor(client) {

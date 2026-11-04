@@ -1,9 +1,112 @@
 import net from "node:net";
 import https from "node:https";
 import { promises as dnsPromises } from "node:dns";
-import nodeFetch from "node-fetch";
+import { Readable } from "node:stream";
 
-const DEFAULT_FETCH = (...args) => nodeFetch(...args);
+const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+const COMPRESSED_ENCODINGS = new Set(["gzip", "x-gzip", "deflate", "br"]);
+
+function drainIncoming(incoming) {
+  try {
+    incoming.resume();
+  } catch {
+    // ignore
+  }
+}
+
+function isFetchNullBodyStatus(status) {
+  return NULL_BODY_STATUSES.has(Number(status));
+}
+
+function isValidFetchStatus(status) {
+  const code = Number(status);
+  return Number.isInteger(code) && code >= 200 && code <= 599;
+}
+
+function hasCompressedContentEncoding(header) {
+  if (!header) return false;
+  return String(header)
+    .split(",")
+    .map((part) => part.trim().split(";")[0].trim().toLowerCase())
+    .filter(Boolean)
+    .some((token) => COMPRESSED_ENCODINGS.has(token));
+}
+
+function nodeIncomingToFetchResponse(incoming, url) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(incoming.headers || {})) {
+    if (value == null || HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(key, item);
+    } else {
+      headers.set(key, String(value));
+    }
+  }
+  const status = Number(incoming.statusCode);
+  // Fetch Response forbids a body on 204/205/304 and statuses outside 200–599.
+  // Throwing from the https.request callback is uncaughtException (process.exit).
+  if (!isValidFetchStatus(status)) {
+    drainIncoming(incoming);
+    throw new Error(`HTTP ${incoming.statusCode ?? "invalid"}`);
+  }
+  const body = isFetchNullBodyStatus(status) ? null : Readable.toWeb(incoming);
+  if (body == null) drainIncoming(incoming);
+  const response = new Response(body, {
+    status,
+    statusText: incoming.statusMessage || "",
+    headers,
+  });
+  Object.defineProperty(response, "url", { value: url, enumerable: true });
+  return response;
+}
+
+/**
+ * Native fetch has no node-fetch v2 `agent` option. Context-pack fetches pin
+ * DNS through `https.Agent#lookup` (SSRF / rebinding), so the default impl
+ * adapts `https.request` into a Fetch `Response`. Callers must pass the
+ * pinned agent from `assertSafeFetchTarget`; falling back to global `fetch`
+ * would re-resolve DNS and reopen a rebinding hole.
+ * Other call sites use global `fetch` directly.
+ */
+function nativeContextPackFetch(url, options = {}) {
+  const { agent, signal, method = "GET", headers } = options;
+  if (!agent) {
+    throw new Error("pinned https.Agent is required");
+  }
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    if (parsed.protocol !== "https:") {
+      reject(new Error("URL must be https."));
+      return;
+    }
+    const req = https.request(
+      parsed,
+      {
+        method,
+        headers,
+        agent,
+        signal,
+      },
+      (res) => {
+        try {
+          resolve(nodeIncomingToFetchResponse(res, parsed.href));
+        } catch (error) {
+          drainIncoming(res);
+          reject(error);
+        }
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes (within the 5–15 min target)
 const MAX_BYTES = 256 * 1024;
@@ -292,10 +395,139 @@ function createPinnedLookup(addresses) {
   };
 }
 
-function createPinnedHttpsAgent(addresses) {
+function createPinnedHttpsAgent(addresses, agentOptions = {}) {
   return new https.Agent({
-    lookup: createPinnedLookup((addresses || []).filter((addr) => !isBlockedAddress(addr))),
+    ...agentOptions,
+    lookup: createPinnedLookup((addresses || []).filter((addr) => net.isIP(addr))),
   });
+}
+
+function timeoutError() {
+  const error = new Error("The operation was aborted due to timeout");
+  error.name = "TimeoutError";
+  return error;
+}
+
+function abortReason(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  return timeoutError();
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+function awaitWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    Promise.resolve(promise).catch(() => {});
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(abortReason(signal));
+          return;
+        }
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(abortReason(signal));
+          return;
+        }
+        reject(error);
+      }
+    );
+  });
+}
+
+function createHopTimeout(timeoutMs) {
+  const controller = new AbortController();
+  const error = timeoutError();
+  const timer = setTimeout(() => controller.abort(error), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+async function discardResponseBody(response) {
+  const body = response?.body;
+  if (body && typeof body.cancel === "function") {
+    try {
+      await body.cancel();
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  if (typeof response?.arrayBuffer === "function") {
+    try {
+      await response.arrayBuffer();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+async function readResponseBodyLimited(response, maxBytes, signal) {
+  throwIfAborted(signal);
+  const contentLengthRaw = response.headers?.get?.("content-length");
+  const contentLength = contentLengthRaw == null || contentLengthRaw === "" ? NaN : Number(contentLengthRaw);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await discardResponseBody(response);
+    throw new Error("body too large");
+  }
+
+  const body = response.body;
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    const chunks = [];
+    let received = 0;
+    const onAbort = () => {
+      reader.cancel().catch(() => {});
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      throwIfAborted(signal);
+      while (true) {
+        const { done, value } = await reader.read();
+        throwIfAborted(signal);
+        if (done) break;
+        if (!value) continue;
+        received += value.byteLength;
+        if (received > maxBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // ignore
+          }
+          throw new Error("body too large");
+        }
+        chunks.push(value);
+      }
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+    }
+    const buffer = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    return { text: buffer.toString("utf8"), bytes: buffer.byteLength };
+  }
+
+  const text = await response.text();
+  throwIfAborted(signal);
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error("body too large");
+  }
+  return { text, bytes };
 }
 
 function validateContextUrl(rawUrl) {
@@ -572,14 +804,16 @@ function classifyFetchError(error) {
   if (
     error?.type === "request-timeout" ||
     error?.name === "AbortError" ||
-    /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT|HeadersTimeout|UND_ERR_CONNECT_TIMEOUT|request-timeout|AbortError/i.test(
+    error?.name === "TimeoutError" ||
+    error?.code === "ABORT_ERR" ||
+    /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT|HeadersTimeout|UND_ERR_CONNECT_TIMEOUT|request-timeout|AbortError|TimeoutError/i.test(
       text
     )
   ) {
     return "timeout";
   }
   if (/\bHTTP\s+\d{3}\b/i.test(text)) return "http_error";
-  if (/empty body|HTML instead|body too large/i.test(text)) return "parse_error";
+  if (/empty body|HTML instead|body too large|compressed body/i.test(text)) return "parse_error";
   return "error";
 }
 
@@ -758,14 +992,20 @@ function contextPackLoadFailureNote(failedPacks) {
 }
 
 function createContextPackService(options = {}) {
-  const fetchImpl = options.fetch || DEFAULT_FETCH;
+  const fetchImpl = options.fetch || nativeContextPackFetch;
   const lookupImpl = options.lookup || defaultLookup;
   const cache = options.cache || new Map();
   const statusByUrl = options.statusByUrl || new Map();
   const ttlMs = options.ttlMs || CACHE_TTL_MS;
+  const timeoutMs = options.timeoutMs || FETCH_TIMEOUT_MS;
+  const maxBytes = options.maxBytes || MAX_BYTES;
   const now = options.now || (() => Date.now());
   const logger = options.logger || { log() {} };
   const persistPackStatus = options.persistPackStatus;
+  const extraAllowedAddresses = new Set(
+    (options.allowAddresses || []).map((addr) => normalizeHostname(addr))
+  );
+  const httpsAgentOptions = options.httpsAgentOptions || {};
 
   function cacheKey(url) {
     return url;
@@ -826,7 +1066,8 @@ function createContextPackService(options = {}) {
     }
   }
 
-  async function assertSafeFetchTarget(rawUrl) {
+  async function assertSafeFetchTarget(rawUrl, signal) {
+    throwIfAborted(signal);
     const validated = validateContextUrl(rawUrl);
     if (validated.error) {
       throw new Error(validated.error);
@@ -837,51 +1078,61 @@ function createContextPackService(options = {}) {
     if (net.isIP(host)) {
       addresses = [host];
     } else {
-      addresses = await lookupImpl(host);
+      addresses = await awaitWithSignal(Promise.resolve().then(() => lookupImpl(host)), signal);
     }
+    throwIfAborted(signal);
     if (!Array.isArray(addresses) || addresses.length === 0) {
       throw new Error("URL host could not be resolved.");
     }
-    if (addresses.some((addr) => isBlockedAddress(addr))) {
+    if (addresses.some((addr) => isBlockedAddress(addr) && !extraAllowedAddresses.has(normalizeHostname(addr)))) {
       throw new Error("URL host is not allowed.");
     }
-    return { url: validated.url, agent: createPinnedHttpsAgent(addresses) };
+    return { url: validated.url, agent: createPinnedHttpsAgent(addresses, httpsAgentOptions) };
   }
 
   async function fetchFollowingSafeRedirects(startUrl) {
     let currentUrl = startUrl;
     for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
-      const safe = await assertSafeFetchTarget(currentUrl);
-      const response = await fetchImpl(safe.url, {
-        method: "GET",
-        redirect: "manual",
-        follow: 0,
-        timeout: FETCH_TIMEOUT_MS,
-        size: MAX_BYTES,
-        agent: safe.agent,
-        headers: {
-          Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
-          "User-Agent": "BenderBot-context-packs",
-        },
-      });
-      const finalUrl = response.url || safe.url;
-      if (finalUrl && finalUrl !== safe.url) {
-        await assertSafeFetchTarget(finalUrl);
-      }
-      if (isRedirectStatus(response.status)) {
-        const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
-        if (!location) {
-          throw new Error("redirect without location");
+      const hopTimeout = createHopTimeout(timeoutMs);
+      try {
+        const safe = await assertSafeFetchTarget(currentUrl, hopTimeout.signal);
+        const response = await fetchImpl(safe.url, {
+          method: "GET",
+          redirect: "manual",
+          signal: hopTimeout.signal,
+          agent: safe.agent,
+          headers: {
+            Accept: "text/csv, text/plain, text/tab-separated-values, application/octet-stream;q=0.8, */*;q=0.1",
+            "Accept-Encoding": "identity",
+            "User-Agent": "BenderBot-context-packs",
+          },
+        });
+        const finalUrl = response.url || safe.url;
+        if (finalUrl && finalUrl !== safe.url) {
+          await assertSafeFetchTarget(finalUrl, hopTimeout.signal);
         }
-        currentUrl = new URL(location, safe.url).href;
-        continue;
+        if (isRedirectStatus(response.status)) {
+          const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
+          if (!location) {
+            await discardResponseBody(response);
+            throw new Error("redirect without location");
+          }
+          currentUrl = new URL(location, safe.url).href;
+          await discardResponseBody(response);
+          continue;
+        }
+        if (!response.ok || isFetchNullBodyStatus(response.status)) {
+          await discardResponseBody(response);
+          throw new Error(`HTTP ${response.status}`);
+        }
+        if (hasCompressedContentEncoding(response.headers?.get?.("content-encoding"))) {
+          await discardResponseBody(response);
+          throw new Error("compressed body");
+        }
+        return await readResponseBodyLimited(response, maxBytes, hopTimeout.signal);
+      } finally {
+        hopTimeout.clear();
       }
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const bytes = Number(response.headers?.get?.("content-length")) || 0;
-      const text = await response.text();
-      return { text, bytes };
     }
     throw new Error("too many redirects");
   }
@@ -925,7 +1176,7 @@ function createContextPackService(options = {}) {
       if (/^\s*<(!DOCTYPE html|html)/i.test(body)) {
         throw new Error("HTML instead of CSV/text");
       }
-      if (Buffer.byteLength(body, "utf8") > MAX_BYTES) {
+      if (Buffer.byteLength(body, "utf8") > maxBytes) {
         throw new Error("body too large");
       }
       const entry = {
@@ -1041,6 +1292,7 @@ function createContextPackService(options = {}) {
 export {
   CACHE_TTL_MS,
   MAX_BYTES,
+  FETCH_TIMEOUT_MS,
   MAX_PROMPT_CHARS,
   MAX_PACKS_PER_GUILD,
   PACK_KINDS,
@@ -1079,5 +1331,6 @@ export {
   contextPackLoadFailureNote,
   createPinnedLookup,
   createPinnedHttpsAgent,
+  nativeContextPackFetch,
   createContextPackService,
 };

@@ -1,11 +1,18 @@
-import { describe, it } from "node:test";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import zlib from "node:zlib";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
   MAX_REDIRECTS,
+  FETCH_TIMEOUT_MS,
+  MAX_BYTES,
   redactUrl,
   scrubErrorMessage,
   isBlockedAddress,
@@ -25,6 +32,7 @@ import {
   contextPackSystemNote,
   createPinnedLookup,
   createPinnedHttpsAgent,
+  nativeContextPackFetch,
   createContextPackService,
   csvRowCount,
   classifyFetchError,
@@ -75,6 +83,31 @@ function mockResponse({ ok = true, status = 200, text = PLAYS_CSV, headers = {},
     },
     async text() {
       return text;
+    },
+  };
+}
+
+function streamResponse({ ok = true, status = 200, chunks = [], headers = {}, url } = {}) {
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+      }
+      controller.close();
+    },
+  });
+  return {
+    ok,
+    status,
+    url,
+    headers: {
+      get(name) {
+        return headers[String(name).toLowerCase()] ?? headers[name] ?? null;
+      },
+    },
+    body: stream,
+    async text() {
+      throw new Error("text() should not be used when a streamed body is present");
     },
   };
 }
@@ -536,7 +569,13 @@ describe("fetch + cache", () => {
     assert.equal(classifyFetchError(new Error("HTTP 503")), "http_error");
     assert.equal(classifyFetchError(new Error("empty body")), "parse_error");
     assert.equal(classifyFetchError(new Error("HTML instead of CSV/text")), "parse_error");
+    assert.equal(classifyFetchError({ message: "compressed body" }), "parse_error");
     assert.equal(classifyFetchError({ type: "request-timeout", message: "network timeout" }), "timeout");
+    assert.equal(
+      classifyFetchError({ name: "TimeoutError", message: "The operation was aborted due to timeout" }),
+      "timeout"
+    );
+    assert.equal(classifyFetchError({ name: "AbortError", message: "This operation was aborted" }), "timeout");
     assert.equal(classifyFetchError(new Error("URL host is not allowed.")), "error");
   });
 
@@ -864,6 +903,200 @@ describe("SSRF protections on fetch", () => {
     assert.match(result.error, /too many redirects/);
   });
 
+  it("uses a per-hop AbortSignal and manual redirects instead of node-fetch v2 options", async () => {
+    let captured;
+    const service = testService({
+      fetch: async (_url, opts) => {
+        captured = opts;
+        return mockResponse();
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, true);
+    assert.equal(captured.redirect, "manual");
+    assert.ok(captured.signal instanceof AbortSignal);
+    assert.equal(captured.timeout, undefined);
+    assert.equal(captured.size, undefined);
+    assert.equal(captured.follow, undefined);
+    assert.equal(Object.hasOwn(captured, "timeout"), false);
+    assert.equal(Object.hasOwn(captured, "size"), false);
+    assert.equal(Object.hasOwn(captured, "follow"), false);
+    assert.equal(captured.headers["Accept-Encoding"], "identity");
+    assert.equal(FETCH_TIMEOUT_MS, 8000);
+    assert.equal(MAX_BYTES, 256 * 1024);
+  });
+
+  it("aborts a hung fetch via the per-hop timeout", async () => {
+    const service = testService({
+      timeoutMs: 50,
+      fetch: (_url, opts) =>
+        new Promise((_, reject) => {
+          assert.ok(opts.signal);
+          opts.signal.addEventListener("abort", () => {
+            const error = new Error("The operation was aborted due to timeout");
+            error.name = "TimeoutError";
+            reject(error);
+          });
+        }),
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, false);
+    assert.equal(result.last_result, "timeout");
+    assert.match(result.error, /timeout|aborted/i);
+  });
+
+  it("aborts a hung DNS lookup via the per-hop timeout", { timeout: 3000 }, async () => {
+    let fetchCalls = 0;
+    const service = testService({
+      timeoutMs: 50,
+      lookup: () => new Promise(() => {}),
+      fetch: async () => {
+        fetchCalls += 1;
+        throw new Error("fetch should not run while DNS is hung");
+      },
+    });
+    const started = Date.now();
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    const elapsed = Date.now() - started;
+    assert.equal(result.ok, false);
+    assert.equal(result.last_result, "timeout");
+    assert.match(result.error, /timeout|aborted/i);
+    assert.equal(fetchCalls, 0);
+    assert.ok(elapsed < 1000, `DNS timeout took ${elapsed}ms`);
+  });
+
+  it("does not cache gzip, deflate, or br encoded CSV as a successful pack", async () => {
+    for (const encoding of ["gzip", "deflate", "br"]) {
+      const service = testService({
+        fetch: async () =>
+          streamResponse({
+            chunks: [PLAYS_CSV],
+            headers: { "content-encoding": encoding, "content-type": "text/csv" },
+          }),
+      });
+      const result = await service.fetchUrl("https://example.com/plays.csv");
+      assert.equal(result.ok, false, encoding);
+      assert.notEqual(result.last_result, "ok", encoding);
+      assert.equal(result.last_result, "parse_error", encoding);
+      assert.match(result.error, /compressed body/i, encoding);
+      assert.equal(result.text, undefined, encoding);
+    }
+  });
+
+  it("enforces a streamed body size cap without buffering the whole response", async () => {
+    let cancelled = false;
+    const maxBytes = 64;
+    const service = testService({
+      maxBytes,
+      fetch: async () => {
+        let pullCount = 0;
+        const stream = new ReadableStream({
+          pull(controller) {
+            pullCount += 1;
+            if (pullCount === 1) {
+              controller.enqueue(new Uint8Array(maxBytes));
+              return;
+            }
+            controller.enqueue(new Uint8Array(1).fill(65));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        });
+        return {
+          ok: true,
+          status: 200,
+          headers: {
+            get() {
+              return null;
+            },
+          },
+          body: stream,
+          async text() {
+            throw new Error("text() should not be used when a streamed body is present");
+          },
+        };
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /body too large/);
+    assert.equal(result.last_result, "parse_error");
+    assert.equal(cancelled, true);
+  });
+
+  it("rejects oversized Content-Length before reading the body", async () => {
+    let textCalled = false;
+    let cancelled = false;
+    const service = testService({
+      maxBytes: 32,
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        headers: {
+          get(name) {
+            return String(name).toLowerCase() === "content-length" ? "99999" : null;
+          },
+        },
+        body: {
+          getReader() {
+            throw new Error("body should not be read when Content-Length exceeds the cap");
+          },
+          async cancel() {
+            cancelled = true;
+          },
+        },
+        async text() {
+          textCalled = true;
+          return "x".repeat(99999);
+        },
+      }),
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /body too large/);
+    assert.equal(textCalled, false);
+    assert.equal(cancelled, true);
+  });
+
+  it("reads a streamed CSV body under the size cap", async () => {
+    const service = testService({
+      fetch: async () => streamResponse({ chunks: [PLAYS_CSV] }),
+    });
+    const result = await service.fetchUrl("https://example.com/plays.csv");
+    assert.equal(result.ok, true);
+    assert.match(result.text, /Azul/);
+    assert.equal(result.last_row_count, 3);
+  });
+
+  it("still checks each redirect hop when the Location is a relative path", async () => {
+    const requested = [];
+    const service = testService({
+      fetch: async (url) => {
+        requested.push(String(url));
+        if (String(url) === "https://example.com/start") {
+          return mockResponse({
+            ok: false,
+            status: 307,
+            headers: { location: "/next" },
+          });
+        }
+        if (String(url) === "https://example.com/next") {
+          return mockResponse({
+            ok: false,
+            status: 308,
+            headers: { location: "https://169.254.169.254/csv" },
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    });
+    const result = await service.fetchUrl("https://example.com/start");
+    assert.equal(result.ok, false);
+    assert.deepEqual(requested, ["https://example.com/start", "https://example.com/next"]);
+    assert.doesNotMatch(result.error || "", /169\.254/);
+  });
+
   it("tells the model when a stored private URL cannot be fetched instead of silently continuing", async () => {
     let calls = 0;
     const service = testService({
@@ -946,6 +1179,13 @@ describe("pinned HTTPS agent lookup", () => {
     assert.notEqual(error.message, "Invalid IP address: undefined");
   });
 
+  it("throws if nativeContextPackFetch is called without a pinned agent", () => {
+    assert.throws(
+      () => nativeContextPackFetch("https://example.com/plays.csv", { method: "GET" }),
+      /pinned https\.Agent is required/
+    );
+  });
+
   it("pins TCP to the resolved address even when the URL hostname would rebind", async () => {
     const server = http.createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "text/plain" });
@@ -977,6 +1217,277 @@ describe("pinned HTTPS agent lookup", () => {
     } finally {
       server.close();
     }
+  });
+});
+
+describe("default nativeContextPackFetch against local HTTPS", () => {
+  let tlsCreds;
+
+  before(() => {
+    const dir = mkdtempSync(join(tmpdir(), "context-pack-tls-"));
+    const keyPath = join(dir, "key.pem");
+    const certPath = join(dir, "cert.pem");
+    const generated = spawnSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-keyout",
+        keyPath,
+        "-out",
+        certPath,
+        "-days",
+        "1",
+        "-nodes",
+        "-subj",
+        "/CN=example.com",
+        "-addext",
+        "subjectAltName=DNS:example.com",
+      ],
+      { encoding: "utf8" }
+    );
+    if (generated.status !== 0) {
+      throw new Error(`openssl failed: ${generated.stderr || generated.stdout}`);
+    }
+    tlsCreds = {
+      key: readFileSync(keyPath),
+      cert: readFileSync(certPath),
+    };
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function withLocalHttps(handler, run) {
+    const server = https.createServer(tlsCreds, handler);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    try {
+      return await run(port);
+    } finally {
+      server.closeAllConnections?.();
+      await new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  }
+
+  function liveService(overrides = {}) {
+    return createContextPackService({
+      lookup: async () => ["127.0.0.1"],
+      allowAddresses: ["127.0.0.1"],
+      httpsAgentOptions: { ca: tlsCreds.cert },
+      logger: { log() {} },
+      ...overrides,
+    });
+  }
+
+  it("uses the pinned agent so example.com traffic hits the loopback listener", async () => {
+    const seen = [];
+    await withLocalHttps(
+      (req, res) => {
+        seen.push({ host: req.headers.host, url: req.url });
+        res.writeHead(200, { "Content-Type": "text/csv" });
+        res.end(PLAYS_CSV);
+      },
+      async (port) => {
+        const result = await liveService().fetchUrl(`https://example.com:${port}/plays.csv`);
+        assert.equal(result.ok, true);
+        assert.match(result.text, /Azul/);
+        assert.equal(seen.length, 1);
+        assert.equal(seen[0].host, `example.com:${port}`);
+        assert.equal(seen[0].url, "/plays.csv");
+      }
+    );
+  });
+
+  it("aborts a hung socket via the per-hop timeout", { timeout: 3000 }, async () => {
+    await withLocalHttps(
+      () => {
+        // Accept the TLS connection and never write a response.
+      },
+      async (port) => {
+        const result = await liveService({ timeoutMs: 150 }).fetchUrl(`https://example.com:${port}/hang`);
+        assert.equal(result.ok, false);
+        assert.equal(result.last_result, "timeout");
+        assert.match(result.error, /timeout|aborted/i);
+      }
+    );
+  });
+
+  it("enforces the streamed body size cap on the DNS-pin path", async () => {
+    await withLocalHttps(
+      (_req, res) => {
+        res.writeHead(200, { "Content-Type": "text/csv" });
+        res.write("a".repeat(16));
+        setImmediate(() => {
+          res.write("b".repeat(16));
+          setImmediate(() => {
+            res.write("c".repeat(16));
+            res.end();
+          });
+        });
+      },
+      async (port) => {
+        const result = await liveService({ maxBytes: 32 }).fetchUrl(`https://example.com:${port}/big.csv`);
+        assert.equal(result.ok, false);
+        assert.match(result.error, /body too large/);
+        assert.equal(result.last_result, "parse_error");
+      }
+    );
+  });
+
+  it("does not crash the process on 204/205/304 or an out-of-range status", async () => {
+    const uncaught = [];
+    const onUncaught = (error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      await withLocalHttps(
+        (req, res) => {
+          const code = Number(String(req.url).slice(1)) || 204;
+          res.writeHead(code);
+          res.end();
+        },
+        async (port) => {
+          const service = liveService();
+          const expected = {
+            204: "http_error",
+            205: "http_error",
+            304: "http_error",
+            999: "http_error",
+          };
+          for (const [status, lastResult] of Object.entries(expected)) {
+            const result = await service.fetchUrl(`https://example.com:${port}/${status}`);
+            assert.equal(result.ok, false, `status ${status}`);
+            assert.equal(result.last_result, lastResult, `status ${status}`);
+            assert.match(result.error, new RegExp(`HTTP ${status}`), `status ${status}`);
+          }
+        }
+      );
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+    assert.equal(uncaught.length, 0, uncaught[0]?.stack || uncaught[0]?.message);
+  });
+
+  it("re-validates a redirect target before the next https.request", async () => {
+    const events = [];
+    const origRequest = https.request;
+    https.request = function spyHttpsRequest(url, options, callback) {
+      if (url instanceof URL) events.push(`request:${url.pathname}`);
+      return origRequest.apply(this, arguments);
+    };
+    try {
+      await withLocalHttps(
+        (req, res) => {
+          if (req.url === "/start") {
+            res.writeHead(302, {
+              Location: `https://example.com:${req.socket.localPort}/plays.csv`,
+            });
+            res.end();
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/csv" });
+          res.end(PLAYS_CSV);
+        },
+        async (port) => {
+          const service = liveService({
+            lookup: async (host) => {
+              events.push(`lookup:${host}`);
+              return ["127.0.0.1"];
+            },
+          });
+          const result = await service.fetchUrl(`https://example.com:${port}/start`);
+          assert.equal(result.ok, true);
+          assert.match(result.text, /Azul/);
+          assert.deepEqual(events, [
+            "lookup:example.com",
+            "request:/start",
+            "lookup:example.com",
+            "request:/plays.csv",
+          ]);
+        }
+      );
+    } finally {
+      https.request = origRequest;
+    }
+  });
+
+  it("rejects HTTP 204 as an empty-body HTTP error without an uncaught throw", { timeout: 3000 }, async () => {
+    const uncaught = [];
+    const onUncaught = (error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      await withLocalHttps(
+        (_req, res) => {
+          res.writeHead(204);
+          res.end();
+        },
+        async (port) => {
+          const result = await liveService({ timeoutMs: 1000 }).fetchUrl(
+            `https://example.com:${port}/plays.csv`
+          );
+          assert.equal(result.ok, false);
+          assert.equal(result.last_result, "http_error");
+          assert.match(result.error, /HTTP 204/i);
+        }
+      );
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+    assert.equal(uncaught.length, 0, uncaught[0]?.stack || uncaught[0]?.message);
+  });
+
+  it("rejects HTTP 304 as an empty-body HTTP error without an uncaught throw", { timeout: 3000 }, async () => {
+    const uncaught = [];
+    const onUncaught = (error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", onUncaught);
+    try {
+      await withLocalHttps(
+        (_req, res) => {
+          res.writeHead(304);
+          res.end();
+        },
+        async (port) => {
+          const result = await liveService({ timeoutMs: 1000 }).fetchUrl(
+            `https://example.com:${port}/plays.csv`
+          );
+          assert.equal(result.ok, false);
+          assert.equal(result.last_result, "http_error");
+          assert.match(result.error, /HTTP 304/i);
+        }
+      );
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+    assert.equal(uncaught.length, 0, uncaught[0]?.stack || uncaught[0]?.message);
+  });
+
+  it("does not cache gzip Content-Encoding CSV from the HTTPS adapter", async () => {
+    const gzipped = zlib.gzipSync(Buffer.from(PLAYS_CSV));
+    await withLocalHttps(
+      (_req, res) => {
+        res.writeHead(200, {
+          "Content-Type": "text/csv",
+          "Content-Encoding": "gzip",
+        });
+        res.end(gzipped);
+      },
+      async (port) => {
+        const result = await liveService().fetchUrl(`https://example.com:${port}/plays.csv`);
+        assert.equal(result.ok, false);
+        assert.notEqual(result.last_result, "ok");
+        assert.equal(result.last_result, "parse_error");
+        assert.match(result.error, /compressed body/i);
+        assert.equal(result.text, undefined);
+      }
+    );
   });
 });
 

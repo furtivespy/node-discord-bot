@@ -1,5 +1,3 @@
-import fetch from "node-fetch";
-
 import { EmbedBuilder } from "discord.js";
 
 

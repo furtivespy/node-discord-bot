@@ -2,8 +2,6 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import fetch from "node-fetch";
-
 
 class Boobs extends SlashCommand {
   constructor(client) {
@@ -43,6 +41,9 @@ class Boobs extends SlashCommand {
               },
             ],
           });
+        })
+        .catch((e) => {
+          this.client.logger.log(e, "error");
         });
     } catch (e) {
       this.client.logger.log(e, "error");

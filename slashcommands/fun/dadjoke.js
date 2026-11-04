@@ -2,8 +2,6 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import fetch from "node-fetch";
-
 
 class DadJoke extends SlashCommand {
   constructor(client) {
@@ -37,6 +35,9 @@ class DadJoke extends SlashCommand {
           color: 6192321,
         };
         interaction.editReply({ embeds: [embed] });
+      })
+      .catch((e) => {
+        this.client.logger.log(e, "error");
       });
   }
 }
