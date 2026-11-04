@@ -9,7 +9,7 @@ import { parseBggSearchXml, parseBggDetailsXml } from "./bggXmlParser.js";
 
 import { createCanvas, Image, loadImage } from "canvas";
 
-import he from "he";
+import { decode } from "he";
 
 import TurndownService from "turndown";
 
@@ -30,12 +30,12 @@ class BoardGameGeek {
     return bgg;
   }
 
-  static async Search(query, bggToken) {
+  static async Search(query, bggToken, fetchImpl = fetch) {
     const headers = {};
     if (bggToken) {
       headers.Authorization = `Bearer ${bggToken}`;
     }
-    const resp = await fetch(
+    const resp = await fetchImpl(
       `https://api.geekdo.com/xmlapi2/search.cgi?type=boardgame&query=${encodeURIComponent(query)}`,
       { headers }
     );
@@ -59,7 +59,7 @@ class BoardGameGeek {
       const names = Array.isArray(item.name) ? item.name : [item.name];
       const primary = names.find((n) => n.type === "primary") || names[0];
       return {
-        name: `${he.decode(String(primary?.value || "Unknown"))} (${item.yearpublished?.value || "?"})`.slice(0, 100),
+        name: `${decode(String(primary?.value || "Unknown"))} (${item.yearpublished?.value || "?"})`.slice(0, 100),
         value: String(item.id),
       };
     });
@@ -81,12 +81,12 @@ class BoardGameGeek {
     return false
   }
 
-  async LoadBggData() {
+  async LoadBggData(fetchImpl = fetch) {
     const headers = {};
     if (this.discordClient.config.BGGToken) {
       headers.Authorization = `Bearer ${this.discordClient.config.BGGToken}`;
     }
-    let gameInfoResp = await fetch(
+    let gameInfoResp = await fetchImpl(
       `https://api.geekdo.com/xmlapi/boardgame/${this.gameId}?stats=1`,
       { headers }
     );
@@ -97,7 +97,7 @@ class BoardGameGeek {
       ? find(this.gameInfo.name, { primary: "true" }).text
       : this.gameInfo.name.text;
 
-    this.gameName = he.decode(gameName);
+    this.gameName = decode(gameName);
   }
 
   async LoadEmbeds(detailsType) {
@@ -157,9 +157,9 @@ class BoardGameGeek {
     //Embed 2 - Stats and Details
     let ranks = ""
     if (Array.isArray(this.gameInfo.statistics.ratings.ranks.rank)) {
-      this.gameInfo.statistics.ratings.ranks.rank.forEach(r => {ranks += `\n**${he.decode(r.friendlyname)}:** ${r.value}`})
+      this.gameInfo.statistics.ratings.ranks.rank.forEach(r => {ranks += `\n**${decode(r.friendlyname)}:** ${r.value}`})
     } else {
-      ranks += `\n**${he.decode(this.gameInfo.statistics.ratings.ranks.rank.friendlyname)}:** ${this.gameInfo.statistics.ratings.ranks.rank.value}`
+      ranks += `\n**${decode(this.gameInfo.statistics.ratings.ranks.rank.friendlyname)}:** ${this.gameInfo.statistics.ratings.ranks.rank.value}`
     }
     let suggestedPlayers = ""
     const suggestedPlayerPoll = find(this.gameInfo.poll, {name: "suggested_numplayers"})
@@ -222,7 +222,7 @@ class BoardGameGeek {
     const descriptionEmbed = new EmbedBuilder()
       .setTitle("Description")
       .setDescription(
-        turndownService.turndown(he.decode(this.gameInfo.description))
+        turndownService.turndown(decode(this.gameInfo.description))
       );
     this.embeds.push(descriptionEmbed);
   }
@@ -232,7 +232,7 @@ class BoardGameGeek {
     if (this.gameInfo.boardgamehonor && Array.isArray(this.gameInfo.boardgamehonor)) {
       let honors = "";
       this.gameInfo.boardgamehonor.forEach((honor) => {
-        honors += `${he.decode(honor.text)}\n`;
+        honors += `${decode(honor.text)}\n`;
       });
       const awardEmbed = new EmbedBuilder()
         .setTitle(`Awards and Honors`)
