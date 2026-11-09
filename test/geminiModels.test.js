@@ -1,6 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createGeminiAI } from "../modules/geminiai.js";
+import {
+  GoogleGenAI,
+  HarmBlockThreshold,
+  HarmCategory,
+  Type,
+  UploadToFileSearchStoreOperation,
+} from "@google/genai";
+import { createGeminiAI, googleGenAIOptions } from "../modules/geminiai.js";
 
 const CHAT_MODEL = "gemini-3.8-flash";
 const IMAGE_MODEL = "gemini-nano-banana-2.1";
@@ -124,5 +131,27 @@ describe("router thought filtering (FUR-163)", () => {
       }],
     });
     assert.equal(text, "");
+  });
+});
+
+describe("@google/genai 3.0.0 API version (FUR-187)", () => {
+  it("leaves apiVersion unset so the Gemini Developer API uses v1", () => {
+    const options = googleGenAIOptions("test-key");
+    assert.deepEqual(options, { apiKey: "test-key" });
+    assert.equal("apiVersion" in options, false);
+
+    const client = new GoogleGenAI(options);
+    assert.equal(client.apiClient.clientOptions.httpOptions.apiVersion, "v1");
+  });
+
+  it("keeps generateContent, File Search, and safety enums used by chat paths", () => {
+    const ai = makeAi();
+    assert.equal(typeof ai.AI2.models.generateContent, "function");
+    assert.equal(typeof ai.AI2.fileSearchStores.create, "function");
+    assert.equal(typeof new UploadToFileSearchStoreOperation()._fromAPIResponse, "function");
+    assert.equal(HarmCategory.HARM_CATEGORY_HARASSMENT, "HARM_CATEGORY_HARASSMENT");
+    assert.equal(HarmBlockThreshold.BLOCK_ONLY_HIGH, "BLOCK_ONLY_HIGH");
+    assert.equal(Type.OBJECT, "OBJECT");
+    assert.equal(Type.STRING, "STRING");
   });
 });

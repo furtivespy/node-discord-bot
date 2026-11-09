@@ -21,7 +21,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createGeminiAI } from "../modules/geminiai.js";
+import { createGeminiAI, googleGenAIOptions } from "../modules/geminiai.js";
 import { PERSONALITY_NAMES } from "../modules/guildConfigOverview.js";
 import {
   PERSONALITY_CHECK_PROMPTS,
@@ -149,7 +149,8 @@ function extractLiveText(result) {
 
 async function runLive(apiKey, keys) {
   const { GoogleGenAI } = await import("@google/genai");
-  const genai = new GoogleGenAI({ apiKey });
+  // Same v1-default options as modules/geminiai.js (FUR-187); do not pin v1beta.
+  const genai = new GoogleGenAI(googleGenAIOptions(apiKey));
   const failures = [];
   const command = dumpAll
     ? "GEMINI_API_KEY=… node scripts/personality-check.js --live --all"
