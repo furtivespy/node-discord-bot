@@ -9,10 +9,6 @@ export function isCollectorEnd(error) {
     return error?.code === 'InteractionCollectorError';
 }
 
-export function isCollectorTimeout(error) {
-    return isCollectorEnd(error) && /\breason:\s*time\b/.test(String(error.message ?? ''));
-}
-
 export function isUnknownMessage(error) {
     return error?.code === UNKNOWN_MESSAGE;
 }
@@ -76,7 +72,7 @@ class Drink extends SlashCommand {
                     const filter = (int) => int.customId === 'select'
                     let newInteraction
                     try {
-                        newInteraction = await interaction.awaitMessageComponent({ filter, time: COLLECTOR_MS })
+                        newInteraction = await rply.awaitMessageComponent({ filter, time: COLLECTOR_MS })
                     } catch (err) {
                         if (isCollectorEnd(err)) {
                             await dismissTimedOutReply(interaction)
@@ -85,17 +81,12 @@ class Drink extends SlashCommand {
                         throw err
                     }
 
-                    if (newInteraction) {
-                        const val = parseInt(newInteraction.values[0])
-                        theDrink = json.drinks[val]
-                        await newInteraction.update({
-                            content: json.drinks[val].strDrink,
-                            components: []
-                          })
-                    } else {
-                        await dismissTimedOutReply(interaction)
-                        return
-                    }
+                    const val = parseInt(newInteraction.values[0])
+                    theDrink = json.drinks[val]
+                    await newInteraction.update({
+                        content: json.drinks[val].strDrink,
+                        components: []
+                      })
                 } 
                  
                 const drinkDetail = new EmbedBuilder().setColor(13928716).setTitle(theDrink.strDrink).setImage(theDrink.strDrinkThumb)

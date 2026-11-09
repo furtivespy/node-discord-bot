@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import Drink, {
   dismissTimedOutReply,
   isCollectorEnd,
-  isCollectorTimeout,
   isUnknownMessage,
 } from "../slashcommands/fun/drink.js";
 
@@ -52,12 +51,12 @@ function mockInteraction({
   const replies = [];
   const followUps = [];
   const edits = [];
-  const updates = [];
+  const replyResponses = [];
   return {
     replies,
     followUps,
     edits,
-    updates,
+    replyResponses,
     options: {
       getString(name) {
         return name === "search" ? search : null;
@@ -65,7 +64,14 @@ function mockInteraction({
     },
     async reply(payload) {
       replies.push(payload);
-      return payload;
+      const response = {
+        async awaitMessageComponent() {
+          if (typeof awaitComponent === "function") return awaitComponent();
+          throw new Error("awaitMessageComponent not stubbed");
+        },
+      };
+      replyResponses.push(response);
+      return response;
     },
     async editReply(payload) {
       if (editReplyImpl) return editReplyImpl(payload);
@@ -76,25 +82,19 @@ function mockInteraction({
       followUps.push(payload);
       return payload;
     },
-    async awaitMessageComponent() {
-      if (typeof awaitComponent === "function") return awaitComponent();
-      throw new Error("awaitMessageComponent not stubbed");
-    },
   };
 }
 
 describe("drink collector error helpers", () => {
-  it("treats InteractionCollectorError with reason time as a timeout", () => {
+  it("treats InteractionCollectorError as a collector end", () => {
     const error = collectorError("time");
     assert.equal(isCollectorEnd(error), true);
-    assert.equal(isCollectorTimeout(error), true);
     assert.equal(isUnknownMessage(error), false);
   });
 
-  it("treats InteractionCollectorError with reason messageDelete as a collector end, not a timeout", () => {
+  it("treats InteractionCollectorError with reason messageDelete as a collector end", () => {
     const error = collectorError("messageDelete");
     assert.equal(isCollectorEnd(error), true);
-    assert.equal(isCollectorTimeout(error), false);
   });
 
   it("recognizes DiscordAPIError 10008 Unknown Message", () => {
@@ -147,6 +147,50 @@ describe("Drink execute collector paths", () => {
     });
   }
 
+  it("collects on the reply object, not the command interaction", async () => {
+    stubDrinks([drink("Margarita"), drink("Blue Margarita")]);
+    const client = mockClient();
+    const collectedOn = [];
+    const interaction = {
+      options: {
+        getString() {
+          return "margarita";
+        },
+      },
+      replies: [],
+      followUps: [],
+      edits: [],
+      async reply(payload) {
+        interaction.replies.push(payload);
+        const response = {
+          async awaitMessageComponent() {
+            collectedOn.push(response);
+            throw collectorError("time");
+          },
+        };
+        interaction.replyResponse = response;
+        return response;
+      },
+      async editReply(payload) {
+        interaction.edits.push(payload);
+        return payload;
+      },
+      async followUp(payload) {
+        interaction.followUps.push(payload);
+        return payload;
+      },
+    };
+    assert.equal("awaitMessageComponent" in interaction, false);
+
+    await new Drink(client).execute(interaction);
+
+    assert.equal(client.logs.length, 0);
+    assert.equal(collectedOn.length, 1);
+    assert.equal(collectedOn[0], interaction.replyResponse);
+    assert.notEqual(interaction.replyResponse, interaction);
+    assert.deepEqual(interaction.edits, [{ content: "Timed out", components: [] }]);
+  });
+
   it("does not log collector timeout as an error and clears the select menu", async () => {
     stubDrinks([drink("Margarita"), drink("Blue Margarita")]);
     const client = mockClient();
@@ -155,6 +199,7 @@ describe("Drink execute collector paths", () => {
         throw collectorError("time");
       },
     });
+    assert.equal("awaitMessageComponent" in interaction, false);
     const cmd = new Drink(client);
     await cmd.execute(interaction);
 
@@ -165,6 +210,7 @@ describe("Drink execute collector paths", () => {
     assert.equal(interaction.replies[0].ephemeral, true);
     assert.equal(interaction.edits.length, 1);
     assert.deepEqual(interaction.edits[0], { content: "Timed out", components: [] });
+    assert.equal(interaction.replyResponses.length, 1);
   });
 
   it("handles a deleted ephemeral reply (10008) without an unhandled error", async () => {
@@ -216,5 +262,6 @@ describe("Drink execute collector paths", () => {
     assert.equal(interaction.replies.length, 1);
     assert.equal(interaction.replies[0].embeds[0].data.title, "Old Fashioned");
     assert.equal(interaction.followUps.length, 0);
+    assert.equal(interaction.replyResponses.length, 1);
   });
 });
