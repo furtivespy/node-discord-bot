@@ -67,7 +67,8 @@ function formatFetchResult(result, error) {
   }
   if (result === "parse_error") return "parse error";
   if (result === "timeout") return "timeout";
-  return "error";
+  const detail = String(error || "").trim();
+  return detail ? `error (${detail})` : "error";
 }
 
 function formatDiscordTime(ms) {

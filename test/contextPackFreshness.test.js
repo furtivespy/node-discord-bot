@@ -27,7 +27,7 @@ describe("context pack freshness dashboard", () => {
     assert.equal(formatFetchResult("http_error", "HTTP 404"), "HTTP error (404)");
     assert.equal(formatFetchResult("parse_error"), "parse error");
     assert.equal(formatFetchResult("timeout"), "timeout");
-    assert.equal(formatFetchResult("error", "URL host is not allowed."), "error");
+    assert.equal(formatFetchResult("error", "URL host is not allowed."), "error (URL host is not allowed.)");
     assert.equal(formatFetchResult("error"), "error");
     assert.equal(formatFetchResult(null), "never");
   });
@@ -201,6 +201,18 @@ describe("context pack freshness dashboard", () => {
     assert.match(text, /✅ healthy/);
     assert.match(text, /12 rows/);
     assert.match(text, /last fetch ok/);
+    assert.doesNotMatch(text, /2PACX/);
+  });
+
+  it("keeps a generic fetch error on the list summary", () => {
+    const row = buildPackFreshness(PLAYS, {
+      last_result: "error",
+      last_error: "URL host is not allowed.",
+      last_attempt_at: 1_700_000_000_000,
+      ttlMs: 10 * 60 * 1000,
+    });
+    const text = formatShortFreshness(row);
+    assert.match(text, /last fetch error \(URL host is not allowed\.\)/);
     assert.doesNotMatch(text, /2PACX/);
   });
 

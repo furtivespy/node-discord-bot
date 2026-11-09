@@ -630,6 +630,26 @@ describe("/context command", () => {
     assert.doesNotMatch(refreshed.content, /2PACX/);
   });
 
+  it("still appends a short fetch error that is a substring of the result label", async () => {
+    const client = mockClient({
+      fetchResult: {
+        ok: false,
+        last_result: "parse_error",
+        last_error: "error",
+        error: "error",
+      },
+    });
+    const cmd = new Context(client);
+    const attach = mockInteraction({
+      subcommand: "attach",
+      strings: { url: SECRET_URL, name: "plays" },
+    });
+    await cmd.execute(attach);
+    const attached = replyContent(attach);
+    assert.match(attached.content, /parse error — error\. Chat will retry/);
+    assert.doesNotMatch(attached.content, /2PACX/);
+  });
+
   it("attach/set/add report a failed probe with the scrubbed fetch error and never print the URL", async () => {
     for (const { subcommand, status, verb } of [
       { subcommand: "attach", status: 404, verb: "Attached" },
