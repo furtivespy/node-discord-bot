@@ -588,6 +588,48 @@ describe("/context command", () => {
     assert.ok(logs.every((line) => !line.includes("2PACX")));
   });
 
+  it("attach and refresh report a blocked-host failure once, with a single period", async () => {
+    const client = clientWithLiveService({
+      fetch: async () => ({
+        ok: false,
+        status: 302,
+        headers: {
+          get(name) {
+            return String(name).toLowerCase() === "location" ? "https://127.0.0.1/x.csv" : null;
+          },
+        },
+        async text() {
+          return "";
+        },
+      }),
+    });
+    const cmd = new Context(client);
+    const attach = mockInteraction({
+      subcommand: "attach",
+      strings: { url: SECRET_URL, name: "privredir" },
+    });
+    await cmd.execute(attach);
+
+    const attached = replyContent(attach);
+    assert.match(
+      attached.content,
+      /Saved, but the fetch did not succeed just now: error — URL host is not allowed\. Chat will retry/
+    );
+    assert.equal((attached.content.match(/URL host is not allowed/g) || []).length, 1);
+    assert.doesNotMatch(attached.content, /error \(URL host is not allowed/);
+    assert.doesNotMatch(attached.content, /allowed\.\./);
+    assert.doesNotMatch(attached.content, /2PACX/);
+
+    const refresh = mockInteraction({ subcommand: "refresh", strings: { name: "privredir" } });
+    await cmd.execute(refresh);
+    const refreshed = refresh.replies.find((payload) => payload.content);
+    assert.match(refreshed.content, /`privredir`: error — URL host is not allowed\./);
+    assert.equal((refreshed.content.match(/URL host is not allowed/g) || []).length, 1);
+    assert.doesNotMatch(refreshed.content, /error \(URL host is not allowed/);
+    assert.doesNotMatch(refreshed.content, /allowed\.\./);
+    assert.doesNotMatch(refreshed.content, /2PACX/);
+  });
+
   it("attach/set/add report a failed probe with the scrubbed fetch error and never print the URL", async () => {
     for (const { subcommand, status, verb } of [
       { subcommand: "attach", status: 404, verb: "Attached" },

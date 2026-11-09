@@ -27,6 +27,8 @@ describe("context pack freshness dashboard", () => {
     assert.equal(formatFetchResult("http_error", "HTTP 404"), "HTTP error (404)");
     assert.equal(formatFetchResult("parse_error"), "parse error");
     assert.equal(formatFetchResult("timeout"), "timeout");
+    assert.equal(formatFetchResult("error", "URL host is not allowed."), "error");
+    assert.equal(formatFetchResult("error"), "error");
     assert.equal(formatFetchResult(null), "never");
   });
 

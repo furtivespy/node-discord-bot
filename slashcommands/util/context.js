@@ -105,10 +105,20 @@ function liveFetchOk(fetched) {
   return Boolean(fetched.ok);
 }
 
+function trimTrailingPeriods(text) {
+  return String(text || "").replace(/\.+$/, "");
+}
+
 function describeFetchFailure(fetched, url) {
   if (!fetched) return "context pack service is not available";
-  const detail = scrubErrorMessage(fetched.last_error || fetched.error || "unknown error", url);
-  const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
+  const detail = trimTrailingPeriods(
+    scrubErrorMessage(fetched.last_error || fetched.error || "unknown error", url)
+  );
+  const kind = trimTrailingPeriods(
+    formatFetchResult(fetched.last_result, fetched.last_error || fetched.error)
+  );
+  if (!detail) return kind || "error";
+  if (kind.includes(detail)) return kind;
   return `${kind} — ${detail}`;
 }
 
