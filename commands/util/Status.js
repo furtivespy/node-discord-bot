@@ -1,4 +1,5 @@
 import Command from '../../base/Command.js';
+import { applyBotActivity } from '../../modules/botActivity.js';
 class Status extends Command {
     constructor(client){
         super(client, {
@@ -48,7 +49,7 @@ class Status extends Command {
             this.client.config.activity = newActivty
             this.client.config.activityType = activityType
             message.react('⚡')
-            this.client.user.setActivity(this.client.config.activity, { type: activityType });
+            applyBotActivity(this.client.user, this.client.config.activity, activityType);
         } catch (e) {
             this.client.logger.log(e,'error')
         }

@@ -22,6 +22,7 @@ import createBugsnagLogger from "./modules/bugsnagLogger.js";
 import { rememberSlashCommandIds } from "./modules/guildHelpFeatures.js";
 import { createImageGenProbe, rememberSlashRegistration } from "./modules/guildHealth.js";
 import { createUsagePulse, noteSlashUse } from "./modules/usagePulse.js";
+import { applyBotActivity } from "./modules/botActivity.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
@@ -356,9 +357,11 @@ const init = async () => {
       }
 
       try {
-        client.user.setActivity(client.config.activity, {
-          type: client.config.activityType,
-        });
+        applyBotActivity(
+          client.user,
+          client.config.activity,
+          client.config.activityType
+        );
       } catch (e) {
         client.logger.log(e, "warn");
       }
