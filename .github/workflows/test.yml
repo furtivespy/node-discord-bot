@@ -1,0 +1,61 @@
+# npm test + smoke on PRs and master, using the Node/npm pins in .nvmrc
+# and package.json. Does not tag, build, or deploy (see release.yml).
+#
+# Native notes (investigated, not assumed):
+# - canvas@3.2.3 install is `prebuild-install -r napi || node-gyp rebuild`.
+#   linux-x64 N-API prebuilds exist and ship Cairo/Pango/JPEG/GIF/RSVG next
+#   to canvas.node (verified via ldd). If a prebuild is missing, compile
+#   needs the same Ubuntu -dev set as the Dockerfile build stage and
+#   games-discord-bot Tests. GitHub ubuntu-latest apt lists do not include
+#   those libraries (Ubuntu 24.04 runner-image readme, 2026-11-01 image).
+# - better-sqlite3@13 ships N-API prebuilds; the runner already has g++/make.
+# - package-lock.json records git+ssh for ascii-table and natural; hosted
+#   runners have no deploy key, so rewrite SSH to HTTPS like Game Bot.
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Assert Node and npm pins
+        run: |
+          test "$(node -v)" = "v26.8.1"
+          test "$(npm -v)" = "11.19.0"
+
+      - name: Install canvas native libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Install dependencies
+        run: |
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run smoke
+        run: npm run smoke
