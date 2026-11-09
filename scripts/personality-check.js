@@ -149,6 +149,7 @@ function extractLiveText(result) {
 
 async function runLive(apiKey, keys) {
   const { GoogleGenAI } = await import("@google/genai");
+  // FUR-187: same as modules/geminiai.js — v1 default, do not pin v1beta.
   const genai = new GoogleGenAI({ apiKey });
   const failures = [];
   const command = dumpAll

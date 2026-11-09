@@ -145,6 +145,9 @@ const createGeminiAI = (client) => {
 class GeminiAI {
     constructor(client) {
         this.client = client
+        // @google/genai 3.x defaults Gemini Developer API to v1. Pinned models
+        // plus googleSearch/File Search/image generateContent are v1-supported
+        // (FUR-187); set apiVersion: "v1beta" if a path 404s.
         this.AI2 = new GoogleGenAI({apiKey: this.client.config.geminiKey})
         this.contextPacks = createContextPackService({
             logger: this.client.logger,
