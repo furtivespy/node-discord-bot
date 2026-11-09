@@ -32,24 +32,6 @@ const GROUNDING_CHOICES = new Set([
 ]);
 const NON_SEQUITUR_PREFIX = "Please try to include an idea from this group of random thoughts:";
 
-/**
- * Constructor options for the Gemini Developer API (`new GoogleGenAI`).
- *
- * @google/genai 3.0.0 defaults this API to v1 (was v1beta). Rolling aliases
- * such as `gemini-flash-latest` are v1beta-only; we already pin
- * `gemini-3.8-flash` and `gemini-nano-banana-2.1` (FUR-163). Google's API
- * versions table lists Google Search grounding, File Search (tool + stores),
- * thinking, structured output, and all models as v1-supported, so mention
- * chat/grounding, `/prompt`, code-explain, and the `/status` image probe stay
- * on the v1 default. If a path 404s on v1, set `apiVersion: "v1beta"` here
- * (or `GOOGLE_GENAI_API_VERSION=v1beta`).
- * https://github.com/googleapis/js-genai/releases/tag/v3.0.0
- * https://ai.google.dev/gemini-api/docs/api-versions
- */
-function googleGenAIOptions(apiKey) {
-  return { apiKey };
-}
-
 function isVisibleTextPart(part) {
   return part && !part.thought && typeof part.text === "string" && part.text.trim() !== "";
 }
@@ -163,7 +145,10 @@ const createGeminiAI = (client) => {
 class GeminiAI {
     constructor(client) {
         this.client = client
-        this.AI2 = new GoogleGenAI(googleGenAIOptions(this.client.config.geminiKey))
+        // @google/genai 3.x defaults Gemini Developer API to v1. Pinned models
+        // plus googleSearch/File Search/image generateContent are v1-supported
+        // (FUR-187); set apiVersion: "v1beta" if a path 404s.
+        this.AI2 = new GoogleGenAI({apiKey: this.client.config.geminiKey})
         this.contextPacks = createContextPackService({
             logger: this.client.logger,
             persistPackStatus: (guildId, packName, status) => {
@@ -850,4 +835,4 @@ class GeminiAI {
 }
 }
 
-export { createGeminiAI, googleGenAIOptions, historyWindowFromFetch };
+export { createGeminiAI, historyWindowFromFetch };
