@@ -360,7 +360,8 @@ const init = async () => {
         applyBotActivity(
           client.user,
           client.config.activity,
-          client.config.activityType
+          client.config.activityType,
+          { url: client.config.activityUrl }
         );
       } catch (e) {
         client.logger.log(e, "warn");

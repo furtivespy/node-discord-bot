@@ -1,32 +1,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ActivityType } from "discord.js";
-import Status from "../commands/util/Status.js";
-import { applyBotActivity, resolveActivityType } from "../modules/botActivity.js";
+import {
+  applyBotActivity,
+  isStreamingUrl,
+  parseStatusUpdateType,
+  resolveActivityType,
+  STATUS_UPDATE_CHOICES,
+} from "../modules/botActivity.js";
 
-function mockClient() {
-  const setActivityCalls = [];
-  return {
-    config: { activity: "old", activityType: "WATCHING" },
-    logger: { log() {} },
-    user: {
-      setActivity(...args) {
-        setActivityCalls.push(args);
-      },
-    },
-    setActivityCalls,
-  };
-}
-
-function mockMessage() {
-  const reacts = [];
-  return {
-    async react(emoji) {
-      reacts.push(emoji);
-    },
-    reacts,
-  };
-}
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe("resolveActivityType", () => {
   it("maps existing config strings to discord.js ActivityType enums", () => {
@@ -50,6 +36,38 @@ describe("resolveActivityType", () => {
   });
 });
 
+describe("parseStatusUpdateType", () => {
+  it("accepts dropdown values and rejects types not offered by /statusupdate", () => {
+    assert.equal(parseStatusUpdateType("PLAYING"), "PLAYING");
+    assert.equal(parseStatusUpdateType(" watching "), "WATCHING");
+    assert.equal(parseStatusUpdateType("STREAMING"), "STREAMING");
+    assert.equal(parseStatusUpdateType("COMPETING"), "COMPETING");
+    assert.equal(parseStatusUpdateType("CUSTOM"), null);
+    assert.equal(parseStatusUpdateType("nope"), null);
+    assert.equal(parseStatusUpdateType(""), null);
+    assert.equal(parseStatusUpdateType(undefined), null);
+  });
+
+  it("offers playing, listening, watching, streaming, and competing", () => {
+    assert.deepEqual(
+      STATUS_UPDATE_CHOICES.map((choice) => choice.value),
+      ["PLAYING", "LISTENING", "WATCHING", "STREAMING", "COMPETING"]
+    );
+  });
+});
+
+describe("isStreamingUrl", () => {
+  it("accepts Twitch and YouTube links and rejects other URLs", () => {
+    assert.equal(isStreamingUrl("https://twitch.tv/discord"), true);
+    assert.equal(isStreamingUrl("https://www.twitch.tv/discord"), true);
+    assert.equal(isStreamingUrl("https://www.youtube.com/watch?v=abc"), true);
+    assert.equal(isStreamingUrl("https://youtu.be/abc"), true);
+    assert.equal(isStreamingUrl("https://example.com/live"), false);
+    assert.equal(isStreamingUrl("not a url"), false);
+    assert.equal(isStreamingUrl(""), false);
+  });
+});
+
 describe("applyBotActivity", () => {
   it("calls setActivity with the mapped ActivityType so startup config strings work", () => {
     const calls = [];
@@ -61,56 +79,24 @@ describe("applyBotActivity", () => {
     applyBotActivity(user, "QA test", "PLAYING");
     assert.deepEqual(calls, [["QA test", { type: ActivityType.Playing }]]);
   });
+
+  it("passes a streaming url through so stored STREAMING config can show after restart", () => {
+    const calls = [];
+    const user = {
+      setActivity(...args) {
+        calls.push(args);
+      },
+    };
+    applyBotActivity(user, "live", "STREAMING", { url: "https://twitch.tv/discord" });
+    assert.deepEqual(calls, [
+      ["live", { type: ActivityType.Streaming, url: "https://twitch.tv/discord" }],
+    ]);
+  });
 });
 
-describe("!status command", () => {
-  it("sets playing activity with ActivityType.Playing and keeps the config string", async () => {
-    const client = mockClient();
-    const message = mockMessage();
-    await new Status(client).run(message, ["playing", "QA", "test"], 0);
-    assert.equal(client.config.activity, "QA test");
-    assert.equal(client.config.activityType, "PLAYING");
-    assert.deepEqual(client.setActivityCalls, [
-      ["QA test", { type: ActivityType.Playing }],
-    ]);
-    assert.deepEqual(message.reacts, ["⚡"]);
-  });
-
-  it("maps watching, listening, and streaming command prefixes to ActivityType enums", async () => {
-    const cases = [
-      { args: ["watching", "the", "game"], type: "WATCHING", enum: ActivityType.Watching, activity: "the game" },
-      { args: ["listen", "jazz"], type: "LISTENING", enum: ActivityType.Listening, activity: "jazz" },
-      { args: ["stream", "live"], type: "STREAMING", enum: ActivityType.Streaming, activity: "live" },
-    ];
-    for (const testCase of cases) {
-      const client = mockClient();
-      const message = mockMessage();
-      await new Status(client).run(message, testCase.args, 0);
-      assert.equal(client.config.activityType, testCase.type);
-      assert.equal(client.config.activity, testCase.activity);
-      assert.deepEqual(client.setActivityCalls, [
-        [testCase.activity, { type: testCase.enum }],
-      ]);
-    }
-  });
-
-  it("defaults a bare status text to playing", async () => {
-    const client = mockClient();
-    const message = mockMessage();
-    await new Status(client).run(message, ["QA", "test"], 0);
-    assert.equal(client.config.activity, "QA test");
-    assert.equal(client.config.activityType, "PLAYING");
-    assert.deepEqual(client.setActivityCalls, [
-      ["QA test", { type: ActivityType.Playing }],
-    ]);
-  });
-
-  it("does nothing when no status text is given", async () => {
-    const client = mockClient();
-    const message = mockMessage();
-    await new Status(client).run(message, [], 0);
-    assert.equal(client.config.activity, "old");
-    assert.equal(client.setActivityCalls.length, 0);
-    assert.equal(message.reacts.length, 0);
+describe("prefix !status command", () => {
+  it("is removed", () => {
+    const statusPath = path.join(__dirname, "..", "commands", "util", "Status.js");
+    assert.equal(fs.existsSync(statusPath), false);
   });
 });
