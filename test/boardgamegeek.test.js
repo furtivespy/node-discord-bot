@@ -85,4 +85,69 @@ describe("BoardGameGeek HTML entity decoding", () => {
     assert.match(ranksField.value, /Kids' Rank/);
     assert.doesNotMatch(ranksField.value, /&amp;|&#039;|&quot;/);
   });
+
+  it("decodes &amp;, &#039;, and &quot; in designer, publisher, and expansion fields", () => {
+    const bgg = new BoardGameGeek("126163", { config: {} }, {});
+    const gameInfo = parseBggDetailsXml(fixture("boardgame-multi-name.xml")).boardgames.boardgame;
+    gameInfo.boardgamedesigner = [
+      { text: "Simone Luciani" },
+      { text: "Tom &amp; Jerry&#039;s &quot;Designer&quot;" },
+    ];
+    gameInfo.boardgamepublisher = [
+      { text: "Czech Games Edition" },
+      { text: "Tom &amp; Jerry&#039;s &quot;Press&quot;" },
+    ];
+    gameInfo.boardgameexpansion = [
+      { text: "Tzolk&#039;in: The Mayan Calendar – Mini Expansion 1", objectid: "134380" },
+      { text: "Tom &amp; Jerry&#039;s &quot;Expansion&quot;", objectid: "123" },
+    ];
+    bgg.gameInfo = gameInfo;
+    bgg.gameName = "Tzolk'in: The Mayan Calendar";
+
+    bgg.GetGameDetailsEmbed();
+
+    const fields = bgg.embeds[0].data.fields;
+    const designers = fields.find((f) => f.name === "Designer(s)");
+    const publishers = fields.find((f) => f.name === "Publisher(s)");
+    const expansions = fields.find((f) => f.name === "Expansions");
+    assert.ok(designers && publishers && expansions, "expected Designer(s), Publisher(s), and Expansions fields");
+
+    assert.equal(designers.value, "Simone Luciani\nTom & Jerry's \"Designer\"");
+    assert.doesNotMatch(designers.value, /&amp;|&#039;|&quot;/);
+
+    assert.equal(publishers.value, "Czech Games Edition\nTom & Jerry's \"Press\"");
+    assert.doesNotMatch(publishers.value, /&amp;|&#039;|&quot;/);
+
+    assert.match(expansions.value, /\[Tzolk'in: The Mayan Calendar – Mini Expansion 1\]\(https:\/\/boardgamegeek\.com\/boardgame\/134380\)/);
+    assert.match(expansions.value, /\[Tom & Jerry's "Expansion"\]\(https:\/\/boardgamegeek\.com\/boardgame\/123\)/);
+    assert.doesNotMatch(expansions.value, /&amp;|&#039;|&quot;/);
+  });
+
+  it("decodes HTML entities in single designer, publisher, and expansion values", () => {
+    const bgg = new BoardGameGeek("1", { config: {} }, {});
+    const gameInfo = parseBggDetailsXml(fixture("boardgame-multi-name.xml")).boardgames.boardgame;
+    gameInfo.boardgamedesigner = { text: "Tom &amp; Jerry&#039;s &quot;Designer&quot;" };
+    gameInfo.boardgamepublisher = { text: "Kids&#039; Choice &quot;Press&quot;" };
+    gameInfo.boardgameexpansion = {
+      text: "Tzolk&#039;in: The Mayan Calendar – Mini Expansion 1",
+      objectid: "134380",
+    };
+    bgg.gameInfo = gameInfo;
+    bgg.gameName = "Catan";
+
+    bgg.GetGameDetailsEmbed();
+
+    const fields = bgg.embeds[0].data.fields;
+    const designers = fields.find((f) => f.name === "Designer(s)");
+    const publishers = fields.find((f) => f.name === "Publisher(s)");
+    const expansions = fields.find((f) => f.name === "Expansions");
+
+    assert.equal(designers.value, "Tom & Jerry's \"Designer\"");
+    assert.equal(publishers.value, "Kids' Choice \"Press\"");
+    assert.equal(
+      expansions.value,
+      "[Tzolk'in: The Mayan Calendar – Mini Expansion 1](https://boardgamegeek.com/boardgame/134380)"
+    );
+    assert.doesNotMatch(`${designers.value}${publishers.value}${expansions.value}`, /&amp;|&#039;|&quot;/);
+  });
 });
