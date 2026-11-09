@@ -26,7 +26,7 @@
   },
   "homepage": "https://github.com/furtivespy/node-discord-bot#readme",
   "dependencies": {
-    "@bugsnag/js": "^8.10.0",
+    "@bugsnag/js": "^9.1.0",
     "@discordjs/builders": "^1.15.0",
     "@google/genai": "^2.32.0",
     "ascii-table": "git+https://github.com/belph/ascii-table.git",
