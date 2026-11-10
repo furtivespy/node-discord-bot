@@ -62,9 +62,11 @@ class Roll extends SlashCommand {
             false,
             true
           );
-          embedItem.thumbnail = {
-            url: img.link,
-          };
+          if (img?.link) {
+            embedItem.thumbnail = {
+              url: img.link,
+            };
+          }
         } catch (e) {
           this.client.logger.log(e, "error");
         }
