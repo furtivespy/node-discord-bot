@@ -71,12 +71,7 @@ class BoardGameGeek {
   }
 
   static isEphemeral(detailsType) {
-    if (detailsType == BoardGameGeek.DetailsEnum.ALLEPHEMERAL ||
-        detailsType == BoardGameGeek.DetailsEnum.LINKSEPHMERAL) 
-    {
-      return true
-    }
-    return false
+    return detailsType === BoardGameGeek.DetailsEnum.ALLEPHEMERAL
   }
 
   async LoadBggData(fetchImpl = fetch) {

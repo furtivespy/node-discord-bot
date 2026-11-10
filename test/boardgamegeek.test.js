@@ -18,6 +18,17 @@ function xmlFetch(xml) {
   });
 }
 
+describe("BoardGameGeek.isEphemeral", () => {
+  it("treats omitted details as public and only ALLEPHEMERAL as ephemeral", () => {
+    assert.equal(BoardGameGeek.isEphemeral(null), false);
+    assert.equal(BoardGameGeek.isEphemeral(undefined), false);
+    assert.equal(BoardGameGeek.isEphemeral(BoardGameGeek.DetailsEnum.ALL), false);
+    assert.equal(BoardGameGeek.isEphemeral(BoardGameGeek.DetailsEnum.BASIC), false);
+    assert.equal(BoardGameGeek.isEphemeral(BoardGameGeek.DetailsEnum.AWARDS), false);
+    assert.equal(BoardGameGeek.isEphemeral(BoardGameGeek.DetailsEnum.ALLEPHEMERAL), true);
+  });
+});
+
 describe("he 2.x named exports", () => {
   it("exports decode as a named export and has no default export", async () => {
     const he = await import("he");
