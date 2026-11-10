@@ -1,6 +1,6 @@
 import SlashCommand from '../../base/SlashCommand.js';
 import { SlashCommandBuilder } from '@discordjs/builders';
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } from 'discord.js';
 
 const COLLECTOR_MS = 60_000;
 const UNKNOWN_MESSAGE = 10008;
@@ -67,7 +67,7 @@ class Drink extends SlashCommand {
                     rply = await interaction.reply({ 
                         content: `Multiple results for ${interaction.options.getString('search')}`, 
                         components: [row],
-                        ephemeral: true
+                        flags: MessageFlags.Ephemeral
                     })
                     const filter = (int) => int.customId === 'select'
                     let newInteraction
@@ -109,7 +109,7 @@ class Drink extends SlashCommand {
                 
 
             } else {
-                await interaction.reply({ content: `I couldn't find anyting for ${interaction.options.getString('search')}`, ephemeral: true})
+                await interaction.reply({ content: `I couldn't find anyting for ${interaction.options.getString('search')}`, flags: MessageFlags.Ephemeral})
             }
         } catch (e) {
             this.client.logger.log(e,'error')

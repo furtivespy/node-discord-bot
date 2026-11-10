@@ -1,6 +1,6 @@
 import SlashCommand from "../../base/SlashCommand.js";
 import { SlashCommandBuilder } from "@discordjs/builders";
-import { PermissionsBitField } from "discord.js";
+import { PermissionsBitField, MessageFlags } from "discord.js";
 import { isBotAdmin, splitDiscordMessages } from "../../modules/guildConfigOverview.js";
 import { formatAllGuildsUsageText, formatGuildUsageText } from "../../modules/usagePulse.js";
 
@@ -53,7 +53,7 @@ class Usage extends SlashCommand {
       if (!canViewUsage(this.client, interaction)) {
         await interaction.reply({
           content: "This command is only for server admins.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -61,7 +61,7 @@ class Usage extends SlashCommand {
       if (!interaction.guild) {
         await interaction.reply({
           content: "Use this command in a server.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -70,7 +70,7 @@ class Usage extends SlashCommand {
       if (!pulse) {
         await interaction.reply({
           content: "Usage pulse is not available on this process.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -80,7 +80,7 @@ class Usage extends SlashCommand {
       if (wantAll && !owner) {
         await interaction.reply({
           content: "All-server rollup is only for the bot owner.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -95,15 +95,15 @@ class Usage extends SlashCommand {
       }
 
       const chunks = splitDiscordMessages(report);
-      await interaction.reply({ content: chunks[0], ephemeral: true });
+      await interaction.reply({ content: chunks[0], flags: MessageFlags.Ephemeral });
       for (const chunk of chunks.slice(1)) {
-        await interaction.followUp({ content: chunk, ephemeral: true });
+        await interaction.followUp({ content: chunk, flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
       this.client.logger.log(e, "error");
       const payload = {
         content: "Something went wrong reading usage.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(payload).catch(() => {});

@@ -1,6 +1,7 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
+import { MessageFlags } from "discord.js";
 
 import Roller from "roll";
 
@@ -74,7 +75,7 @@ class Roll extends SlashCommand {
           content: `I don't know how to roll ${interaction.options.getString(
             "dice"
           )}`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } catch (e) {

@@ -4,7 +4,9 @@ import {
   EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  MessageFlags,
 } from "discord.js";
+import { callbackMessage } from "../../modules/interactionCallback.js";
 import {
   CATEGORY_META,
   OVERVIEW_ID,
@@ -73,7 +75,7 @@ class Help extends SlashCommand {
     const payload = {
       embeds: [embed],
       components,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     };
     if (view.note) payload.content = view.note;
     return payload;
@@ -116,10 +118,11 @@ class Help extends SlashCommand {
         commandName: interaction.options.getString("command"),
         categoryId: interaction.options.getString("category"),
       });
-      await interaction.reply(payload);
+      const response = await interaction.reply({ ...payload, withResponse: true });
       if (!payload.components.length) return;
 
-      const message = await interaction.fetchReply();
+      const message = callbackMessage(response);
+      if (typeof message?.createMessageComponentCollector !== "function") return;
       const collector = message.createMessageComponentCollector({
         filter: (i) =>
           i.user.id === interaction.user.id && i.customId === "help:category",
@@ -152,7 +155,7 @@ class Help extends SlashCommand {
       this.client.logger.log(e, "error");
       const fallback = {
         content: "Something went wrong showing help. Try `/help` again.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(fallback).catch(() => {});

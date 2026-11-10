@@ -1,5 +1,6 @@
 import SlashCommand from '../../base/SlashCommand.js';
 import { SlashCommandBuilder } from '@discordjs/builders';
+import { callbackMessage } from '../../modules/interactionCallback.js';
 
 
 class Ping extends SlashCommand {
@@ -16,7 +17,8 @@ class Ping extends SlashCommand {
 
     async execute(interaction) {
         try {
-			const msg = await interaction.reply({content: 'Pong!', fetchReply: true});
+			const response = await interaction.reply({content: 'Pong!', withResponse: true});
+			const msg = callbackMessage(response);
 			msg.edit(`Pong! Latency is ${msg.createdTimestamp - interaction.createdTimestamp}ms. `)
         } catch (e) {
             this.client.logger.log(e,'error')

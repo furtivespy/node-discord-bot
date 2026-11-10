@@ -5,8 +5,10 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  MessageFlags,
   PermissionsBitField,
 } from "discord.js";
+import { callbackMessage } from "../../modules/interactionCallback.js";
 import {
   PACK_KINDS,
   MAX_PACKS_PER_GUILD,
@@ -196,14 +198,14 @@ class Context extends SlashCommand {
   async execute(interaction) {
     try {
       if (!interaction.guild) {
-        await interaction.reply({ content: "Use this command in a server.", ephemeral: true });
+        await interaction.reply({ content: "Use this command in a server.", flags: MessageFlags.Ephemeral });
         return;
       }
 
       if (!canViewContextDashboard(this.client, interaction)) {
         await interaction.reply({
           content: "Context pack management is only for server administrators.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -232,13 +234,13 @@ class Context extends SlashCommand {
           await this.status(interaction);
           break;
         default:
-          await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
+          await interaction.reply({ content: "Unknown subcommand.", flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
       this.client.logger.log(scrubErrorMessage(e), "error");
       const payload = {
         content: "Something went wrong with that context command.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(payload).catch(() => {});
@@ -256,11 +258,11 @@ class Context extends SlashCommand {
       url: interaction.options.getString("url", true),
     });
     if (result.error) {
-      await interaction.reply({ content: result.error, ephemeral: true });
+      await interaction.reply({ content: result.error, flags: MessageFlags.Ephemeral });
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     this.savePacks(interaction, result.packs);
     this.packService()?.invalidate(result.pack.url);
 
@@ -287,7 +289,7 @@ class Context extends SlashCommand {
       await interaction.reply({
         content:
           "No context packs on this server yet. Publish a sheet as CSV, then `/context attach url:<published-csv>`. See CONTEXT_PACKS.md.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -303,7 +305,7 @@ class Context extends SlashCommand {
         `Kinds: ${PACK_KINDS.join(", ")}.`,
         "`/context preview` for a sample. `/context status` for last fetch / rows / URL / errors.",
       ].join("\n"),
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -320,7 +322,7 @@ class Context extends SlashCommand {
     if (packs.length === 0) {
       await interaction.reply({
         content: "No context packs to preview. Attach one with `/context attach`.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -330,7 +332,7 @@ class Context extends SlashCommand {
     if (rawName) {
       const found = this.findPack(packs, rawName);
       if (found.error) {
-        await interaction.reply({ content: found.error, ephemeral: true });
+        await interaction.reply({ content: found.error, flags: MessageFlags.Ephemeral });
         return;
       }
       pack = found.pack;
@@ -338,12 +340,12 @@ class Context extends SlashCommand {
       const names = packs.map((item) => `\`${item.name}\``).join(", ");
       await interaction.reply({
         content: `This server has multiple packs (${names}). Pass \`name\` to preview one.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const fetched = await this.packService()?.fetchUrl(pack.url);
     if (fetched) this.rememberFetch(interaction.guild.id, pack.name, fetched);
     if (!fetched) {
@@ -395,7 +397,7 @@ class Context extends SlashCommand {
     const verb = REMOVE_DONE[interaction.options.getSubcommand()] || REMOVE_DONE.remove;
     const result = removeGuildPack(packs, interaction.options.getString("name", true));
     if (result.error) {
-      await interaction.reply({ content: result.error, ephemeral: true });
+      await interaction.reply({ content: result.error, flags: MessageFlags.Ephemeral });
       return;
     }
     const removed = packs.find((pack) => pack.name === result.name);
@@ -403,7 +405,7 @@ class Context extends SlashCommand {
     if (removed?.url) this.packService()?.invalidate(removed.url);
     await interaction.reply({
       content: `${verb} context pack \`${result.name}\`.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -436,7 +438,7 @@ class Context extends SlashCommand {
     if (packs.length === 0) {
       await interaction.reply({
         content: "No context packs to refresh.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -445,21 +447,21 @@ class Context extends SlashCommand {
     if (rawName) {
       const named = validatePackName(rawName);
       if (named.error) {
-        await interaction.reply({ content: named.error, ephemeral: true });
+        await interaction.reply({ content: named.error, flags: MessageFlags.Ephemeral });
         return;
       }
       const pack = packs.find((item) => item.name === named.name);
       if (!pack) {
         await interaction.reply({
           content: `No context pack named \`${named.name}\`.`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
       selected = [pack];
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const lines = await this.refreshPacks(interaction.guild.id, selected);
     await interaction.editReply({
       content: rawName
@@ -504,7 +506,7 @@ class Context extends SlashCommand {
     return {
       embeds: [embed],
       components,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     };
   }
 
@@ -512,7 +514,7 @@ class Context extends SlashCommand {
     if (!canViewContextDashboard(this.client, interaction)) {
       await interaction.reply({
         content: "This freshness dashboard is only for server administrators.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -522,11 +524,11 @@ class Context extends SlashCommand {
       if (!isBotAdmin(this.client, interaction.user.id)) {
         await interaction.reply({
           content: "Showing every server is only for the bot owner or configured admin IDs.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         await this.client.guilds.fetch();
       } catch (e) {
@@ -541,20 +543,19 @@ class Context extends SlashCommand {
       const chunks = splitDiscordMessages(formatAllGuildsFreshness(snapshots));
       await interaction.editReply({ content: chunks[0] });
       for (const chunk of chunks.slice(1)) {
-        await interaction.followUp({ content: chunk, ephemeral: true });
+        await interaction.followUp({ content: chunk, flags: MessageFlags.Ephemeral });
       }
       return;
     }
 
     const payload = this.statusPayload(this.statusSnapshot(interaction.guild));
-    await interaction.reply(payload);
-    await this.collectRefreshClicks(interaction, payload);
+    const response = await interaction.reply({ ...payload, withResponse: true });
+    await this.collectRefreshClicks(interaction, payload, response);
   }
 
-  async collectRefreshClicks(interaction, payload) {
+  async collectRefreshClicks(interaction, payload, response) {
     if (!payload.components?.length) return;
-    const message =
-      typeof interaction.fetchReply === "function" ? await interaction.fetchReply() : null;
+    const message = callbackMessage(response);
     if (typeof message?.createMessageComponentCollector !== "function") return;
 
     const collector = message.createMessageComponentCollector({
@@ -568,7 +569,7 @@ class Context extends SlashCommand {
         if (!canViewContextDashboard(this.client, click)) {
           await click.reply({
             content: "This freshness dashboard is only for server administrators.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }

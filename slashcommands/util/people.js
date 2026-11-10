@@ -1,6 +1,7 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
+import { MessageFlags } from "discord.js";
 
 
 const MAX_NAME_LENGTH = 32;
@@ -73,7 +74,7 @@ class People extends SlashCommand {
       if (!this.isBotOwner(interaction.user.id)) {
         await interaction.reply({
           content: "This command is only for the bot owner.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -81,7 +82,7 @@ class People extends SlashCommand {
       if (!interaction.guild) {
         await interaction.reply({
           content: "Use this command in a server.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -102,14 +103,14 @@ class People extends SlashCommand {
         default:
           await interaction.reply({
             content: "Unknown subcommand.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
       }
     } catch (e) {
       this.client.logger.log(e, "error");
       const payload = {
         content: "Something went wrong with that people command.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(payload).catch(() => {});
@@ -144,7 +145,7 @@ class People extends SlashCommand {
     const user = interaction.options.getUser("user", true);
     const checked = this.validateName(interaction.options.getString("name", true));
     if (checked.error) {
-      await interaction.reply({ content: checked.error, ephemeral: true });
+      await interaction.reply({ content: checked.error, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -152,7 +153,7 @@ class People extends SlashCommand {
     const nick = this.currentNick(interaction, user);
     await interaction.reply({
       content: `Mapped ${user} as **${checked.name}** (currently nicknamed **${nick}**). Chat will still use the nickname; this is just so the bot knows who they are.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -163,7 +164,7 @@ class People extends SlashCommand {
       content: removed
         ? `Removed the real name mapping for ${user}.`
         : `${user} did not have a real name mapped.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -175,7 +176,7 @@ class People extends SlashCommand {
       content: realName
         ? `${user} is **${realName}** (current nick: **${nick}**).`
         : `${user} has no real name mapped. Current nick: **${nick}**.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -184,7 +185,7 @@ class People extends SlashCommand {
     if (people.length === 0) {
       await interaction.reply({
         content: "No real names mapped on this server yet. Use `/people set` to add one.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -197,7 +198,7 @@ class People extends SlashCommand {
 
     await interaction.reply({
       content: `Known people:\n${lines.join("\n")}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }

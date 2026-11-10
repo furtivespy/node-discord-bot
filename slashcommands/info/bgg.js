@@ -1,6 +1,6 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder, MessageFlags } from "discord.js";
 
 import BoardGameGeek from '../../modules/boardgamegeek.js';
 class BGG extends SlashCommand {
@@ -51,14 +51,15 @@ class BGG extends SlashCommand {
         if (isNaN(search)){
           await interaction.reply({
             content: `Please choose from the available options`,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           })
           return
         }
 
-        let ephemeral = BoardGameGeek.isEphemeral(interaction.options.getString("details"))
+        const ephemeral = BoardGameGeek.isEphemeral(interaction.options.getString("details"))
+        const flags = ephemeral ? MessageFlags.Ephemeral : undefined
         await interaction.deferReply({
-          ephemeral: ephemeral
+          flags
         });
        
         let bgg = await BoardGameGeek.CreateAndLoad(search, this.client, interaction)
@@ -67,7 +68,7 @@ class BGG extends SlashCommand {
         await interaction.editReply({
           embeds: bgg.embeds,
           files: bgg.attachments,
-          ephemeral: ephemeral
+          flags
         });
         if (bgg.otherAttachments.length > 0){
           await interaction.followUp({
