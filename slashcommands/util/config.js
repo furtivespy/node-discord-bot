@@ -2,7 +2,7 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import { PermissionsBitField } from "discord.js";
+import { PermissionsBitField, MessageFlags } from "discord.js";
 
 import Pull from 'lodash/pull.js';
 
@@ -203,7 +203,7 @@ class Config extends SlashCommand {
       this.client.logger.log(e, "error");
       const payload = {
         content: "Something went wrong with that config command.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.deferred) {
         await interaction.editReply(payload).catch(() => {});
@@ -219,12 +219,12 @@ class Config extends SlashCommand {
     if (!isBotAdmin(this.client, interaction.user.id)) {
       await interaction.reply({
         content: "This overview is only for the bot owner or configured admin IDs.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     let guildListIncomplete = false;
     try {
@@ -268,7 +268,7 @@ class Config extends SlashCommand {
 
     await interaction.editReply({ content: chunks[0] });
     for (const chunk of chunks.slice(1)) {
-      await interaction.followUp({ content: chunk, ephemeral: true });
+      await interaction.followUp({ content: chunk, flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -290,7 +290,7 @@ class Config extends SlashCommand {
       })
       .join("\n");
     listMessage = `\`\`\`asciidoc\n= Config Commands =\n${listMessage}\`\`\``;
-    await interaction.reply({ content: listMessage, ephemeral: true });
+    await interaction.reply({ content: listMessage, flags: MessageFlags.Ephemeral });
   }
 
   async botPrefix(interaction) {
@@ -301,13 +301,13 @@ class Config extends SlashCommand {
       this.client.settings.set(interaction.guild.id, prefix, "prefix");
       await interaction.reply({
         content: `Prefix set to: \`${prefix}\``,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.reply({
       content: `The current prefix is: \`${settings.prefix}\``,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -318,7 +318,7 @@ class Config extends SlashCommand {
       if (percent < 0 || percent > 100) {
         await interaction.reply({
           content: "Random response percent must be between 0 and 100",
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
         return;
       }
@@ -326,13 +326,13 @@ class Config extends SlashCommand {
       this.client.settings.set(interaction.guild.id, percent, "randRspPct");
       await interaction.reply({
         content: `Random response percent set to: \`${percent}\``,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.reply({
       content: `The current random response percent is: \`${settings.randRspPct}\``,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -344,13 +344,13 @@ class Config extends SlashCommand {
       this.client.settings.set(interaction.guild.id, level, "markovLevel");
       await interaction.reply({
         content: `Markov level set to: \`${level}\``,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.reply({
       content: `The current markov level is: \`${settings.markovLevel}\``,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -358,14 +358,14 @@ class Config extends SlashCommand {
     const command = interaction.options.getString("command");
     const exclusions = this.client.getExclusions(interaction.guild)
     if (!exclusions.includes(command)) {
-      await interaction.reply({ content: "This command is already enabled", ephemeral: true });
+      await interaction.reply({ content: "This command is already enabled", flags: MessageFlags.Ephemeral });
       return;
     }
     Pull(exclusions, command)
     this.client.setExclusions(interaction.guild, exclusions);
     await interaction.reply({
       content: `Command enabled: \`${command}\``,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
 
   }
@@ -374,37 +374,37 @@ class Config extends SlashCommand {
     const command = interaction.options.getString("command");
     const exclusions = this.client.getExclusions(interaction.guild)
     if (exclusions.includes(command)) {
-      await interaction.reply({ content: "This command is already disabled", ephemeral: true });
+      await interaction.reply({ content: "This command is already disabled", flags: MessageFlags.Ephemeral });
       return;
     }
     exclusions.push(command)
     this.client.setExclusions(interaction.guild, exclusions);
     await interaction.reply({
       content: `Command disabled: \`${command}\``,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   async skipChannel(interaction) {
     const skipChannels = this.client.getSkipChannels(interaction.guild)
     if (skipChannels.includes(interaction.channel.id)) {
-      await interaction.reply({ content: "This channel is already skipped", ephemeral: true });
+      await interaction.reply({ content: "This channel is already skipped", flags: MessageFlags.Ephemeral });
       return;
     }
     skipChannels.push(interaction.channel.id)
     this.client.setSkipChannels(interaction.guild, skipChannels)
-    await interaction.reply({ content: "Channel skipped", ephemeral: true });
+    await interaction.reply({ content: "Channel skipped", flags: MessageFlags.Ephemeral });
   } 
 
   async unskipChannel(interaction) {
     const skipChannels = this.client.getSkipChannels(interaction.guild)
     if (!skipChannels.includes(interaction.channel.id)) {
-      await interaction.reply({ content: "This channel is not skipped", ephemeral: true });
+      await interaction.reply({ content: "This channel is not skipped", flags: MessageFlags.Ephemeral });
       return;
     }
     Pull(skipChannels, interaction.channel.id)
     this.client.setSkipChannels(interaction.guild, skipChannels)
-    await interaction.reply({ content: "Channel unskipped", ephemeral: true });
+    await interaction.reply({ content: "Channel unskipped", flags: MessageFlags.Ephemeral });
   }
 }
 

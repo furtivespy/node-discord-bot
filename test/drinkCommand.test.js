@@ -5,6 +5,7 @@ import Drink, {
   isCollectorEnd,
   isUnknownMessage,
 } from "../slashcommands/fun/drink.js";
+import { assertEphemeral } from "./assertEphemeral.js";
 
 function collectorError(reason) {
   const error = new Error(`Collector received no interactions before ending with reason: ${reason}`);
@@ -207,7 +208,7 @@ describe("Drink execute collector paths", () => {
     assert.equal(interaction.followUps.length, 0);
     assert.equal(interaction.replies.length, 1);
     assert.match(interaction.replies[0].content, /Multiple results/);
-    assert.equal(interaction.replies[0].ephemeral, true);
+    assertEphemeral(interaction.replies[0]);
     assert.equal(interaction.edits.length, 1);
     assert.deepEqual(interaction.edits[0], { content: "Timed out", components: [] });
     assert.equal(interaction.replyResponses.length, 1);

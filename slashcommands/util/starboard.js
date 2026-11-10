@@ -1,6 +1,6 @@
 import SlashCommand from "../../base/SlashCommand.js";
 import { SlashCommandBuilder } from "@discordjs/builders";
-import { PermissionsBitField } from "discord.js";
+import { PermissionsBitField, MessageFlags } from "discord.js";
 
 const EmptyStarboardData = {
   starboardChannel: undefined,
@@ -67,7 +67,7 @@ class Starboard extends SlashCommand {
       if (!interaction.guild) {
         await interaction.reply({
           content: "This command can only be used in a server.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -89,7 +89,7 @@ class Starboard extends SlashCommand {
       if (!hasUpdates) {
         await interaction.reply({
           content: this.formatSettings(starboardData),
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -165,7 +165,7 @@ class Starboard extends SlashCommand {
 
       await interaction.reply({
         content: parts.join("\n\n"),
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (e) {
       this.client.logger.log(e, "error");

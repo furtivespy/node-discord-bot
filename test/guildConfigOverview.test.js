@@ -16,6 +16,7 @@ import {
 } from "../modules/guildConfigOverview.js";
 import Config from "../slashcommands/util/config.js";
 import SetPersonality from "../slashcommands/util/setpersonality.js";
+import { assertEphemeral } from "./assertEphemeral.js";
 
 function snapshot(overrides = {}) {
   return buildGuildSnapshot({
@@ -275,7 +276,7 @@ describe("collect + format", () => {
       async reply(payload) { replies.push(payload); },
     };
     await cmd.execute(denied);
-    assert.equal(replies[0].ephemeral, true);
+    assertEphemeral(replies[0]);
     assert.match(replies[0].content, /only for the bot owner/);
 
     const allowedReplies = [];
@@ -288,7 +289,7 @@ describe("collect + format", () => {
       },
       deferred: false,
       async deferReply(payload) {
-        assert.equal(payload.ephemeral, true);
+        assertEphemeral(payload);
         this.deferred = true;
       },
       async editReply(payload) { allowedReplies.push(payload); },
@@ -330,7 +331,7 @@ describe("collect + format", () => {
       replied: false,
       options: { getSubcommand: () => "overview", getString: () => "text", getBoolean: () => false },
       async deferReply(payload) {
-        assert.equal(payload.ephemeral, true);
+        assertEphemeral(payload);
         this.deferred = true;
       },
       async editReply(payload) {
@@ -346,7 +347,7 @@ describe("collect + format", () => {
     await cmd.execute(interaction);
     assert.equal(replies.length, 1);
     assert.equal(replies[0].type, "edit");
-    assert.equal(replies[0].ephemeral, true);
+    assertEphemeral(replies[0]);
     assert.match(replies[0].content, /Something went wrong/);
     assert.ok(logs.some((entry) => entry.type === "error"));
   });
