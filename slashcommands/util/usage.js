@@ -3,6 +3,7 @@ import { SlashCommandBuilder } from "@discordjs/builders";
 import { PermissionsBitField, MessageFlags } from "discord.js";
 import { isBotAdmin, splitDiscordMessages } from "../../modules/guildConfigOverview.js";
 import { formatAllGuildsUsageText, formatGuildUsageText } from "../../modules/usagePulse.js";
+import { qaUnlockAdminCommandsEnabled } from "../../modules/qaUnlock.js";
 
 function isGuildAdmin(interaction) {
   try {
@@ -13,6 +14,7 @@ function isGuildAdmin(interaction) {
 }
 
 function canViewUsage(client, interaction) {
+  if (qaUnlockAdminCommandsEnabled(client)) return true;
   if (isBotAdmin(client, interaction.user?.id)) return true;
   return isGuildAdmin(interaction);
 }
