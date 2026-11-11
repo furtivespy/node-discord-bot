@@ -12,6 +12,10 @@ Use `/help` in Discord. It lists the live slash commands (chat, fun, games, look
 
 Slash commands live under `slashcommands/` and register on startup.
 
+## QA / local overrides
+
+`QA_UNLOCK_ADMIN_COMMANDS` — **QA/dev only, not for production.** Set to `1` (or `true`) on the local test bot so admin-only slash commands (`/context`, `/status`, `/settings`, `/config`, `/starboard`, `/usage`, `/test`, and any others gated by Discord Administrator `defaultMemberPermissions`) register without that Discord gate, and so runtime “must be an administrator” checks are skipped. A non-admin QA account can then see and invoke those commands. Unset (or `0`), production behavior is unchanged: Discord hides them from non-admins and the runtime checks still apply. Bot-owner checks (`botOwnerId` / `isBotOwner()`) are never skipped — owner-only commands stay owner-only.
+
 ## Per-server context packs (play tracker CSV)
 
 Admins can register a published CSV URL so Bender can answer games/stats questions from that server's play tracker (or later, other context packs). The URL is a secret capability — do not commit it.

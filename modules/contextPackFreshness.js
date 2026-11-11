@@ -1,6 +1,7 @@
 import { PermissionsBitField } from "discord.js";
 import { isBotAdmin, splitDiscordMessages } from "./guildConfigOverview.js";
 import { CACHE_TTL_MS, listGuildPacks, scrubErrorMessage } from "./contextPacks.js";
+import { qaUnlockAdminCommandsEnabled } from "./qaUnlock.js";
 
 const HEALTH = {
   missing: "missing",
@@ -50,6 +51,7 @@ function firstDefined(...values) {
 }
 
 function canViewContextDashboard(client, interaction) {
+  if (qaUnlockAdminCommandsEnabled(client)) return true;
   if (isBotAdmin(client, interaction?.user?.id)) return true;
   try {
     return Boolean(interaction?.memberPermissions?.has(PermissionsBitField.Flags.Administrator));

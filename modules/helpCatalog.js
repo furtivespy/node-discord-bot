@@ -4,6 +4,7 @@ import {
   collectHelpFeatures,
   formatCommandMention,
 } from "./guildHelpFeatures.js";
+import { qaUnlockAdminCommandsEnabled } from "./qaUnlock.js";
 
 /**
  * `/help` reads the live slash-command collection. New commands show up
@@ -119,11 +120,13 @@ function commandAllowsDm(cmd) {
 
 function viewerFromInteraction(interaction, client) {
   const ownerId = client?.config?.botOwnerId;
-  let isAdmin = false;
-  try {
-    isAdmin = Boolean(interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator));
-  } catch {
-    isAdmin = false;
+  let isAdmin = qaUnlockAdminCommandsEnabled(client);
+  if (!isAdmin) {
+    try {
+      isAdmin = Boolean(interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator));
+    } catch {
+      isAdmin = false;
+    }
   }
   let commandIds = {};
   let features = { known: false, items: [] };
