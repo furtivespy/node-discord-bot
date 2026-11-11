@@ -84,6 +84,7 @@ describe("help catalog", () => {
     assert.ok(names.includes("dadjoke"));
     assert.ok(!names.includes("people"));
     assert.ok(!names.includes("settings"));
+    assert.ok(!names.includes("statusupdate"));
     assert.ok(!names.includes("test"));
     assert.ok(!names.includes("config"));
     assert.ok(!names.includes("starboard"));
@@ -141,8 +142,10 @@ describe("help catalog", () => {
     assert.ok(admin.includes("usage"));
     assert.ok(admin.includes("status"));
     assert.ok(admin.includes("context"));
+    assert.ok(!admin.includes("statusupdate"));
     assert.ok(owner.includes("people"));
     assert.ok(owner.includes("settings"));
+    assert.ok(owner.includes("statusupdate"));
   });
 
   it("resolves a command page and category page from the live set", () => {
@@ -192,6 +195,7 @@ describe("help catalog", () => {
     assert.equal(categoryIdFor(slashcommands.get("starboard")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("usage")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("status")), "admin");
+    assert.equal(categoryIdFor(slashcommands.get("statusupdate")), "admin");
     assert.equal(categoryIdFor(slashcommands.get("wiki")), "info");
     assert.equal(categoryIdFor(slashcommands.get("roll")), "games");
     assert.equal(categoryIdFor(slashcommands.get("help")), "util");

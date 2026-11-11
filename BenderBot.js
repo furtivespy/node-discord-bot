@@ -23,6 +23,7 @@ import createBugsnagLogger from "./modules/bugsnagLogger.js";
 import { rememberSlashCommandIds } from "./modules/guildHelpFeatures.js";
 import { createImageGenProbe, rememberSlashRegistration } from "./modules/guildHealth.js";
 import { createUsagePulse, noteSlashUse } from "./modules/usagePulse.js";
+import { applyBotActivity } from "./modules/botActivity.js";
 import {
   commandRegistrationPayload,
   isQaUnlockAdminCommands,
@@ -362,9 +363,12 @@ const init = async () => {
       }
 
       try {
-        client.user.setActivity(client.config.activity, {
-          type: client.config.activityType,
-        });
+        applyBotActivity(
+          client.user,
+          client.config.activity,
+          client.config.activityType,
+          { url: client.config.activityUrl }
+        );
       } catch (e) {
         client.logger.log(e, "warn");
       }

@@ -18,6 +18,7 @@ import Settings from "../slashcommands/util/settings.js";
 import Starboard from "../slashcommands/util/starboard.js";
 import TestCommand from "../slashcommands/util/test.js";
 import People from "../slashcommands/util/people.js";
+import StatusUpdate from "../slashcommands/util/statusupdate.js";
 import { assertEphemeral } from "./assertEphemeral.js";
 
 const ADMINISTRATOR = String(PermissionsBitField.Flags.Administrator);
@@ -125,6 +126,7 @@ describe("commandRegistrationPayload", () => {
     new Starboard(client),
     new Usage(client),
     new TestCommand(client),
+    new StatusUpdate(client),
   ];
 
   it("strips Administrator when unlocked and leaves the builder unchanged", () => {
@@ -212,5 +214,11 @@ describe("runtime administrator checks", () => {
     await people.execute(peopleQa);
     assertEphemeral(peopleQa.replies[0]);
     assert.match(peopleQa.replies[0].content, /only for the bot owner/);
+
+    const statusupdate = new StatusUpdate(client);
+    const statusQa = mockInteraction({ isAdmin: false, userId: "qa-1" });
+    await statusupdate.execute(statusQa);
+    assertEphemeral(statusQa.replies[0]);
+    assert.match(statusQa.replies[0].content, /only for the bot owner/);
   });
 });

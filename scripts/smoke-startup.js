@@ -86,9 +86,10 @@ async function main() {
 
   try {
     assert(!fs.existsSync(path.join(ROOT, 'commands/fun/Markov.js')), 'commands/fun/Markov.js should be deleted')
-    pass('prefix Markov.js deleted')
+    assert(!fs.existsSync(path.join(ROOT, 'commands/util/Status.js')), 'commands/util/Status.js should be deleted')
+    pass('prefix Markov.js and Status.js deleted')
   } catch (e) {
-    fail('prefix Markov.js deleted', e)
+    fail('prefix Markov.js and Status.js deleted', e)
   }
 
   let slash
@@ -164,15 +165,38 @@ async function main() {
   }
 
   try {
+    const statusupdate = slash && slash.loaded.find((c) => c.name === 'statusupdate')
+    assert(statusupdate, '/statusupdate module did not load')
+    assert(statusupdate.data?.name === 'statusupdate', 'slash payload name is not statusupdate')
+    assert(statusupdate.data?.default_member_permissions, '/statusupdate should default to admin permissions')
+    const typeOpt = (statusupdate.data.options || []).find((o) => o.name === 'type')
+    const activityOpt = (statusupdate.data.options || []).find((o) => o.name === 'activity')
+    const urlOpt = (statusupdate.data.options || []).find((o) => o.name === 'url')
+    assert(typeOpt?.required, '/statusupdate missing required type option')
+    assert(activityOpt?.required, '/statusupdate missing required activity option')
+    assert(urlOpt && !urlOpt.required, '/statusupdate missing optional url option')
+    const choiceValues = (typeOpt.choices || []).map((choice) => choice.value)
+    for (const name of ['PLAYING', 'LISTENING', 'WATCHING', 'STREAMING', 'COMPETING']) {
+      assert(choiceValues.includes(name), `/statusupdate missing type choice ${name}`)
+    }
+    assert(!choiceValues.includes('CUSTOM'), '/statusupdate should not offer Custom')
+    pass('slash command load + /statusupdate schema')
+  } catch (e) {
+    fail('slash command load + /statusupdate schema', e)
+  }
+
+  try {
     const prefix = await loadJsModules('commands')
     if (prefix.errors.length) throw new Error(prefix.errors.join('\n'))
     const names = prefix.loaded.map((c) => c.name)
     console.log(`Loaded ${prefix.loaded.length} prefix commands: ${names.sort().join(', ')}`)
     assert(!names.includes('markov'), 'prefix markov command should be gone')
     assert(!names.includes('chain'), 'prefix chain alias command should be gone')
-    pass('prefix commands no longer include markov/chain')
+    assert(!names.includes('status'), 'prefix status command should be gone')
+    assert(!fs.existsSync(path.join(ROOT, 'commands/util/Status.js')), 'commands/util/Status.js should be deleted')
+    pass('prefix commands no longer include markov/chain/status')
   } catch (e) {
-    fail('prefix commands no longer include markov/chain', e)
+    fail('prefix commands no longer include markov/chain/status', e)
   }
 
   fs.mkdirSync(DATA_DIR, { recursive: true })
