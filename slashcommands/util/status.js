@@ -1,6 +1,6 @@
 import SlashCommand from "../../base/SlashCommand.js";
 import { SlashCommandBuilder } from "@discordjs/builders";
-import { EmbedBuilder, PermissionsBitField } from "discord.js";
+import { EmbedBuilder, PermissionsBitField, MessageFlags } from "discord.js";
 import {
   canViewHealth,
   collectAllGuildHealth,
@@ -40,7 +40,7 @@ class Status extends SlashCommand {
       if (!canViewHealth(this.client, interaction)) {
         await interaction.reply({
           content: "This health check is only for server administrators.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -48,7 +48,7 @@ class Status extends SlashCommand {
       if (!interaction.guild) {
         await interaction.reply({
           content: "Use this command in a server.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -58,11 +58,11 @@ class Status extends SlashCommand {
         if (!isBotAdmin(this.client, interaction.user.id)) {
           await interaction.reply({
             content: "Showing every server is only for the bot owner or configured admin IDs.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
           await this.client.guilds.fetch();
         } catch (e) {
@@ -76,7 +76,7 @@ class Status extends SlashCommand {
         const chunks = splitDiscordMessages(formatAllGuildsHealth(snapshots, shared));
         await interaction.editReply({ content: chunks[0] });
         for (const chunk of chunks.slice(1)) {
-          await interaction.followUp({ content: chunk, ephemeral: true });
+          await interaction.followUp({ content: chunk, flags: MessageFlags.Ephemeral });
         }
         return;
       }
@@ -86,12 +86,12 @@ class Status extends SlashCommand {
         .setColor(healthEmbedColor(snapshot.health))
         .setDescription(formatHealthDescription(snapshot).slice(0, 4096))
         .setFooter({ text: "Ephemeral · admins only · no secrets" });
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     } catch (e) {
       this.client.logger.log(e, "error");
       const payload = {
         content: "Something went wrong reading health.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(payload).catch(() => {});

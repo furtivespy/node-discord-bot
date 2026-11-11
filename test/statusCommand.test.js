@@ -4,6 +4,7 @@ import { Collection, PermissionsBitField } from "discord.js";
 import Status, { canViewHealth } from "../slashcommands/util/status.js";
 import { createImageGenProbe, rememberSlashRegistration } from "../modules/guildHealth.js";
 import { createUsagePulse, FEATURE_EVENTS } from "../modules/usagePulse.js";
+import { assertEphemeral } from "./assertEphemeral.js";
 
 const SECRET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vThisIsASecretToken/pub?output=csv";
@@ -126,12 +127,12 @@ describe("/status command", () => {
     const cmd = new Status(mockClient());
     const user = mockInteraction({ isAdmin: false, userId: "rando" });
     await cmd.execute(user);
-    assert.equal(user.replies[0].ephemeral, true);
+    assertEphemeral(user.replies[0]);
     assert.match(user.replies[0].content, /only for server administrators/);
 
     const dm = mockInteraction({ guildId: null, userId: "owner-1" });
     await cmd.execute(dm);
-    assert.equal(dm.replies[0].ephemeral, true);
+    assertEphemeral(dm.replies[0]);
     assert.match(dm.replies[0].content, /server/);
   });
 
@@ -152,7 +153,7 @@ describe("/status command", () => {
     const cmd = new Status(client);
     const interaction = mockInteraction({ isAdmin: true });
     await cmd.execute(interaction);
-    assert.equal(interaction.replies[0].ephemeral, true);
+    assertEphemeral(interaction.replies[0]);
     assert.ok(interaction.replies[0].embeds?.[0]);
     const text = embedText(interaction.replies[0]);
     assert.match(text, /Alpha Pub/);
@@ -177,7 +178,7 @@ describe("/status command", () => {
     const admin = mockInteraction({ userId: "mod-1", isAdmin: true, all: true });
     await cmd.execute(admin);
     assert.match(admin.replies[0].content, /bot owner/i);
-    assert.equal(admin.replies[0].ephemeral, true);
+    assertEphemeral(admin.replies[0]);
 
     const owner = mockInteraction({ userId: "owner-1", isAdmin: false, all: true });
     await cmd.execute(owner);

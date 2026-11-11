@@ -25,9 +25,13 @@ class SlashCommand {
     }
 
     async getGoogleImg(searchTerm, isGif, start=1, safeSearch = true){
+      const key = this.client.config.google_key;
+      const cx = this.client.config.google_cxid;
+      if (!key || !cx) return [];
+
       let query = new URLSearchParams()
-      query.set("key", this.client.config.google_key)
-      query.set("cx", this.client.config.google_cxid)
+      query.set("key", key)
+      query.set("cx", cx)
       query.set("searchType", "image")
       query.set("q", searchTerm)
       query.set("start", start)
@@ -37,11 +41,12 @@ class SlashCommand {
 
       let res = await fetch(`https://www.googleapis.com/customsearch/v1?${query.toString()}`)
       let json = await res.json()
-      return json.items
+      return Array.isArray(json.items) ? json.items : []
     }
     
     async getRandomGoogleImg(searchTerm, isGif, safeSearch = true){
       let results = await this.getGoogleImg(searchTerm, isGif, Math.floor(Math.random() * 25), safeSearch)
+      if (!results.length) return undefined;
       return results[Math.floor(Math.random() * results.length)]
     }
   }

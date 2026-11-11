@@ -1,7 +1,7 @@
 import SlashCommand from '../../base/SlashCommand.js';
 import { SlashCommandBuilder } from '@discordjs/builders';
 
-import { PermissionsBitField } from 'discord.js';
+import { PermissionsBitField, MessageFlags } from 'discord.js';
 
 
 class Settings extends SlashCommand {
@@ -22,16 +22,16 @@ class Settings extends SlashCommand {
     async execute(interaction) {
         try {
           if (interaction.member.id !== this.client.config.botOwnerId) {
-            return interaction.reply({content: 'You do not have permission to use this command.', ephemeral: true})
+            return interaction.reply({content: 'You do not have permission to use this command.', flags: MessageFlags.Ephemeral})
           }
           const setting = interaction.options.getString('setting')
           const value = interaction.options.getString('value')
           const settings = this.client.config
           if (!value || value === '') {
-            await interaction.reply({content: `The current ${setting} is ${settings[setting]}.`, ephemeral: true})
+            await interaction.reply({content: `The current ${setting} is ${settings[setting]}.`, flags: MessageFlags.Ephemeral})
             return
           }
-          await interaction.reply({content: `Setting ${setting} set to ${value}`, ephemeral: true})
+          await interaction.reply({content: `Setting ${setting} set to ${value}`, flags: MessageFlags.Ephemeral})
           settings[setting] = value
         } catch (e) {
             this.client.logger.log(e,'error')

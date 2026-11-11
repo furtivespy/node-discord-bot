@@ -1,6 +1,7 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
+import { MessageFlags } from "discord.js";
 
 import { PRIORITIZE_CHANNEL_TYPES } from "../../modules/chatBackfill.js";
 
@@ -47,7 +48,7 @@ class Backfill extends SlashCommand {
   async execute(interaction) {
     try {
       if (!interaction.guild) {
-        await interaction.reply({ content: "Use this command in a server.", ephemeral: true });
+        await interaction.reply({ content: "Use this command in a server.", flags: MessageFlags.Ephemeral });
         return;
       }
 
@@ -68,11 +69,11 @@ class Backfill extends SlashCommand {
           await this.prioritize(interaction);
           break;
         default:
-          await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
+          await interaction.reply({ content: "Unknown subcommand.", flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
       this.client.logger.log(e, "error");
-      const payload = { content: "Something went wrong with that backfill command.", ephemeral: true };
+      const payload = { content: "Something went wrong with that backfill command.", flags: MessageFlags.Ephemeral };
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply(payload).catch(() => {});
       } else {
@@ -82,7 +83,7 @@ class Backfill extends SlashCommand {
   }
 
   async status(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const db = this.client.getDatabase(interaction.guild.id);
     const worker = db.getBackfillWorker();
     const summary = db.getBackfillSummary();
@@ -160,7 +161,7 @@ class Backfill extends SlashCommand {
   }
 
   async start(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await this.client.chatBackfill.startGuild(interaction.guild);
     await interaction.editReply({
       content:
@@ -172,12 +173,12 @@ class Backfill extends SlashCommand {
     this.client.chatBackfill.pauseGuild(interaction.guild);
     await interaction.reply({
       content: "Backfill and File Search watching will pause after the current page. Progress is saved.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   async resume(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await this.client.chatBackfill.resumeGuild(interaction.guild);
     await interaction.editReply({ content: "Backfill resumed." });
   }
@@ -188,7 +189,7 @@ class Backfill extends SlashCommand {
     if (reason) {
       await interaction.reply({
         content: `Cannot crawl ${channel}: ${reason}.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -196,7 +197,7 @@ class Backfill extends SlashCommand {
     const result = this.client.chatBackfill.prioritize(interaction.guild, channel);
     await interaction.reply({
       content: result.message || `${channel} will be crawled next. Start or resume backfill if it is paused.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }

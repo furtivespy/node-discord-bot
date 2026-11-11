@@ -1,6 +1,7 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
+import { MessageFlags } from "discord.js";
 
 import Roller from "roll";
 
@@ -62,9 +63,11 @@ class Roll extends SlashCommand {
             false,
             true
           );
-          embedItem.thumbnail = {
-            url: img.link,
-          };
+          if (img?.link) {
+            embedItem.thumbnail = {
+              url: img.link,
+            };
+          }
         } catch (e) {
           this.client.logger.log(e, "error");
         }
@@ -74,7 +77,7 @@ class Roll extends SlashCommand {
           content: `I don't know how to roll ${interaction.options.getString(
             "dice"
           )}`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } catch (e) {

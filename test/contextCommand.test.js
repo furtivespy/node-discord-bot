@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { PermissionsBitField } from "discord.js";
 import Context from "../slashcommands/util/context.js";
 import { createContextPackService, persistGuildPackStatus } from "../modules/contextPacks.js";
+import { assertEphemeral } from "./assertEphemeral.js";
 
 const SECRET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vThisIsASecretToken/pub?output=csv";
@@ -167,7 +168,7 @@ describe("/context command", () => {
     await cmd.execute(add);
 
     assert.equal(add.deferred, true);
-    assert.equal(add.replies[0].ephemeral, true);
+    assertEphemeral(add.replies[0]);
     const added = replyContent(add);
     assert.match(added.content, /Added context pack `plays`/);
     assert.match(added.content, /https:\/\/docs\.google\.com\/…/);
@@ -183,7 +184,7 @@ describe("/context command", () => {
 
     const list = mockInteraction({ subcommand: "list" });
     await cmd.execute(list);
-    assert.equal(list.replies[0].ephemeral, true);
+    assertEphemeral(list.replies[0]);
     assert.match(list.replies[0].content, /`plays` \(plays\)/);
     assert.match(list.replies[0].content, /\/context status/);
     assert.match(list.replies[0].content, /\/context preview/);
@@ -208,7 +209,7 @@ describe("/context command", () => {
     const cmd = new Context(client);
     const denied = mockInteraction({ subcommand: "status", isAdmin: false, userId: "rando" });
     await cmd.execute(denied);
-    assert.equal(denied.replies[0].ephemeral, true);
+    assertEphemeral(denied.replies[0]);
     assert.match(denied.replies[0].content, /only for server administrators/);
   });
 
@@ -218,7 +219,7 @@ describe("/context command", () => {
     const status = mockInteraction({ subcommand: "status" });
     await cmd.execute(status);
     const text = status.replies[0].embeds[0].data.description;
-    assert.equal(status.replies[0].ephemeral, true);
+    assertEphemeral(status.replies[0]);
     assert.match(text, /No context packs configured/);
     assert.doesNotMatch(text, /broken/);
     assert.equal(status.replies[0].components.length, 0);
@@ -240,7 +241,7 @@ describe("/context command", () => {
     await cmd.execute(status);
     const payload = status.replies[0];
     const text = payload.embeds[0].data.description;
-    assert.equal(payload.ephemeral, true);
+    assertEphemeral(payload);
     assert.match(text, /`plays`/);
     assert.match(text, /healthy/);
     assert.doesNotMatch(text, /stale/);
@@ -254,6 +255,39 @@ describe("/context command", () => {
     assert.ok(
       payload.components[0].components.some((button) => button.data.custom_id === "context:refresh:all")
     );
+  });
+
+  it("collects freshness refresh clicks on withResponse resource.message", async () => {
+    const client = mockClient();
+    const cmd = new Context(client);
+    await cmd.execute(
+      mockInteraction({
+        subcommand: "add",
+        strings: { url: SECRET_URL, name: "plays", kind: "plays" },
+      })
+    );
+
+    const collectedOn = [];
+    const message = {
+      createMessageComponentCollector() {
+        collectedOn.push(this);
+        return { on() {} };
+      },
+    };
+    const status = mockInteraction({ subcommand: "status" });
+    status.reply = async (payload) => {
+      status.replies.push(payload);
+      return { resource: { message } };
+    };
+    await cmd.execute(status);
+
+    assert.equal(status.replies[0].withResponse, true);
+    assert.equal(status.replies[0].fetchReply, undefined);
+    assertEphemeral(status.replies[0]);
+    assert.ok(status.replies[0].components.length >= 1);
+    assert.equal(collectedOn.length, 1);
+    assert.equal(collectedOn[0], message);
+    assert.equal(typeof status.fetchReply, "undefined");
   });
 
   it("refresh now re-fetches and reports HTTP errors without printing secrets", async () => {
@@ -277,7 +311,7 @@ describe("/context command", () => {
     assert.equal(calls, 2);
     assert.equal(refresh.deferred, true);
     assert.equal(refresh.replies[0].deferred, true);
-    assert.equal(refresh.replies[0].ephemeral, true);
+    assertEphemeral(refresh.replies[0]);
     const result = refresh.replies.find((payload) => payload.content);
     assert.equal(result.ephemeral, undefined);
     assert.match(result.content, /HTTP error \(404\)/);
@@ -323,7 +357,7 @@ describe("/context command", () => {
     await cmd.execute(refresh);
     assert.equal(deferredWhenFetchStarted, true);
     assert.equal(refresh.replies[0].deferred, true);
-    assert.equal(refresh.replies[0].ephemeral, true);
+    assertEphemeral(refresh.replies[0]);
     assert.match(refresh.replies[1].content, /Refreshed 1 pack/);
   });
 
@@ -349,7 +383,7 @@ describe("/context command", () => {
     await cmd.execute(attach);
     assert.equal(deferredWhenFetchStarted, true);
     assert.equal(attach.replies[0].deferred, true);
-    assert.equal(attach.replies[0].ephemeral, true);
+    assertEphemeral(attach.replies[0]);
     assert.match(replyContent(attach).content, /Attached context pack `plays`/);
   });
 
@@ -442,7 +476,7 @@ describe("/context command", () => {
     });
     await cmd.execute(denied);
     assert.match(denied.replies[0].content, /only for the bot owner/);
-    assert.equal(denied.replies[0].ephemeral, true);
+    assertEphemeral(denied.replies[0]);
   });
 
   it("owner all-guilds view includes the same pack details as /context status", async () => {
@@ -514,7 +548,7 @@ describe("/context command", () => {
         userId: "rando",
       });
       await cmd.execute(denied);
-      assert.equal(denied.replies[0].ephemeral, true);
+      assertEphemeral(denied.replies[0]);
       assert.match(denied.replies[0].content, /only for server administrators/);
       assert.doesNotMatch(JSON.stringify(denied.replies), /2PACX/);
     }
@@ -575,7 +609,7 @@ describe("/context command", () => {
     const preview = mockInteraction({ subcommand: "preview" });
     await cmd.execute(preview);
     assert.equal(preview.deferred, true);
-    assert.equal(preview.replies[0].ephemeral, true);
+    assertEphemeral(preview.replies[0]);
     const result = preview.replies.find((payload) => payload.content);
     assert.match(result.content, /Preview of `plays`/);
     assert.match(result.content, /cache/);

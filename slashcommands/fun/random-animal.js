@@ -2,7 +2,7 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder, MessageFlags } from "discord.js";
 
 import RandomColor from "randomcolor";
 
@@ -94,7 +94,7 @@ class Wiki extends SlashCommand {
         await interaction.editReply({ embeds: [embed] });
       }
     } catch (e) {
-      await interaction.editReply({ content: "Something went wrong!", ephemeral: true });
+      await interaction.editReply({ content: "Something went wrong!", flags: MessageFlags.Ephemeral });
       this.client.logger.log(e, "error");
     }
   }

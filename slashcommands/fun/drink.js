@@ -1,7 +1,25 @@
 import SlashCommand from '../../base/SlashCommand.js';
 import { SlashCommandBuilder } from '@discordjs/builders';
-import { EmbedBuilder, ActionRowBuilder, SelectMenuBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } from 'discord.js';
 
+const COLLECTOR_MS = 60_000;
+const UNKNOWN_MESSAGE = 10008;
+
+export function isCollectorEnd(error) {
+    return error?.code === 'InteractionCollectorError';
+}
+
+export function isUnknownMessage(error) {
+    return error?.code === UNKNOWN_MESSAGE;
+}
+
+export async function dismissTimedOutReply(interaction) {
+    try {
+        await interaction.editReply({ content: 'Timed out', components: [] });
+    } catch (error) {
+        if (!isUnknownMessage(error)) throw error;
+    }
+}
 
 class Drink extends SlashCommand {
     constructor(client){
@@ -40,7 +58,7 @@ class Drink extends SlashCommand {
 
                     const row = new ActionRowBuilder()
                     .addComponents(
-                        new SelectMenuBuilder()
+                        new StringSelectMenuBuilder()
                             .setCustomId('select')
                             .setPlaceholder('Nothing selected')
                             .addOptions(options),
@@ -49,23 +67,26 @@ class Drink extends SlashCommand {
                     rply = await interaction.reply({ 
                         content: `Multiple results for ${interaction.options.getString('search')}`, 
                         components: [row],
-                        ephemeral: true,
-                        fetchReply:  true
+                        flags: MessageFlags.Ephemeral
                     })
                     const filter = (int) => int.customId === 'select'
-                    let newInteraction = await rply.awaitMessageComponent({ filter, time: 60_000 }).catch(err => this.client.logger.log(err,'error'))
-
-                    if (newInteraction) {
-                        const val = parseInt(newInteraction.values[0])
-                        theDrink = json.drinks[val]
-                        newInteraction.update({
-                            content: json.drinks[val].strDrink,
-                            components: []
-                          })
-                    } else {
-                        rply.delete()
-                        return
+                    let newInteraction
+                    try {
+                        newInteraction = await rply.awaitMessageComponent({ filter, time: COLLECTOR_MS })
+                    } catch (err) {
+                        if (isCollectorEnd(err)) {
+                            await dismissTimedOutReply(interaction)
+                            return
+                        }
+                        throw err
                     }
+
+                    const val = parseInt(newInteraction.values[0])
+                    theDrink = json.drinks[val]
+                    await newInteraction.update({
+                        content: json.drinks[val].strDrink,
+                        components: []
+                      })
                 } 
                  
                 const drinkDetail = new EmbedBuilder().setColor(13928716).setTitle(theDrink.strDrink).setImage(theDrink.strDrinkThumb)
@@ -80,7 +101,6 @@ class Drink extends SlashCommand {
                 drinkDetail.addFields({name: `Instructions`, value: theDrink.strInstructions})
 
                 if (rply){
-                    //await interaction.editReply({ content: 'Selected', components: [] })
                     await interaction.followUp({ embeds: [drinkDetail] })
                     
                 } else {
@@ -89,7 +109,7 @@ class Drink extends SlashCommand {
                 
 
             } else {
-                await interaction.reply({ content: `I couldn't find anyting for ${interaction.options.getString('search')}`, ephemeral: true})
+                await interaction.reply({ content: `I couldn't find anyting for ${interaction.options.getString('search')}`, flags: MessageFlags.Ephemeral})
             }
         } catch (e) {
             this.client.logger.log(e,'error')
