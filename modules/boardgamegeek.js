@@ -71,12 +71,7 @@ class BoardGameGeek {
   }
 
   static isEphemeral(detailsType) {
-    if (detailsType == BoardGameGeek.DetailsEnum.ALLEPHEMERAL ||
-        detailsType == BoardGameGeek.DetailsEnum.LINKSEPHMERAL) 
-    {
-      return true
-    }
-    return false
+    return detailsType === BoardGameGeek.DetailsEnum.ALLEPHEMERAL
   }
 
   async LoadBggData(fetchImpl = fetch) {
@@ -184,12 +179,12 @@ class BoardGameGeek {
       },
       {
         name: `Designer(s)`,
-        value: this.gameInfo.boardgamedesigner ? Array.isArray(this.gameInfo.boardgamedesigner) ? this.gameInfo.boardgamedesigner.map(d => d.text).join("\n") : this.gameInfo.boardgamedesigner.text : "N/A",
+        value: this.gameInfo.boardgamedesigner ? Array.isArray(this.gameInfo.boardgamedesigner) ? this.gameInfo.boardgamedesigner.map(d => decode(d.text)).join("\n") : decode(this.gameInfo.boardgamedesigner.text) : "N/A",
         inline: true
       },
       {
         name: `Publisher(s)`,
-        value: Array.isArray(this.gameInfo.boardgamepublisher) ? this.gameInfo.boardgamepublisher.map(d => d.text).join("\n") : this.gameInfo.boardgamepublisher.text,
+        value: Array.isArray(this.gameInfo.boardgamepublisher) ? this.gameInfo.boardgamepublisher.map(d => decode(d.text)).join("\n") : decode(this.gameInfo.boardgamepublisher.text),
         inline: true
       }
     );
@@ -206,7 +201,7 @@ class BoardGameGeek {
       detailEmbed.addFields(
         {
           name: `Expansions`,
-          value: Array.isArray(this.gameInfo.boardgameexpansion) ? take(this.gameInfo.boardgameexpansion,10).map(d => `[${d.text}](https://boardgamegeek.com/boardgame/${d.objectid})`).join("\n") : `[${this.gameInfo.boardgameexpansion.text}](https://boardgamegeek.com/boardgame/${this.gameInfo.boardgameexpansion.objectid})`,
+          value: Array.isArray(this.gameInfo.boardgameexpansion) ? take(this.gameInfo.boardgameexpansion,10).map(d => `[${decode(d.text)}](https://boardgamegeek.com/boardgame/${d.objectid})`).join("\n") : `[${decode(this.gameInfo.boardgameexpansion.text)}](https://boardgamegeek.com/boardgame/${this.gameInfo.boardgameexpansion.objectid})`,
           inline: true
         }
       )

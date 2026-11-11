@@ -2,7 +2,7 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder, MessageFlags } from "discord.js";
 
 import RandomColor from "randomcolor";
 
@@ -175,7 +175,10 @@ class Riddle extends SlashCommand {
             .setDescription(`Sorry, that's not it!\n\nTry again.`);
       }
 
-      interaction.reply({ embeds: [embed], ephemeral: isEphemeral });
+      interaction.reply({
+        embeds: [embed],
+        flags: isEphemeral ? MessageFlags.Ephemeral : undefined,
+      });
     } catch (e) {
       this.client.logger.log(e, "error");
     }

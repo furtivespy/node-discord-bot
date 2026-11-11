@@ -4,6 +4,7 @@ import {
   Partials,
   GatewayIntentBits,
   PermissionsBitField,
+  MessageFlags,
   REST,
   Routes,
 } from "discord.js";
@@ -23,6 +24,10 @@ import { rememberSlashCommandIds } from "./modules/guildHelpFeatures.js";
 import { createImageGenProbe, rememberSlashRegistration } from "./modules/guildHealth.js";
 import { createUsagePulse, noteSlashUse } from "./modules/usagePulse.js";
 import { applyBotActivity } from "./modules/botActivity.js";
+import {
+  commandRegistrationPayload,
+  isQaUnlockAdminCommands,
+} from "./modules/qaUnlock.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const enmapDataDir = process.env.IS_ON_FLY ? "/data" : "./data";
@@ -75,6 +80,7 @@ class BenderBot extends Client {
     this.guildDBs = {};
 
     this.logger = createBugsnagLogger(this.config.bugsnagKey, this.config.releaseStage);
+    this.qaUnlockAdminCommands = isQaUnlockAdminCommands();
     this.usagePulse = createUsagePulse({
       store: this.usageStore,
       logger: this.logger,
@@ -401,7 +407,15 @@ const init = async () => {
       }
 
       //Register Slash Commands
-      const cmds = client.slashcommands.map((sc) => sc.data.toJSON());
+      if (client.qaUnlockAdminCommands) {
+        client.logger.log(
+          "QA_UNLOCK_ADMIN_COMMANDS is set — admin slash commands register without Administrator defaultMemberPermissions and skip the runtime Administrator check (QA/dev only, not for production)",
+          "warn"
+        );
+      }
+      const cmds = client.slashcommands.map((sc) =>
+        commandRegistrationPayload(sc, client.qaUnlockAdminCommands)
+      );
       const rest = new REST({
         version: "10",
       }).setToken(client.config.token);
@@ -703,7 +717,7 @@ client.on("interactionCreate", async (interaction) => {
     console.error(error);
     return interaction.reply({
       content: "There was an error while executing this command!",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 });

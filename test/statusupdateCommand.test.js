@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ActivityType, PermissionsBitField } from "discord.js";
 import StatusUpdate from "../slashcommands/util/statusupdate.js";
+import { assertEphemeral } from "./assertEphemeral.js";
 
 function mockInteraction({
   userId = "owner-1",
@@ -83,12 +84,23 @@ describe("/statusupdate command", () => {
     assert.ok(!choiceValues.includes("CUSTOM"));
   });
 
+  it("rejects everyone when botOwnerId is empty", async () => {
+    const client = mockClient({ ownerId: "" });
+    const cmd = new StatusUpdate(client);
+    const ownerShaped = mockInteraction({ userId: "anyone" });
+    await cmd.execute(ownerShaped);
+    assertEphemeral(ownerShaped.replies[0]);
+    assert.match(ownerShaped.replies[0].content, /only for the bot owner/i);
+    assert.equal(client.config.activity, "old");
+    assert.equal(client.setActivityCalls.length, 0);
+  });
+
   it("rejects everyone who is not the bot owner", async () => {
     const client = mockClient();
     const cmd = new StatusUpdate(client);
     const admin = mockInteraction({ userId: "admin-1" });
     await cmd.execute(admin);
-    assert.equal(admin.replies[0].ephemeral, true);
+    assertEphemeral(admin.replies[0]);
     assert.match(admin.replies[0].content, /only for the bot owner/i);
     assert.equal(client.config.activity, "old");
     assert.equal(client.setActivityCalls.length, 0);

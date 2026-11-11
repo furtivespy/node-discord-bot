@@ -1,5 +1,5 @@
 import SlashCommand from "../../base/SlashCommand.js";
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder, MessageFlags } from "discord.js";
 import wtf from "wtf_wikipedia";
 import SampleSize from "lodash/sampleSize.js";
 import isNull from "lodash/isNull.js";
@@ -61,7 +61,7 @@ class Wiki extends SlashCommand {
           if (!doc) {
             interaction.reply({
               content: `Unable to find a wikipedia page with the title of '${search}'`,
-              ephemeral: true,
+              flags: MessageFlags.Ephemeral,
             });
           } else if (doc.isDisambiguation()) {
             let somelinks = SampleSize(doc.links(), 10);
@@ -71,7 +71,7 @@ class Wiki extends SlashCommand {
             });
             interaction.reply({
               content: `[${search}](${doc.url()}) is a disambiguation page.\nPerhaps you meant to be more specific with "(film)" or "(album)"?)\n\n**Here are some articles associated with your search:** ${links}`,
-              ephemeral: true,
+              flags: MessageFlags.Ephemeral,
             });
           } else {
             let description = doc.section(0).markdown();

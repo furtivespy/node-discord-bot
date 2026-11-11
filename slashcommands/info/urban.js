@@ -1,6 +1,6 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 
 import urban from '../../modules/UrbanDictionary.js';
 class Urban extends SlashCommand {
@@ -36,7 +36,7 @@ class Urban extends SlashCommand {
       if (results.length === 0) {
         await interaction.editReply({
           content: `Unable to find a definition for '${search}'`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       } else {  
 

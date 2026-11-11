@@ -4,6 +4,7 @@ import { PermissionsBitField } from "discord.js";
 import Usage, { canViewUsage } from "../slashcommands/util/usage.js";
 import { createUsagePulse, FEATURE_EVENTS } from "../modules/usagePulse.js";
 import { createGeminiAI } from "../modules/geminiai.js";
+import { assertEphemeral } from "./assertEphemeral.js";
 
 const T0 = Date.parse("2026-09-18T15:00:00.000Z");
 
@@ -71,7 +72,7 @@ describe("/usage command", () => {
     user.memberPermissions.has = () => false;
     await cmd.execute(user);
     assert.match(user.replies[0].content, /server admins/i);
-    assert.equal(user.replies[0].ephemeral, true);
+    assertEphemeral(user.replies[0]);
 
     const dm = mockInteraction({ guildId: null, userId: "owner-1" });
     await cmd.execute(dm);
@@ -89,7 +90,7 @@ describe("/usage command", () => {
     const interaction = mockInteraction({ userId: "mod-1", isAdmin: true });
     await cmd.execute(interaction);
     const text = interaction.replies[0].content;
-    assert.equal(interaction.replies[0].ephemeral, true);
+    assertEphemeral(interaction.replies[0]);
     assert.match(text, /Alpha Pub/);
     assert.match(text, /\/wiki` — 2/);
     assert.match(text, /\/ping` — 1/);

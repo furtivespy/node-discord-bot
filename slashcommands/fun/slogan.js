@@ -2,6 +2,14 @@ import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
 
+export const SLOGAN_UNAVAILABLE = "Couldn't reach sloganizer right now.";
+
+export function sloganUrl(item) {
+  const params = new URLSearchParams({
+    slogan: item,
+  });
+  return `http://www.sloganizer.net/en/outbound.php?${params}`;
+}
 
 class Slogan extends SlashCommand {
   constructor(client) {
@@ -21,15 +29,28 @@ class Slogan extends SlashCommand {
   }
 
   async execute(interaction) {
-    await interaction.deferReply();
-    const item = new URLSearchParams({
-      slogan: interaction.options.getString("item"),
-    });
-    const response = await fetch(
-      `http://www.sloganizer.net/en/outbound.php?${item}`
-    );
-    const data = await response.text();
-    await interaction.editReply(data.replace(/<.*?>/g, ""));
+    try {
+      await interaction.deferReply();
+      const item = interaction.options.getString("item");
+      const response = await fetch(sloganUrl(item));
+      if (!response.ok) {
+        await interaction.editReply({ content: SLOGAN_UNAVAILABLE });
+        return;
+      }
+      const data = (await response.text()).replace(/<.*?>/g, "").trim();
+      if (!data) {
+        await interaction.editReply({ content: SLOGAN_UNAVAILABLE });
+        return;
+      }
+      await interaction.editReply(data);
+    } catch (e) {
+      this.client.logger.log(e, "error");
+      try {
+        await interaction.editReply({ content: SLOGAN_UNAVAILABLE });
+      } catch (replyError) {
+        this.client.logger.log(replyError, "error");
+      }
+    }
   }
 }
 

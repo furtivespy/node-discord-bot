@@ -1,6 +1,6 @@
 import SlashCommand from "../../base/SlashCommand.js";
 import { SlashCommandBuilder } from "@discordjs/builders";
-import { PermissionsBitField } from "discord.js";
+import { PermissionsBitField, MessageFlags } from "discord.js";
 import {
   applyBotActivity,
   isStreamingUrl,
@@ -54,7 +54,7 @@ class StatusUpdate extends SlashCommand {
       if (!this.isBotOwner(interaction.user.id)) {
         await interaction.reply({
           content: "This command is only for the bot owner.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -63,7 +63,7 @@ class StatusUpdate extends SlashCommand {
       if (!activityType) {
         await interaction.reply({
           content: "That activity type is not supported.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -72,7 +72,7 @@ class StatusUpdate extends SlashCommand {
       if (!activity) {
         await interaction.reply({
           content: "Activity text cannot be empty.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -83,14 +83,14 @@ class StatusUpdate extends SlashCommand {
           await interaction.reply({
             content:
               "Streaming needs a Twitch or YouTube URL. Pass the url option, for example `url:https://twitch.tv/discord`.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
         if (!isStreamingUrl(url)) {
           await interaction.reply({
             content: "Streaming URLs must be a Twitch or YouTube link.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -111,13 +111,13 @@ class StatusUpdate extends SlashCommand {
           activityType === "STREAMING"
             ? `Status set to **${label}** ${activity} (${url}).`
             : `Status set to **${label}** ${activity}.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (e) {
       this.client.logger.log(e, "error");
       const payload = {
         content: "Something went wrong updating status.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(payload).catch(() => {});

@@ -1,6 +1,7 @@
 import SlashCommand from "../../base/SlashCommand.js";
 
 import { SlashCommandBuilder } from "@discordjs/builders";
+import { MessageFlags } from "discord.js";
 
 import { PERSONALITY_NAMES } from "../../modules/guildConfigOverview.js";
 
@@ -46,7 +47,7 @@ class SetPersonality extends SlashCommand {
 
   async execute(interaction) {
     if (!interaction.guild) {
-        await interaction.reply({ content: "This command can only be used in a server.", ephemeral: true });
+        await interaction.reply({ content: "This command can only be used in a server.", flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -63,11 +64,11 @@ class SetPersonality extends SlashCommand {
           await this.reset(interaction);
           break;
         default:
-          await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
+          await interaction.reply({ content: "Unknown subcommand.", flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
       this.client.logger.error(`Error in /setpersonality: ${e.stack || e}`);
-      await interaction.reply({ content: "An error occurred while processing your command.", ephemeral: true }).catch(err => this.client.logger.error(`Failed to send error reply: ${err}`));
+      await interaction.reply({ content: "An error occurred while processing your command.", flags: MessageFlags.Ephemeral }).catch(err => this.client.logger.error(`Failed to send error reply: ${err}`));
     }
   }
 
@@ -94,7 +95,7 @@ class SetPersonality extends SlashCommand {
 
     await interaction.reply({
       content: `The current AI personality is: **${personalityName}**.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -105,12 +106,12 @@ class SetPersonality extends SlashCommand {
       this.client.settings.delete(interaction.guild.id, "ai_selected_personality");
       await interaction.reply({
         content: "AI personality has been reset to default (Bender).",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } else {
       await interaction.reply({
         content: "AI personality is already using the default (Bender). No changes made.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
