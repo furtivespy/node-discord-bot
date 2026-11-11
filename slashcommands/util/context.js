@@ -107,11 +107,25 @@ function liveFetchOk(fetched) {
   return Boolean(fetched.ok);
 }
 
+function trimTrailingPeriod(text) {
+  return String(text || "").replace(/\.$/, "");
+}
+
+function fetchFailureLabel(kind, detail) {
+  if (kind === `error (${detail})` || kind === `error (${detail}.)`) return "error";
+  return kind;
+}
+
 function describeFetchFailure(fetched, url) {
   if (!fetched) return "context pack service is not available";
-  const detail = scrubErrorMessage(fetched.last_error || fetched.error || "unknown error", url);
+  const detail = trimTrailingPeriod(
+    scrubErrorMessage(fetched.last_error || fetched.error || "unknown error", url)
+  );
   const kind = formatFetchResult(fetched.last_result, fetched.last_error || fetched.error);
-  return `${kind} — ${detail}`;
+  if (!detail) return kind || "error";
+  const label = fetchFailureLabel(kind, detail);
+  if (label === detail) return label;
+  return `${label} — ${detail}`;
 }
 
 class Context extends SlashCommand {
