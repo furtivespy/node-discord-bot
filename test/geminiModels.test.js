@@ -27,6 +27,12 @@ function recordRequests(ai, respond) {
 }
 
 describe("pinned Gemini model IDs (FUR-163)", () => {
+  it("keeps the Gemini Developer API v1 default (FUR-210)", () => {
+    const ai = makeAi();
+    assert.equal(ai.AI2.apiClient.clientOptions.apiVersion, undefined);
+    assert.equal(ai.AI2.apiClient.clientOptions.httpOptions.apiVersion, "v1");
+  });
+
   it("uses gemini-3.8-flash for chat, grounding, prompt, and code-explain", async () => {
     const ai = makeAi();
     const requests = recordRequests(ai, () => ({
