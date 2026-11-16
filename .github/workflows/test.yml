@@ -6,8 +6,8 @@
 #   linux-x64 N-API prebuilds exist and ship Cairo/Pango/JPEG/GIF/RSVG next
 #   to canvas.node (verified via ldd). If a prebuild is missing, compile
 #   needs the same Ubuntu -dev set as the Dockerfile build stage and
-#   games-discord-bot Tests. GitHub ubuntu-latest apt lists do not include
-#   those libraries (Ubuntu 24.04 runner-image readme, 2026-11-01 image).
+#   games-discord-bot Tests. GitHub ubuntu-26.04 apt lists do not include
+#   those libraries (Ubuntu 26.04 runner-image readme).
 # - better-sqlite3@13 ships N-API prebuilds; the runner already has g++/make.
 # - package-lock.json records git+ssh for ascii-table and natural; hosted
 #   runners have no deploy key, so rewrite SSH to HTTPS like Game Bot.
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
