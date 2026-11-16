@@ -38,7 +38,7 @@ jobs:
 
       - name: Assert Node and npm pins
         run: |
-          test "$(node -v)" = "v26.13.0"
+          test "$(node -v)" = "v26.13.1"
           test "$(npm -v)" = "11.20.0"
 
       - name: Install canvas native libraries
