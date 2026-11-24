@@ -1,5 +1,6 @@
-# npm test + smoke on PRs and master, using the Node/npm pins in .nvmrc
-# and package.json. Does not tag, build, or deploy (see release.yml).
+# Biome lint + npm test + smoke on PRs and master, using the Node/npm pins
+# in .nvmrc and package.json. Together `lint` and `test` equal `npm run verify`.
+# Does not tag, build, or deploy (see release.yml).
 #
 # Native notes (investigated, not assumed):
 # - canvas@3.2.3 install is `prebuild-install -r napi || node-gyp rebuild`.
@@ -24,6 +25,34 @@ permissions:
   contents: read
 
 jobs:
+  # Required check. Fast: skips lifecycle scripts so canvas is not compiled.
+  lint:
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Assert Node and npm pins
+        run: |
+          test "$(node -v)" = "v26.13.1"
+          test "$(npm -v)" = "11.20.0"
+
+      - name: Install dependencies
+        run: |
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+  # Required check. `npm run verify` = lint + this job's two steps.
   test:
     runs-on: ubuntu-26.04
     steps:

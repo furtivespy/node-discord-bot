@@ -1,0 +1,21 @@
+{
+	// Review authors (login, case-insensitive, optional "[bot]") or exact check
+	// names that must have reviewed. The Cursor QA run posts a comment, not a
+	// GitHub review, so the agent adds a `cursor` review to the state only when
+	// the PR's QA Status block passes (see .agents/skills/ship-pr/SKILL.md and
+	// docs/merge-policy.md).
+	"reviewers": {
+		"low": ["cursor"],
+		"medium": ["cursor"],
+		"high": ["cursor"]
+	},
+	// High risk always waits for the owner.
+	"humanApprovalFor": ["high"],
+	// Tiers the agent may merge with --merge once the gates above pass.
+	"autoMergeFor": ["low", "medium"],
+	// The repo merges with merge commits.
+	"mergeMethod": "merge",
+	// Production deploy to Fly.io is currently manual; wire up a running-version
+	// check once automated Fly deploy + health check are added to release.yml.
+	"deployCheck": null
+}

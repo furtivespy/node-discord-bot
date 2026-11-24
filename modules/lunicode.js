@@ -349,11 +349,11 @@ function Lunicode() {
         
         // Sort diacritics in top, bottom or middle
 
-        for (var i = 768; i <= 789; i++) {
+        for (let i = 768; i <= 789; i++) {
           this.diacriticsTop.push(String.fromCharCode(i));
         }
         
-        for (var i = 790; i <= 819; i++) {
+        for (let i = 790; i <= 819; i++) {
           if (i != 794 && i != 795) {
             this.diacriticsBottom.push(String.fromCharCode(i));
           }
@@ -361,15 +361,15 @@ function Lunicode() {
         this.diacriticsTop.push(String.fromCharCode(794));
         this.diacriticsTop.push(String.fromCharCode(795));
         
-        for (var i = 820; i <= 824; i++) {
+        for (let i = 820; i <= 824; i++) {
           this.diacriticsMiddle.push(String.fromCharCode(i));
         }
         
-        for (var i = 825; i <= 828; i++) {
+        for (let i = 825; i <= 828; i++) {
           this.diacriticsBottom.push(String.fromCharCode(i));
         }
         
-        for (var i = 829; i <= 836; i++) {
+        for (let i = 829; i <= 836; i++) {
           this.diacriticsTop.push(String.fromCharCode(i));
         }
         this.diacriticsTop.push(String.fromCharCode(836));
@@ -425,7 +425,7 @@ function Lunicode() {
             //                30%: 70% of maxHeight to maxHeight
             //                 x%: 100-x% of maxHeight to maxHeight 
             var diacriticsTopLength = this.diacriticsTop.length - 1;
-            for (var  count = 0,
+            for (let  count = 0,
                       len = this.options.maxHeight - Math.random()*((this.options.randomization/100)*this.options.maxHeight); count < len; count++) {
                         
               newChar += this.diacriticsTop[Math.floor(Math.random()*diacriticsTopLength)]          
@@ -439,7 +439,7 @@ function Lunicode() {
           if (this.options.bottom) {
             
             var diacriticsBottomLength = this.diacriticsBottom.length - 1;
-            for (var  count = 0,
+            for (let  count = 0,
                       len = this.options.maxHeight - Math.random()*((this.options.randomization/100)*this.options.maxHeight); count < len; count++) {
                         
               newChar += this.diacriticsBottom[Math.floor(Math.random()*diacriticsBottomLength)]          
@@ -490,23 +490,23 @@ function Lunicode() {
         
         
         // Numbers
-        for (var i = 49; i <= 57; i++) {
+        for (let i = 49; i <= 57; i++) {
           this.map[String.fromCharCode(i)] = String.fromCharCode(i+9263);
         }
         this.map['0'] = '\u24ea';
         
         // Capital letters
-        for (var i = 65; i <= 90; i++) {
+        for (let i = 65; i <= 90; i++) {
           this.map[String.fromCharCode(i)] = String.fromCharCode(i+9333);
         }
         
         // Lower letters
-        for (var i = 97; i <= 122; i++) {
+        for (let i = 97; i <= 122; i++) {
           this.map[String.fromCharCode(i)] = String.fromCharCode(i+9327);
         }
                 
         // invert the map
-        for (var i in this.map) {
+        for (let i in this.map) {
           this.mapInverse[this.map[i]] = i;
         }
         
@@ -543,12 +543,12 @@ function Lunicode() {
             ch,
             newRet = '';
             
-        for (var i in text) {
+        for (let i in text) {
           ch = this.mapInverse[text[i]];
           ret += ((typeof(ch) == "undefined") ? text[i] : ch);
         }
         
-        for (var i in ret) {
+        for (let i in ret) {
           ch = ret[i].charCodeAt(0);
           if (ch != 160 && ch != 8239 && ch != 8413) {
             newRet += ret[i];

@@ -68,5 +68,7 @@ config.json
 data/
 benderTest.session.sql
 
-# local planning docs (not part of the published repo)
-docs/
+# local planning docs and scratch artifacts
+docs/plans/
+.autopilot/
+tmp/
