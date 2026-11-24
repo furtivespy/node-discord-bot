@@ -1,0 +1,35 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    // ship-pr.json carries // comments, which its own tool allows but strict JSON does not.
+    "includes": ["**", "!**/data", "!**/*.sqlite*", "!package-lock.json", "!.github/ship-pr.json"]
+  },
+  // Lint only for now. The formatter is off because existing files have mixed
+  // styles; turning it on is a separate mass-format change.
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      // Legacy baseline (~145 hits). Kept visible as warnings (`npm run
+      // lint:warnings`) so a change is not forced into semantics-changing
+      // rewrites (`==` -> `===`, hoisting inner functions). Promote to
+      // "error" once cleaned up. `npm run lint` fails on errors only.
+      "suspicious": {
+        "noDoubleEquals": "warn"
+      },
+      "correctness": {
+        "noInnerDeclarations": "warn"
+      }
+    }
+  }
+}

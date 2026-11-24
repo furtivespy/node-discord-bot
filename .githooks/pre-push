@@ -1,0 +1,3 @@
+#!/bin/sh
+# Enabled by `npm run hooks:install`. Fast static check only; CI runs the rest.
+exec npm run lint

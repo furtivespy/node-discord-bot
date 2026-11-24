@@ -39,7 +39,7 @@ class Riddle extends SlashCommand {
       switch (answer) {
         case "":
         case null:
-        case undefined:
+        case undefined: {
           let res = await fetch("https://riddles-api.vercel.app/random");
           let response = await res.json();
 
@@ -48,6 +48,7 @@ class Riddle extends SlashCommand {
               `${response.riddle}\n\n\n **Answer:** ||${response.answer}||`
             );
           break;
+        }
         case "begin":
         case "beginning":
           embed = embed
