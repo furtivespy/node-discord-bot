@@ -1,9 +1,11 @@
 {
 	// Review authors (login, case-insensitive, optional "[bot]") or exact check
-	// names that must have reviewed. The Cursor QA run posts a comment, not a
-	// GitHub review, so the agent adds a `cursor` review to the state only when
-	// the PR's QA Status block passes (see .agents/skills/ship-pr/SKILL.md and
-	// docs/merge-policy.md).
+	// names that must have reviewed. QA Department writes the PR's QA Status
+	// block (or the workflow stamps `Depth: skip (<reason>)` for eligible
+	// docs-only/non-runtime PRs). `ship-pr` passes the synthetic `cursor` review
+	// entry only when Verdict is PASS, Depth satisfies the workflow profile,
+	// Head equals headRefOid, and For you to test is none (see
+	// .agents/skills/ship-pr/SKILL.md and docs/merge-policy.md).
 	"reviewers": {
 		"low": ["cursor"],
 		"medium": ["cursor"],

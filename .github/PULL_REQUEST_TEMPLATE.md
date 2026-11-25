@@ -28,9 +28,10 @@ none
 
 ## QA Status
 
-<!-- Maintained by the QA agent: rewrite everything between the markers after every QA pass. A verdict is only valid while Head equals the PR's current head SHA. See docs/merge-policy.md. -->
+<!-- Maintained by QA Department (or workflow skip stamp for docs-only/non-runtime PRs): rewrite everything between the markers after every QA pass. A verdict is only valid while Head equals the PR's current head SHA. See docs/merge-policy.md. -->
 <!-- qa-status:start -->
 - **Verdict:** pending
+- **Depth:** pending
 - **Head:** -
 - **Verified:** -
 - **For you to test:** none
