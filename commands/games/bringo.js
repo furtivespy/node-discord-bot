@@ -146,7 +146,7 @@ class Bringo extends Command {
                         await message.channel.send(`add multiple with pipe separator. \`${message.settings.prefix}bringo add bingo | bango | bongo\``);
                     } else {
                         args.shift()
-                        var additives = args.join(" ").toLowerCase().split(/ *\| */g);
+                        const additives = args.join(" ").toLowerCase().split(/ *\| */g);
                         BringoData.wordlist = uniq(concat(BringoData.wordlist,additives))
                         this.client.setGameData(message.guild, 'BRINGO', BringoData)
                         return message.reply(`I added ${additives.length} word${(additives.length ===  1)? '' : 's'}`)
@@ -158,7 +158,7 @@ class Bringo extends Command {
                         await message.channel.send(`remove multiple with pipe separator. \`${message.settings.prefix}bringo remove bingo | bango | bongo\``);
                     } else {
                         args.shift()
-                        var additives = args.join(" ").toLowerCase().split(/ *\| */g);
+                        const additives = args.join(" ").toLowerCase().split(/ *\| */g);
                         BringoData.wordlist = difference(BringoData.wordlist,additives)
                         this.client.setGameData(message.guild, 'BRINGO', BringoData)
                         return message.reply(`I removed ${additives.length} word${(additives.length ===  1)? '' : 's'}`)
@@ -213,7 +213,7 @@ class Bringo extends Command {
                         })
                     });
                     await responseMsg.edit(`calculating...`)
-                    var sorted = Object.keys(wordHistogram).map(c => ({key: c, value: wordHistogram[c]})).sort((a,b) => b.value - a.value)
+                    const sorted = Object.keys(wordHistogram).map(c => ({key: c, value: wordHistogram[c]})).sort((a,b) => b.value - a.value)
                     var newlist = slice(sorted, 0, 200).map(c => c.key).join(" | ")
                     
                     await responseMsg.edit(`Sliding into your DMs`)

@@ -11,6 +11,11 @@
   "packageManager": "npm@11.20.0",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "lint": "biome lint --diagnostic-level=error .",
+    "lint:warnings": "biome lint --max-diagnostics=none --reporter=summary .",
+    "verify": "npm run lint && npm test && npm run smoke",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "control": "node scripts/control-bender.js",
     "start": "node BenderBot.js",
     "smoke": "node scripts/smoke-startup.js"
   },
@@ -60,6 +65,7 @@
     "wtf-plugin-markdown": "^1.0.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@flydotio/dockerfile": "^0.7.15"
   },
   "overrides": {
