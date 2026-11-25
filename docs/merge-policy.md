@@ -9,12 +9,12 @@ Required on `master` (ruleset `protect master`): `lint` and `test` (`.github/wor
 An agent may merge a PR (`ship-pr --merge`, see `.agents/skills/ship-pr/SKILL.md`) only when **all** of these hold:
 
 1. `lint` and `test` are green.
-2. The PR's **QA Status** block says `Verdict: PASS` and its `Head` equals the PR's current head SHA. A new commit makes an old PASS stale.
+2. The PR's **QA Status** block says `Verdict: PASS`, carries a valid `Depth` (`skip (<reason>)`, `smoke`, `normal`, or `regression` per `ai-tool-n-docs` `docs/workflow/profiles.md`), and its `Head` equals the PR's current head SHA. A new commit makes an old PASS stale. `Depth: skip (<reason>)` is valid only for strictly docs-only or non-runtime diffs (runtime code and dependency bumps require at least `smoke`).
 3. `For you to test` is `none`.
 4. The risk tier is **low** or **medium** (below).
 5. The PR has exactly one release label: `patch`, `minor`, or `major`. `release.yml` reads it to cut the next SemVer git tag and GitHub Release; with no label no release tag is created. `major` is high risk, so an agent never merges it.
 
-The Cursor QA review is not a GitHub check, so GitHub cannot require it. The `ship-pr` loop enforces rules 2, 3, and 5 instead.
+The QA Department check (and QA Status block) is not a GitHub check, so GitHub cannot require it. The `ship-pr` gate enforces rules 2, 3, and 5 instead.
 
 ## Risk tiers
 
@@ -25,6 +25,7 @@ The Cursor QA review is not a GitHub check, so GitHub cannot require it. The `sh
 - touches the rules that decide merging, so an agent cannot loosen its own gate: `.github/ship-pr.json`, `.agents/skills/ship-pr/`, `scripts/pr-risk.js`, `docs/merge-policy.md`, or anything under `docs/adr/`;
 - changes a slash-command contract: a command or option name, an option type, `defaultMemberPermissions`, or `permLevel`;
 - carries the `major` label;
+- carries the `profile:high-risk` Linear label (or escalates to `high-risk` per `ai-tool-n-docs` `docs/workflow/profiles.md`);
 - `User call-out` is not `none` (users need it explained, for example release notes or changed behavior);
 - falls under [ADR 0003](adr/0003-agent-defaults-to-no.md) and the task did not explicitly ask for it.
 
