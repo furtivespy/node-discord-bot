@@ -21,7 +21,7 @@ Policy lives in [docs/merge-policy.md](../../../docs/merge-policy.md); the decis
 
    `npx kcd-skills@latest autopilot ship-pr --schema` prints the state format. Map checks to `{name, status}` (use the check names, for example `lint` and `test`), and set `headSha` to `headRefOid`.
 
-   QA Department writes a PR block rather than a GitHub review, so add `{"login": "cursor", "state": "COMMENTED"}` to `reviews` **only when all four hold**: `Verdict: PASS`, `Depth` satisfies the diff/profile (never `skip` for runtime code or dependency bumps), `Head` equals the current `headRefOid`, and `For you to test` is `none`. If `Head` is stale or `For you to test` is not `none`, **park for the owner**: do not merge, leave a short PR comment with why and what the owner must do, and stop. Do not omit the review and wait. If `Verdict` is pending or missing for `headRefOid`, return to QA rather than waiting silently.
+   QA Department writes a PR block rather than a GitHub review, so add `{"login": "qa-department", "state": "COMMENTED"}` to `reviews` **only when all four hold**: `Verdict: PASS`, `Depth` satisfies the diff/profile (never `skip` for runtime code or dependency bumps), `Head` equals the current `headRefOid`, and `For you to test` is `none`. If `Head` is stale or `For you to test` is not `none`, **park for the owner**: do not merge, leave a short PR comment with why and what the owner must do, and stop. Do not omit the review and wait. If `Verdict` is pending or missing for `headRefOid`, return to QA rather than waiting silently.
 5. **Route the autopilot action (no code edits here):**
    - `merge`: proceed to Step 6.
    - `wait` or `mark-ready`: handle or report status.
